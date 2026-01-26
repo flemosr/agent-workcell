@@ -7,5 +7,5 @@ if [[ "$ENABLE_FIREWALL" == "1" ]]; then
   /opt/init-firewall.sh
 fi
 
-# Run claude as the claude user
-exec su claude -c "cd /home/claude/workspace && claude $*"
+# Run claude as the claude user in the current working directory
+exec su claude -c "cd $(pwd) && claude $*"

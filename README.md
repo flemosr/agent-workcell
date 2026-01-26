@@ -40,9 +40,11 @@ claude-sandbox() {
     esac
   done
 
+  local project_name="${PWD##*/}"
   local docker_args=(
     --rm -it
-    -v "$(pwd):/home/claude/workspace"
+    -v "$(pwd):/workspaces/${project_name}"
+    -w "/workspaces/${project_name}"
     -v claude-sandbox-config:/home/claude/.claude
     -e TERM=xterm-256color
   )
@@ -98,7 +100,8 @@ claude-sandbox --resume
 
 ## How it works
 
-- Your current directory is mounted at `/home/claude/workspace` inside the container
+- Your current directory is mounted at `/workspaces/<project-name>` inside the container
+- Each project gets a unique path so Claude Code keeps chat histories separate
 - Claude Code settings persist between sessions via Docker volumes
 - The container runs as non-root user `claude` for safety
 - Full network access is available (for web searches, docs, git, etc.)
