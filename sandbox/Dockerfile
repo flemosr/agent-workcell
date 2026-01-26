@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     ripgrep \
     fd-find \
     build-essential \
+    pkg-config \
+    libssl-dev \
     zsh \
     fzf \
     iptables \
