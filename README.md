@@ -67,12 +67,52 @@ claude-sandbox --resume
 
 - Your current directory is mounted at `/workspaces/<project-name>` inside the container
 - Each project gets a unique path so Claude Code keeps chat histories separate
-- Claude Code settings persist between sessions via Docker volumes
+- Claude Code settings persist between sessions via a Docker volume (see below)
 - The container runs as non-root user `claude` for safety
 - Full network access is available (for web searches, docs, git, etc.)
 - Filesystem access is isolated to the mounted directory
 - Host services are accessible via `host.docker.internal`
 - A global context file (`~/.claude/CLAUDE.md`) informs the agent about the sandbox environment
+
+## Persistence
+
+All persistent data is stored in a single Docker volume `claude-sandbox-vol`, mounted at `/home/claude/host-vol` inside the container.
+
+### Volume structure
+
+```
+claude-sandbox-vol → /home/claude/host-vol/
+├── .claude/            # Claude Code configuration (~/.claude)
+│   ├── .credentials.json
+│   ├── settings.json
+│   ├── CLAUDE.md       # Global agent context
+│   └── ...
+├── .claude.json        # Onboarding state, theme, user ID
+└── history/            # Bash history
+    └── .bash_history
+```
+
+### Symlinks
+
+The Dockerfile creates symlinks so Claude Code finds its config in the expected locations:
+
+- `~/.claude` → `~/host-vol/.claude`
+- `~/.claude.json` → `~/host-vol/.claude.json`
+
+This ensures authentication, settings, and onboarding state persist across container restarts and image rebuilds.
+
+### Managing the volume
+
+```bash
+# View volume contents
+docker run --rm -v claude-sandbox-vol:/data alpine ls -la /data
+
+# Backup the volume
+docker run --rm -v claude-sandbox-vol:/data -v $(pwd):/backup alpine tar czf /backup/claude-sandbox-backup.tar.gz -C /data .
+
+# Remove the volume (will require re-authentication)
+docker volume rm claude-sandbox-vol
+```
 
 ## Network restrictions
 

@@ -26,7 +26,8 @@ docker_args=(
   --rm -it
   -v "$(pwd):/workspaces/${project_name}"
   -w "/workspaces/${project_name}"
-  -v claude-sandbox-config:/home/claude/.claude
+  -v claude-sandbox-vol:/home/claude/host-vol
+  -e HISTFILE=/home/claude/host-vol/history/.bash_history
   -e TERM=xterm-256color
   --add-host=host.docker.internal:host-gateway
 )
