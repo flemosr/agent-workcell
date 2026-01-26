@@ -53,7 +53,7 @@ claude-sandbox --yolo
 # Firewalled mode (restricted network access)
 claude-sandbox --firewalled
 
-# YOLO + firewalled (maximum isolation)
+# YOLO + firewalled
 claude-sandbox --yolo --firewalled
 
 # With a prompt
@@ -71,7 +71,8 @@ claude-sandbox --resume
 - The container runs as non-root user `claude` for safety
 - Full network access is available (for web searches, docs, git, etc.)
 - Filesystem access is isolated to the mounted directory
-- Host services are accessible via `host.docker.internal` (e.g., `host.docker.internal:5432` for a local PostgreSQL)
+- Host services are accessible via `host.docker.internal`
+- A global context file (`~/.claude/CLAUDE.md`) informs the agent about the sandbox environment
 
 ## Network restrictions
 
@@ -90,8 +91,9 @@ This prevents data exfiltration to unauthorized servers while still allowing Cla
 claude-sandbox/
 ├── README.md
 ├── docker-compose.yml
-├── run_sandbox.sh          # Main entry point script
+├── run_sandbox.sh              # Main entry point script
 └── sandbox/
+    ├── agent-context.md        # Global context for the sandboxed agent
     ├── Dockerfile
     ├── entrypoint.sh
     └── init-firewall.sh
