@@ -50,7 +50,7 @@ Your `config.sh` is gitignored, so your personal settings won't be committed.
 Add this to your `~/.zshrc`:
 
 ```bash
-alias claude-sandbox="/path/to/claude-sandbox/run_sandbox.sh"
+alias claude-sandbox="/path/to/claude-sandbox/claude-sandbox.sh"
 ```
 
 Replace `/path/to/claude-sandbox` with the actual path to this repository.
@@ -66,43 +66,68 @@ source ~/.zshrc
 Run the sandbox once to authenticate with your Anthropic account:
 
 ```bash
-claude-sandbox
+claude-sandbox run
 ```
 
 ## Usage
+
+The CLI has two main commands:
+
+### Run the sandbox
 
 Navigate to any project directory and run:
 
 ```bash
 # Normal mode
-claude-sandbox
+claude-sandbox run
 
 # YOLO mode (no permission prompts)
-claude-sandbox --yolo
+claude-sandbox run --yolo
 
 # Firewalled mode (restricted network access)
-claude-sandbox --firewalled
+claude-sandbox run --firewalled
 
 # Chrome enabled (browser control)
-claude-sandbox --with-chrome
+claude-sandbox run --with-chrome
 
 # Expose a port for dev server (accessible at localhost:3000 on host)
-claude-sandbox --port 3000
+claude-sandbox run --port 3000
 
 # Multiple ports
-claude-sandbox --port 3000 --port 5173
+claude-sandbox run --port 3000 --port 5173
 
 # Web dev setup: YOLO + Chrome + port exposed
-claude-sandbox --yolo --with-chrome --port 3000
+claude-sandbox run --yolo --with-chrome --port 3000
 
 # YOLO + firewalled
-claude-sandbox --yolo --firewalled
+claude-sandbox run --yolo --firewalled
 
 # With a prompt
-claude-sandbox --yolo -p "fix the tests"
+claude-sandbox run --yolo -p "fix the tests"
 
 # Pass any claude arguments
-claude-sandbox --resume
+claude-sandbox run --resume
+```
+
+**Shorthand:** Running `claude-sandbox` without a command defaults to `run`:
+
+```bash
+claude-sandbox --yolo --with-chrome --port 3000
+```
+
+### Start Chrome separately
+
+If you want to start Chrome independently (e.g., to keep it running across sandbox sessions):
+
+```bash
+# Start Chrome with remote debugging
+claude-sandbox start-chrome
+
+# Auto-restart if Chrome is running
+claude-sandbox start-chrome --restart
+
+# Override settings from config
+claude-sandbox start-chrome --port 9333 --profile "Profile 1"
 ```
 
 ## How it works
@@ -246,62 +271,6 @@ The `$EXPOSED_PORTS` env var contains the list of exposed ports (e.g., `3000,517
 3. Access from host browser: `http://localhost:3000`
 4. Or use `browser` CLI: `browser goto "http://host.docker.internal:3000"`
 
-### Manual Setup (alternative)
-
-If you prefer to manage Chrome separately:
-
-1. **Start Chrome with remote debugging:**
-
-   ```bash
-   ./start-chrome-debug.sh
-   ```
-
-   **Important:** Chrome must not be running. The script will detect if Chrome is already open and
-   show an error with instructions to quit it. You can use `--restart` to automatically kill and
-   restart Chrome:
-
-   ```bash
-   ./start-chrome-debug.sh --restart    # Auto-kill running Chrome and restart with debugging
-   ./start-chrome-debug.sh --port 9333  # Override port from config
-   ./start-chrome-debug.sh --profile "Profile 1"  # Override profile from config
-   ```
-
-2. **In the sandbox, test the connection:**
-
-   ```bash
-   browser test
-   ```
-
-### Available Commands
-
-```bash
-browser test                    # Test connection to Chrome
-browser goto <url>              # Navigate to URL
-browser screenshot [-o path]    # Take screenshot
-browser click <selector>        # Click an element
-browser fill <selector> <text>  # Fill a form field
-browser console                 # Get console logs
-browser info                    # Get current page info
-```
-
-### Programmatic Usage (Python)
-
-```python
-from browser import Browser
-
-async with Browser() as b:
-    await b.goto("http://host.docker.internal:3000")
-    await b.screenshot("my-app.png")
-    logs = await b.get_console_logs()
-```
-
-### Web Development Workflow
-
-1. Start your dev server in the sandbox (e.g., `npm run dev` on port 3000)
-2. From within the sandbox, use `browser goto "http://host.docker.internal:3000"` to navigate Chrome
-3. Use `browser screenshot`, `browser click`, etc. to interact and verify
-4. You can also view the app directly in Chrome on your Mac at `http://localhost:3000`
-
 ## Available Tools
 
 The sandbox comes with the following pre-installed:
@@ -331,16 +300,18 @@ fetch docs and install packages.
 claude-sandbox/
 ├── README.md
 ├── docker-compose.yml
+├── claude-sandbox.sh           # Main CLI entrypoint
 ├── config.template.sh          # Configuration template
 ├── config.sh                   # Your config (create from template, gitignored)
-├── run_sandbox.sh              # Main entry point script
-├── start-chrome-debug.sh       # Start Chrome with remote debugging (run on host)
+├── scripts/
+│   ├── run_sandbox.sh          # Docker container runner
+│   └── start-chrome-debug.sh   # Chrome debug launcher
 └── sandbox/
     ├── agent-context.md        # Global context for the sandboxed agent
     ├── Dockerfile
     ├── entrypoint.sh
     ├── init-firewall.sh
     └── browser-tools/          # Browser control utilities
-        ├── browser             # CLI wrapper
+        ├── browser.sh          # CLI wrapper
         └── browser.py          # Python module
 ```
