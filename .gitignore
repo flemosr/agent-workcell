@@ -1,2 +1,4 @@
 **/.DS_Store
 **/.claude/sessions
+**/.ruff_cache
+config.sh
