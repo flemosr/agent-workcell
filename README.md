@@ -6,7 +6,6 @@ A Docker-based sandbox environment for running Claude Code safely in YOLO mode.
 
 - Docker installed and running
 - macOS (or Linux/WSL2)
-- `socat` for Chrome integration: `brew install socat`
 
 ## Setup
 
@@ -16,36 +15,7 @@ A Docker-based sandbox environment for running Claude Code safely in YOLO mode.
 docker compose build
 ```
 
-### 2. Configure Chrome settings
-
-**Create a dedicated Chrome profile for Claude:**
-
-1. Open Chrome and click your profile icon (top-right)
-2. Click "Add" to create a new profile
-3. Name it "Claude" (or any name you prefer)
-4. Go to `chrome://version` in the new profile
-5. Look at "Profile Path" - note the last folder name (e.g., "Profile 3")
-
-**Create your config file:**
-
-```bash
-cp config.template.sh config.sh
-```
-
-Edit `config.sh` with your new profile's folder name:
-
-```bash
-CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-CHROME_USER_DATA="$HOME/Library/Application Support/Google/Chrome"
-CHROME_DEBUG_DATA="$HOME/Library/Application Support/Google/Chrome-Debug"
-CHROME_PROFILE="Profile 3"      # <-- Use folder name from chrome://version
-CHROME_DEBUG_PORT=9222
-CHROME_INTERNAL_PORT=19222
-```
-
-Your `config.sh` is gitignored, so your personal settings won't be committed.
-
-### 3. Add the shell alias
+### 2. Add the shell alias
 
 Add this to your `~/.zshrc`:
 
@@ -61,13 +31,45 @@ Then reload your shell:
 source ~/.zshrc
 ```
 
-### 4. Authenticate (first time only)
+### 3. Authenticate (first time only)
 
 Run the sandbox once to authenticate with your Anthropic account:
 
 ```bash
 claude-sandbox run
 ```
+
+### 4. Configure Chrome (optional)
+
+To use browser integration (`--with-chrome`), you need to configure Chrome settings.
+
+**Install socat** (required for Chrome integration):
+
+```bash
+brew install socat
+```
+
+**Create a dedicated Chrome profile for Claude:**
+
+1. Open Chrome and click your profile icon (top-right)
+2. Click "Add" to create a new profile
+3. Name it "Claude" (or any name you prefer)
+4. Go to `chrome://version` in the new profile
+5. Look at "Profile Path" - note the last folder name (e.g., "Profile 3")
+
+**Create your config file:**
+
+```bash
+cp config.template.sh config.sh
+```
+
+Edit `config.sh` and set `CHROME_PROFILE` to your profile's folder name:
+
+```bash
+CHROME_PROFILE="Profile 3"  # <-- Use folder name from chrome://version
+```
+
+Your `config.sh` is gitignored, so your personal settings won't be committed.
 
 ## Usage
 
@@ -232,8 +234,8 @@ containers can't reach the host's localhost directly, we use `socat` as a bridge
 ┌─────────────────────────────────────────────────────────────────────┐
 │  HOST (Mac)                                                         │
 │                                                                     │
-│   Chrome ◄──────── socat ◄──────── Docker Network                  │
-│   127.0.0.1:19222   0.0.0.0:9222    host.docker.internal:9222      │
+│   Chrome ◄──────── socat ◄──────── Docker Network                   │
+│   127.0.0.1:19222   0.0.0.0:9222    host.docker.internal:9222       │
 │   (internal)        (bridge)        (container access)              │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -258,7 +260,7 @@ claude-sandbox --with-chrome --port 3000
 ┌─────────────────────────────────────────────────────────────────────┐
 │  CONTAINER                                                          │
 │                                                                     │
-│   React/Vite/etc ◄─── 0.0.0.0:3000                                 │
+│   React/Vite/etc ◄─── 0.0.0.0:3000                                  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
