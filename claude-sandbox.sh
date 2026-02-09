@@ -58,6 +58,59 @@ Examples:
 EOF
 }
 
+ensure_docker_running() {
+    # Use "docker ps" as a lightweight check — it only needs the daemon to respond,
+    # unlike "docker info" which can fail on permission or timeout issues even when
+    # Docker is running.
+    if docker ps &>/dev/null; then
+        return 0
+    fi
+
+    echo "Docker is not running. Attempting to start Docker..."
+
+    case "$(uname -s)" in
+        Darwin)
+            open -a Docker 2>/dev/null || open -a "Docker Desktop" 2>/dev/null || {
+                echo "Error: Could not start Docker Desktop. Please start it manually."
+                exit 1
+            }
+            ;;
+        Linux)
+            if command -v systemctl &>/dev/null; then
+                sudo systemctl start docker 2>/dev/null || {
+                    echo "Error: Could not start Docker via systemctl. Please start it manually."
+                    exit 1
+                }
+            elif command -v service &>/dev/null; then
+                sudo service docker start 2>/dev/null || {
+                    echo "Error: Could not start Docker via service. Please start it manually."
+                    exit 1
+                }
+            else
+                echo "Error: Could not determine how to start Docker. Please start it manually."
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Error: Unsupported platform. Please start Docker manually."
+            exit 1
+            ;;
+    esac
+
+    # Wait for Docker to be ready
+    echo "Waiting for Docker to be ready..."
+    local retries=30
+    while ! docker ps &>/dev/null; do
+        retries=$((retries - 1))
+        if [[ $retries -le 0 ]]; then
+            echo "Error: Docker did not start in time. Please start it manually."
+            exit 1
+        fi
+        sleep 2
+    done
+    echo "Docker is ready."
+}
+
 show_start_chrome_help() {
     cat << 'EOF'
 Start Chrome with remote debugging for sandbox connection
@@ -92,6 +145,7 @@ case "$command" in
             exit 0
         fi
 
+        ensure_docker_running
         exec "$SCRIPT_DIR/scripts/run_sandbox.sh" "$@"
         ;;
 
@@ -115,6 +169,7 @@ case "$command" in
         # Unknown command - could be flags for open-workspace (backwards compat)
         # Check if it looks like a flag
         if [[ "$command" == -* ]]; then
+            ensure_docker_running
             exec "$SCRIPT_DIR/scripts/run_sandbox.sh" "$@"
         else
             echo "Unknown command: $command"
