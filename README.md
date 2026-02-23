@@ -71,6 +71,38 @@ CHROME_PROFILE="Profile 3"  # <-- Use folder name from chrome://version
 
 Your `config.sh` is gitignored, so your personal settings won't be committed.
 
+### 5. Configure GPG commit signing (optional)
+
+To have commits made inside the sandbox show as "Verified" on GitHub, enable GPG signing in your
+`config.sh`:
+
+```bash
+GIT_AUTHOR_NAME="Sandbox Agent Name"
+GIT_AUTHOR_EMAIL="agent@example.local"
+GPG_SIGNING=true
+```
+
+On first launch, the sandbox generates a passphrase-less ed25519 GPG key and prints the public key.
+Add it to your GitHub account at **Settings > SSH and GPG keys > New GPG key**.
+
+The key is persisted in the Docker volume, so it survives container restarts. To export the key for
+use on another machine:
+
+```bash
+docker run --rm -v claude-sandbox:/data -v "$(pwd):/output" local/claude-sandbox \
+  bash -c 'gpg --homedir /data/.gnupg --export-secret-keys --armor > /output/my-key-backup.asc'
+```
+
+This creates `my-key-backup.asc` in your current directory. **This file contains your sandbox private key —
+do not commit or share it.**
+
+To restore a backed-up key into the sandbox:
+
+```bash
+docker run --rm -v claude-sandbox:/data -v "$(pwd):/input" local/claude-sandbox \
+  bash -c 'gpg --homedir /data/.gnupg --import /input/my-key-backup.asc'
+```
+
 ## Usage
 
 The CLI has two main commands:
@@ -162,6 +194,7 @@ claude-sandbox → /home/claude/persist/
 ├── .claude.json        # Onboarding state, theme, user ID
 ├── .claude-versions/   # Claude Code binary versions
 │   └── versions/       # Downloaded Claude Code updates
+├── .gnupg/             # GPG keys for commit signing (when GPG_SIGNING is enabled)
 ├── .nvm/               # Node.js versions and global packages
 │   ├── versions/node/  # Installed Node.js versions
 │   └── ...
@@ -172,6 +205,7 @@ The entrypoint creates symlinks so tools find their config in the expected locat
 - `~/.claude` → `~/persist/.claude`
 - `~/.claude.json` → `~/persist/.claude.json`
 - `~/.local/share/claude` → `~/persist/.claude-versions`
+- `~/.gnupg` → `~/persist/.gnupg`
 - `~/.nvm` → `~/persist/.nvm`
 
 This ensures authentication, settings, Claude Code binary versions, Node.js versions, and global npm
