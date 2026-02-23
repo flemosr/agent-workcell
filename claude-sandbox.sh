@@ -4,6 +4,10 @@
 # Usage:
 #   claude-sandbox run [options]           Run the sandbox in current directory
 #   claude-sandbox start-chrome [options]  Start Chrome with remote debugging
+#   claude-sandbox gpg-export --file <f>    Export sandbox GPG key to a file
+#   claude-sandbox gpg-import --file <f>   Import a GPG key into the sandbox
+#   claude-sandbox gpg-revoke --file <f>   Generate a revocation certificate
+#   claude-sandbox gpg-erase               Erase the sandbox GPG key
 #   claude-sandbox help                    Show this help message
 #
 # For detailed help on each command:
@@ -33,6 +37,10 @@ Usage:
 Commands:
   run             Run the sandbox in current directory (default)
   start-chrome    Start Chrome with remote debugging (run on host)
+  gpg-export      Export the sandbox GPG key to a file
+  gpg-import      Import a GPG key into the sandbox
+  gpg-revoke      Generate a revocation certificate
+  gpg-erase       Erase the sandbox GPG key
   help            Show this help message
 
 Examples:
@@ -40,6 +48,10 @@ Examples:
   claude-sandbox run --yolo --with-chrome --port 3000
   claude-sandbox start-chrome
   claude-sandbox start-chrome --restart
+  claude-sandbox gpg-export --file my-key.asc
+  claude-sandbox gpg-import --file my-key.asc
+  claude-sandbox gpg-revoke --file revoke.asc
+  claude-sandbox gpg-erase
 
 For more information, see README.md
 EOF
@@ -167,6 +179,175 @@ case "$command" in
         fi
 
         exec "$SCRIPT_DIR/scripts/start-chrome-debug.sh" "$@"
+        ;;
+
+    gpg-export)
+        shift
+        outfile=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --file) outfile="$2"; shift 2 ;;
+                --help|-h)
+                    echo "Export the sandbox GPG key to a file"
+                    echo ""
+                    echo "Usage:"
+                    echo "  claude-sandbox gpg-export --file <path>"
+                    echo ""
+                    echo "Options:"
+                    echo "  --file <path>   Output file (required)"
+                    exit 0
+                    ;;
+                *) echo "Unknown option: $1"; exit 1 ;;
+            esac
+        done
+
+        if [ -z "$outfile" ]; then
+            echo "Error: --file is required"
+            echo "Usage: claude-sandbox gpg-export --file <path>"
+            exit 1
+        fi
+
+        ensure_docker_running
+        docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+            -c 'gpg --homedir /data/.gnupg --no-permission-warning --export-secret-keys --armor 2>/dev/null' > "$outfile"
+
+        if [ ! -s "$outfile" ]; then
+            rm -f "$outfile"
+            echo "Error: No GPG keys found in the sandbox volume."
+            exit 1
+        fi
+
+        echo "Exported GPG key to: $outfile"
+        echo "WARNING: This file contains your PRIVATE key. Do not commit or share it."
+        ;;
+
+    gpg-import)
+        shift
+        infile=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --file) infile="$2"; shift 2 ;;
+                --help|-h)
+                    echo "Import a GPG key into the sandbox"
+                    echo ""
+                    echo "Usage:"
+                    echo "  claude-sandbox gpg-import --file <key-file>"
+                    echo ""
+                    echo "Options:"
+                    echo "  --file <path>   Key file to import (required)"
+                    exit 0
+                    ;;
+                *) echo "Unknown option: $1"; exit 1 ;;
+            esac
+        done
+
+        if [ -z "$infile" ]; then
+            echo "Error: --file is required"
+            echo "Usage: claude-sandbox gpg-import --file <key-file>"
+            exit 1
+        fi
+
+        if [ ! -f "$infile" ]; then
+            echo "Error: File not found: $infile"
+            exit 1
+        fi
+
+        ensure_docker_running
+        docker run --rm -i --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+            -c '
+                gpg --homedir /data/.gnupg --no-permission-warning --import && \
+                fpr=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^fpr" | head -1 | cut -d: -f10) && \
+                if [ -n "$fpr" ]; then
+                    echo "$fpr:6:" | gpg --homedir /data/.gnupg --no-permission-warning --import-ownertrust
+                fi && \
+                chown -R 1000:1000 /data/.gnupg
+            ' < "$infile"
+        echo "GPG key imported into the sandbox."
+        ;;
+
+    gpg-revoke)
+        shift
+        outfile=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --file) outfile="$2"; shift 2 ;;
+                --help|-h)
+                    echo "Generate a revocation certificate for the sandbox GPG key"
+                    echo ""
+                    echo "Usage:"
+                    echo "  claude-sandbox gpg-revoke --file <path>"
+                    echo ""
+                    echo "Options:"
+                    echo "  --file <path>   Output file (required)"
+                    echo ""
+                    echo "Upload the certificate to GitHub to invalidate the key."
+                    echo "Commits signed before revocation remain verified."
+                    exit 0
+                    ;;
+                *) echo "Unknown option: $1"; exit 1 ;;
+            esac
+        done
+
+        if [ -z "$outfile" ]; then
+            echo "Error: --file is required"
+            echo "Usage: claude-sandbox gpg-revoke --file <path>"
+            exit 1
+        fi
+
+        ensure_docker_running
+
+        # Resolve to absolute path and mount the parent directory
+        outdir="$(cd "$(dirname "$outfile")" && pwd)"
+        outname="$(basename "$outfile")"
+
+        docker run --rm -it --entrypoint bash \
+            -v claude-sandbox:/data \
+            -v "$outdir:/output" \
+            -e "OUTNAME=$outname" \
+            local/claude-sandbox \
+            -c '
+                key_id=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --keyid-format long 2>/dev/null | grep -oP "(?<=ed25519/)[A-F0-9]+" | head -1)
+                if [ -z "$key_id" ]; then
+                    echo "Error: No GPG keys found in the sandbox volume." >&2
+                    exit 1
+                fi
+                gpg --homedir /data/.gnupg --no-permission-warning --gen-revoke --output "/output/$OUTNAME" "$key_id"
+            '
+
+        if [ ! -s "$outfile" ]; then
+            rm -f "$outfile"
+            echo "Error: Failed to generate revocation certificate."
+            exit 1
+        fi
+
+        echo "Revocation certificate written to: $outfile"
+        echo "Upload this to GitHub to invalidate the key."
+        ;;
+
+    gpg-erase)
+        shift
+        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+            echo "Erase the sandbox GPG key"
+            echo ""
+            echo "Usage:"
+            echo "  claude-sandbox gpg-erase"
+            echo ""
+            echo "This permanently deletes all GPG keys from the sandbox volume."
+            echo "A new key will be generated on the next launch if GPG_SIGNING is enabled."
+            exit 0
+        fi
+
+        read -r -p "This will permanently delete all GPG keys from the sandbox. Continue? [y/N] " confirm
+        case "$confirm" in
+            y|Y)
+                ensure_docker_running
+                docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+                    -c 'rm -rf /data/.gnupg/* && echo "GPG keys erased."'
+                ;;
+            *)
+                echo "Aborted."
+                ;;
+        esac
         ;;
 
     help|--help|-h)
