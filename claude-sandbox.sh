@@ -4,6 +4,7 @@
 # Usage:
 #   claude-sandbox run [options]           Run the sandbox in current directory
 #   claude-sandbox start-chrome [options]  Start Chrome with remote debugging
+#   claude-sandbox gpg-new                  Generate a new sandbox GPG key
 #   claude-sandbox gpg-export --file <f>    Export sandbox GPG key to a file
 #   claude-sandbox gpg-import --file <f>   Import a GPG key into the sandbox
 #   claude-sandbox gpg-revoke --file <f>   Generate a revocation certificate
@@ -37,6 +38,7 @@ Usage:
 Commands:
   run             Run the sandbox in current directory (default)
   start-chrome    Start Chrome with remote debugging (run on host)
+  gpg-new         Generate a new sandbox GPG key
   gpg-export      Export the sandbox GPG key to a file
   gpg-import      Import a GPG key into the sandbox
   gpg-revoke      Generate a revocation certificate
@@ -48,6 +50,7 @@ Examples:
   claude-sandbox run --yolo --with-chrome --port 3000
   claude-sandbox start-chrome
   claude-sandbox start-chrome --restart
+  claude-sandbox gpg-new
   claude-sandbox gpg-export --file my-key.asc
   claude-sandbox gpg-import --file my-key.asc
   claude-sandbox gpg-revoke --file revoke.asc
@@ -179,6 +182,74 @@ case "$command" in
         fi
 
         exec "$SCRIPT_DIR/scripts/start-chrome-debug.sh" "$@"
+        ;;
+
+    gpg-new)
+        shift
+        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+            echo "Generate a new sandbox GPG key"
+            echo ""
+            echo "Usage:"
+            echo "  claude-sandbox gpg-new"
+            echo ""
+            echo "Reads GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL from config.sh."
+            echo "If a key already exists, prompts before overwriting."
+            exit 0
+        fi
+
+        # Source config for identity
+        if [ -f "$SCRIPT_DIR/config.sh" ]; then
+            source "$SCRIPT_DIR/config.sh"
+        fi
+
+        if [ -z "$GIT_AUTHOR_NAME" ] || [ -z "$GIT_AUTHOR_EMAIL" ]; then
+            echo "Error: GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL must be set in config.sh"
+            exit 1
+        fi
+
+        ensure_docker_running
+
+        # Check for existing key
+        existing=$(docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+            -c 'gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^uid" | head -1 | cut -d: -f10')
+
+        if [ -n "$existing" ]; then
+            echo "An existing GPG key was found: $existing"
+            echo "Generating a new key will erase the existing one."
+            echo ""
+            read -r -p "Continue? [y/N] " confirm
+            case "$confirm" in
+                y|Y) ;;
+                *)
+                    echo "Aborted."
+                    exit 0
+                    ;;
+            esac
+            docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+                -c 'rm -rf /data/.gnupg/*'
+        fi
+
+        echo "Generating GPG signing key for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>..."
+        docker run --rm --entrypoint bash -v claude-sandbox:/data \
+            -e "GIT_AUTHOR_NAME=$GIT_AUTHOR_NAME" \
+            -e "GIT_AUTHOR_EMAIL=$GIT_AUTHOR_EMAIL" \
+            local/claude-sandbox \
+            -c '
+                gpg --homedir /data/.gnupg --no-permission-warning --batch --gen-key <<GPGEOF
+%no-protection
+Key-Type: eddsa
+Key-Curve: ed25519
+Name-Real: $GIT_AUTHOR_NAME
+Name-Email: $GIT_AUTHOR_EMAIL
+Expire-Date: 0
+%commit
+GPGEOF
+                echo ""
+                echo "=== GPG Public Key (add to GitHub → Settings → SSH and GPG keys) ==="
+                gpg --homedir /data/.gnupg --no-permission-warning --armor --export "$GIT_AUTHOR_EMAIL"
+                echo "==================================================================="
+                chown -R 1000:1000 /data/.gnupg
+            '
         ;;
 
     gpg-export)

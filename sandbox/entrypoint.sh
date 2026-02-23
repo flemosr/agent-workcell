@@ -102,7 +102,24 @@ if [ "$GPG_SIGNING" = "true" ] && [ -n "$GIT_AUTHOR_NAME" ] && [ -n "$GIT_AUTHOR
 
   # Generate key if none exists
   if ! runuser -u claude -- gpg --list-keys "$GIT_AUTHOR_EMAIL" &>/dev/null; then
-    echo "Generating GPG signing key for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>..."
+    echo ""
+    echo "GPG_SIGNING is enabled but no key was found for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>."
+    echo "A new ed25519 signing key will be generated (passphrase-less)."
+    echo ""
+    echo "Options:"
+    echo "  [g] Generate new key"
+    echo "  [a] Abort"
+    echo ""
+    read -r -p "Choice [g/a]: " choice
+    case "$choice" in
+      g|G) ;;
+      *)
+        echo "Aborting."
+        exit 1
+        ;;
+    esac
+
+    echo "Generating GPG signing key..."
     runuser -u claude -- gpg --batch --gen-key <<GPGEOF
 %no-protection
 Key-Type: eddsa
