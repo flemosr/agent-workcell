@@ -9,6 +9,7 @@
 #   claude-sandbox gpg-import --file <f>   Import a GPG key into the sandbox
 #   claude-sandbox gpg-revoke --file <f>   Generate a revocation certificate
 #   claude-sandbox gpg-erase               Erase the sandbox GPG key
+#   claude-sandbox settings                Open sandbox settings.json in vi
 #   claude-sandbox help                    Show this help message
 #
 # For detailed help on each command:
@@ -43,6 +44,7 @@ Commands:
   gpg-import      Import a GPG key into the sandbox
   gpg-revoke      Generate a revocation certificate
   gpg-erase       Erase the sandbox GPG key
+  settings        Open sandbox settings.json in vi
   help            Show this help message
 
 Examples:
@@ -55,6 +57,7 @@ Examples:
   claude-sandbox gpg-import --file my-key.asc
   claude-sandbox gpg-revoke --file revoke.asc
   claude-sandbox gpg-erase
+  claude-sandbox settings
 
 For more information, see README.md
 EOF
@@ -419,6 +422,23 @@ GPGEOF
                 echo "Aborted."
                 ;;
         esac
+        ;;
+
+    settings)
+        shift
+        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+            echo "Open the sandbox Claude Code settings.json in vi"
+            echo ""
+            echo "Usage:"
+            echo "  claude-sandbox settings"
+            echo ""
+            echo "Edits ~/.claude/settings.json inside the sandbox Docker volume."
+            exit 0
+        fi
+
+        ensure_docker_running
+        docker run --rm -it --entrypoint vi -v claude-sandbox:/data local/claude-sandbox \
+            /data/.claude/settings.json
         ;;
 
     help|--help|-h)
