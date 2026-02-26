@@ -1,7 +1,8 @@
 # Claude Code Sandbox
 
 A containerized environment for running Claude Code in YOLO mode, with Chrome integration,
-selective persistence, and isolated GPG-signed commits.
+selective persistence, and isolated GPG-signed commits. A global context file is injected so the
+agent is aware of the sandbox's capabilities and constraints.
 
 ## Prerequisites
 
@@ -182,7 +183,8 @@ restarts).
 ## How it works
 
 - Your current directory is mounted at `/workspaces/<project-name>` inside the container
-- Session history is stored in the project's `.claude/sessions/` directory
+- Session history is stored in the project's `.claude/sessions/` directory (consider adding it to
+  your `.gitignore`)
 - Claude Code settings persist between sessions via a Docker volume
 - The container runs as non-root user `claude` for safety
 - Full network access is available (for web searches, docs, git, etc.)
@@ -283,8 +285,8 @@ There are two directions of communication:
 
 **1. Container → Host (Chrome control via CDP)**
 
-Chrome on Mac ignores `--remote-debugging-address=0.0.0.0` and only binds to `127.0.0.1`. Since Docker
-containers can't reach the host's localhost directly, we use `socat` as a bridge:
+Chrome on Mac ignores `--remote-debugging-address=0.0.0.0` and only binds to `127.0.0.1`. Since
+Docker containers can't reach the host's localhost directly, we use `socat` as a bridge:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
