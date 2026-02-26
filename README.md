@@ -87,19 +87,7 @@ Add it to your GitHub account at **Settings > SSH and GPG keys > New GPG key**.
 
 The key is persisted in the Docker volume, so it survives container restarts and image rebuilds.
 
-To export the key (e.g., for use on another machine or as a backup):
-
-```bash
-claude-sandbox gpg-export --file my-key-backup.asc
-```
-
-**The exported file contains your private key — do not commit or share it.**
-
-To import a previously exported key into the sandbox:
-
-```bash
-claude-sandbox gpg-import --file gpg-key-backup.asc
-```
+See [Manage GPG keys](#manage-gpg-keys) for export, import, revocation, and other key management commands.
 
 ## Usage
 
@@ -178,6 +166,17 @@ claude-sandbox gpg-revoke --file revoke.asc
 # Erase all GPG keys from the sandbox
 claude-sandbox gpg-erase
 ```
+
+### Edit sandbox settings
+
+Open the sandbox's `~/.claude/settings.json` in `vi`:
+
+```bash
+claude-sandbox settings
+```
+
+This edits the Claude Code configuration stored in the Docker volume (persists across container
+restarts).
 
 ## How it works
 
