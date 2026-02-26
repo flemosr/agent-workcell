@@ -1,7 +1,9 @@
 # Claude Code Sandbox
 
-A containerized environment for running Claude Code in YOLO mode, with Chrome integration,
-selective persistence, and isolated GPG-signed commits. A global context file is injected so the
+An opinionated, containerized environment for running Claude Code in YOLO mode, with Chrome
+integration, selective persistence, and isolated GPG-signed commits.
+
+Geared towards Rust, Python, and TypeScript development. A global context file is injected so the
 agent is aware of the sandbox's capabilities and constraints.
 
 ## Prerequisites
@@ -85,11 +87,13 @@ GPG_SIGNING=true
 ```
 
 On first launch, the sandbox generates a passphrase-less ed25519 GPG key and prints the public key.
-Add it to your GitHub account at **Settings > SSH and GPG keys > New GPG key**.
+If you want the agent's commits to appear as verified on GitHub, add it to your account at:
+**Settings > SSH and GPG keys > New GPG key**.
 
 The key is persisted in the Docker volume, so it survives container restarts and image rebuilds.
 
-See [Manage GPG keys](#manage-gpg-keys) for export, import, revocation, and other key management commands.
+See [Manage GPG keys](#manage-gpg-keys) for export, import, revocation, and other key management
+commands.
 
 ## Usage
 
@@ -330,8 +334,8 @@ The `$EXPOSED_PORTS` env var contains the list of exposed ports (e.g., `3000,517
 *User (on host):*
 1. Start sandbox with port: `claude-sandbox --with-chrome --port 3000`
 
-*Agent (in container):*
-2. Start dev server: `npm run dev -- --host 0.0.0.0` (must bind to 0.0.0.0)
+*Agent (in container):*  
+2. Start dev server: `npm run dev -- --host 0.0.0.0` (must bind to 0.0.0.0)  
 3. Navigate Chrome: `browser goto "http://localhost:3000"` (Chrome is on host)
 
 ## Available Tools
