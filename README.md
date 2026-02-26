@@ -1,6 +1,7 @@
 # Claude Code Sandbox
 
-A Docker-based sandbox environment for running Claude Code safely in YOLO mode.
+A containerized environment for running Claude Code in YOLO mode, with Chrome integration,
+selective persistence, and isolated GPG-signed commits.
 
 ## Prerequisites
 
@@ -310,8 +311,8 @@ claude-sandbox --with-chrome --port 3000
 │   Browser ────► localhost:3000 ────► Docker -p 3000:3000            │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
-                                           │
-                                           ▼
+                                  │
+                                  ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  CONTAINER                                                          │
 │                                                                     │
