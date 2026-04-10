@@ -183,6 +183,7 @@ The following tools are pre-installed:
 | **Node.js** | `nvm` (version manager), `npm`, `npx` - versions and global packages persist |
 | **Python** | `pyright` (type checker), `ruff` (linter), `playwright`, `matplotlib`, `numpy` |
 | **Browser** | `browser` CLI for Chrome automation (use `browser test` to check availability) |
+| **Database** | `psql` (PostgreSQL client) - connect to host DBs via `host.docker.internal` |
 | **Utilities** | `git`, `curl`, `wget`, `jq`, `yq`, `ripgrep`, `fd` |
 
 ## Project Scaffolding

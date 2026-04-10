@@ -352,6 +352,7 @@ The sandbox comes with the following pre-installed:
 | **Node.js** | `nvm` (version manager), `npm`, `npx` |
 | **Python** | `pyright` (type checker), `ruff` (linter), `playwright`, `matplotlib`, `numpy` |
 | **Browser** | `browser` CLI for Chrome automation |
+| **Database** | `psql` (PostgreSQL client) |
 | **Utilities** | `git`, `curl`, `wget`, `jq`, `yq`, `ripgrep`, `fd` |
 
 ## Network restrictions
