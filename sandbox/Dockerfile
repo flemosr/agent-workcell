@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     strace \
     gnupg \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install yq (YAML processor) - detect architecture
