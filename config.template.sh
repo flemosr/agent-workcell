@@ -1,5 +1,5 @@
 #!/bin/bash
-# Claude Sandbox Configuration (for Chrome integration)
+# Agent Sandbox Configuration (for Chrome integration)
 #
 # This config is only needed if you want to use the Chrome integration.
 # Copy this file to config.sh and edit to match your setup:
