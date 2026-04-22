@@ -1,24 +1,24 @@
 #!/bin/bash
-# Claude Code Sandbox CLI
+# Agent Sandbox CLI
 #
 # Usage:
-#   claude-sandbox run [options]           Run the sandbox in current directory
-#   claude-sandbox start-chrome [options]  Start Chrome with remote debugging
-#   claude-sandbox gpg-new                  Generate a new sandbox GPG key
-#   claude-sandbox gpg-export --file <f>    Export sandbox GPG key to a file
-#   claude-sandbox gpg-import --file <f>   Import a GPG key into the sandbox
-#   claude-sandbox gpg-revoke --file <f>   Generate a revocation certificate
-#   claude-sandbox gpg-erase               Erase the sandbox GPG key
-#   claude-sandbox volume-shell             Open a shell in the sandbox volume
-#   claude-sandbox volume-backup --file <f> Backup the sandbox volume
-#   claude-sandbox volume-restore --file <f> Restore the sandbox volume from backup
-#   claude-sandbox volume-rm               Remove the sandbox volume
-#   claude-sandbox settings                Open sandbox settings.json in vi
-#   claude-sandbox help                    Show this help message
+#   agent-sandbox run [options]           Run the sandbox in current directory
+#   agent-sandbox start-chrome [options]  Start Chrome with remote debugging
+#   agent-sandbox gpg-new                  Generate a new sandbox GPG key
+#   agent-sandbox gpg-export --file <f>    Export sandbox GPG key to a file
+#   agent-sandbox gpg-import --file <f>   Import a GPG key into the sandbox
+#   agent-sandbox gpg-revoke --file <f>   Generate a revocation certificate
+#   agent-sandbox gpg-erase               Erase the sandbox GPG key
+#   agent-sandbox volume-shell             Open a shell in the sandbox volume
+#   agent-sandbox volume-backup --file <f> Backup the sandbox volume
+#   agent-sandbox volume-restore --file <f> Restore the sandbox volume from backup
+#   agent-sandbox volume-rm               Remove the sandbox volume
+#   agent-sandbox settings                Open sandbox settings.json in vi
+#   agent-sandbox help                    Show this help message
 #
 # For detailed help on each command:
-#   claude-sandbox run --help
-#   claude-sandbox start-chrome --help
+#   agent-sandbox run --help
+#   agent-sandbox start-chrome --help
 
 set -e
 
@@ -35,10 +35,10 @@ done
 
 show_help() {
     cat << 'EOF'
-Claude Code Sandbox - Run Claude Code safely in Docker
+Agent Sandbox - Run Claude Code safely in Docker
 
 Usage:
-  claude-sandbox <command> [options]
+  agent-sandbox <command> [options]
 
 Commands:
   run             Run the sandbox in current directory (default)
@@ -56,20 +56,20 @@ Commands:
   help            Show this help message
 
 Examples:
-  claude-sandbox run
-  claude-sandbox run --yolo --with-chrome --port 3000
-  claude-sandbox start-chrome
-  claude-sandbox start-chrome --restart
-  claude-sandbox gpg-new
-  claude-sandbox gpg-export --file my-key.asc
-  claude-sandbox gpg-import --file my-key.asc
-  claude-sandbox gpg-revoke --file revoke.asc
-  claude-sandbox gpg-erase
-  claude-sandbox volume-shell
-  claude-sandbox volume-backup --file backup.tgz
-  claude-sandbox volume-restore --file backup.tgz
-  claude-sandbox volume-rm
-  claude-sandbox settings
+  agent-sandbox run
+  agent-sandbox run --yolo --with-chrome --port 3000
+  agent-sandbox start-chrome
+  agent-sandbox start-chrome --restart
+  agent-sandbox gpg-new
+  agent-sandbox gpg-export --file my-key.asc
+  agent-sandbox gpg-import --file my-key.asc
+  agent-sandbox gpg-revoke --file revoke.asc
+  agent-sandbox gpg-erase
+  agent-sandbox volume-shell
+  agent-sandbox volume-backup --file backup.tgz
+  agent-sandbox volume-restore --file backup.tgz
+  agent-sandbox volume-rm
+  agent-sandbox settings
 
 For more information, see README.md
 EOF
@@ -77,10 +77,10 @@ EOF
 
 show_run_help() {
     cat << 'EOF'
-Run the Claude Code sandbox in the current directory
+Run the Agent Sandbox in the current directory
 
 Usage:
-  claude-sandbox run [options] [-- claude-args]
+  agent-sandbox run [options] [-- claude-args]
 
 Options:
   --yolo            Enable YOLO mode (no permission prompts)
@@ -89,11 +89,11 @@ Options:
   --port <port>     Expose a port for dev servers (can be repeated)
 
 Examples:
-  claude-sandbox run
-  claude-sandbox run --yolo
-  claude-sandbox run --yolo --with-chrome --port 3000
-  claude-sandbox run --port 3000 --port 5173
-  claude-sandbox run --yolo -p "fix the tests"
+  agent-sandbox run
+  agent-sandbox run --yolo
+  agent-sandbox run --yolo --with-chrome --port 3000
+  agent-sandbox run --port 3000 --port 5173
+  agent-sandbox run --yolo -p "fix the tests"
 EOF
 }
 
@@ -155,7 +155,7 @@ show_start_chrome_help() {
 Start Chrome with remote debugging for sandbox connection
 
 Usage:
-  claude-sandbox start-chrome [options]
+  agent-sandbox start-chrome [options]
 
 Options:
   --port <port>       Override debug port from config
@@ -163,9 +163,9 @@ Options:
   --restart, -r       Kill running Chrome and restart with debugging
 
 Examples:
-  claude-sandbox start-chrome
-  claude-sandbox start-chrome --restart
-  claude-sandbox start-chrome --port 9333 --profile "Profile 1"
+  agent-sandbox start-chrome
+  agent-sandbox start-chrome --restart
+  agent-sandbox start-chrome --port 9333 --profile "Profile 1"
 
 Note: Chrome must not be running, or use --restart to auto-restart it.
 EOF
@@ -205,7 +205,7 @@ case "$command" in
             echo "Generate a new sandbox GPG key"
             echo ""
             echo "Usage:"
-            echo "  claude-sandbox gpg-new"
+            echo "  agent-sandbox gpg-new"
             echo ""
             echo "Reads GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL from config.sh."
             echo "If a key already exists, prompts before overwriting."
@@ -225,7 +225,7 @@ case "$command" in
         ensure_docker_running
 
         # Check for existing key
-        existing=$(docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+        existing=$(docker run --rm --entrypoint bash -v agent-sandbox:/data local/agent-sandbox \
             -c 'gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^uid" | head -1 | cut -d: -f10')
 
         if [ -n "$existing" ]; then
@@ -240,15 +240,15 @@ case "$command" in
                     exit 0
                     ;;
             esac
-            docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+            docker run --rm --entrypoint bash -v agent-sandbox:/data local/agent-sandbox \
                 -c 'rm -rf /data/.gnupg/*'
         fi
 
         echo "Generating GPG signing key for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>..."
-        docker run --rm --entrypoint bash -v claude-sandbox:/data \
+        docker run --rm --entrypoint bash -v agent-sandbox:/data \
             -e "GIT_AUTHOR_NAME=$GIT_AUTHOR_NAME" \
             -e "GIT_AUTHOR_EMAIL=$GIT_AUTHOR_EMAIL" \
-            local/claude-sandbox \
+            local/agent-sandbox \
             -c '
                 gpg --homedir /data/.gnupg --no-permission-warning --batch --gen-key <<GPGEOF
 %no-protection
@@ -277,7 +277,7 @@ GPGEOF
                     echo "Export the sandbox GPG key to a file"
                     echo ""
                     echo "Usage:"
-                    echo "  claude-sandbox gpg-export --file <path>"
+                    echo "  agent-sandbox gpg-export --file <path>"
                     echo ""
                     echo "Options:"
                     echo "  --file <path>   Output file (required)"
@@ -289,12 +289,12 @@ GPGEOF
 
         if [ -z "$outfile" ]; then
             echo "Error: --file is required"
-            echo "Usage: claude-sandbox gpg-export --file <path>"
+            echo "Usage: agent-sandbox gpg-export --file <path>"
             exit 1
         fi
 
         ensure_docker_running
-        docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+        docker run --rm --entrypoint bash -v agent-sandbox:/data local/agent-sandbox \
             -c 'gpg --homedir /data/.gnupg --no-permission-warning --export-secret-keys --armor 2>/dev/null' > "$outfile"
 
         if [ ! -s "$outfile" ]; then
@@ -317,7 +317,7 @@ GPGEOF
                     echo "Import a GPG key into the sandbox"
                     echo ""
                     echo "Usage:"
-                    echo "  claude-sandbox gpg-import --file <key-file>"
+                    echo "  agent-sandbox gpg-import --file <key-file>"
                     echo ""
                     echo "Options:"
                     echo "  --file <path>   Key file to import (required)"
@@ -329,7 +329,7 @@ GPGEOF
 
         if [ -z "$infile" ]; then
             echo "Error: --file is required"
-            echo "Usage: claude-sandbox gpg-import --file <key-file>"
+            echo "Usage: agent-sandbox gpg-import --file <key-file>"
             exit 1
         fi
 
@@ -339,7 +339,7 @@ GPGEOF
         fi
 
         ensure_docker_running
-        docker run --rm -i --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+        docker run --rm -i --entrypoint bash -v agent-sandbox:/data local/agent-sandbox \
             -c '
                 gpg --homedir /data/.gnupg --no-permission-warning --import && \
                 fpr=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^fpr" | head -1 | cut -d: -f10) && \
@@ -361,7 +361,7 @@ GPGEOF
                     echo "Generate a revocation certificate for the sandbox GPG key"
                     echo ""
                     echo "Usage:"
-                    echo "  claude-sandbox gpg-revoke --file <path>"
+                    echo "  agent-sandbox gpg-revoke --file <path>"
                     echo ""
                     echo "Options:"
                     echo "  --file <path>   Output file (required)"
@@ -376,7 +376,7 @@ GPGEOF
 
         if [ -z "$outfile" ]; then
             echo "Error: --file is required"
-            echo "Usage: claude-sandbox gpg-revoke --file <path>"
+            echo "Usage: agent-sandbox gpg-revoke --file <path>"
             exit 1
         fi
 
@@ -387,10 +387,10 @@ GPGEOF
         outname="$(basename "$outfile")"
 
         docker run --rm -it --entrypoint bash \
-            -v claude-sandbox:/data \
+            -v agent-sandbox:/data \
             -v "$outdir:/output" \
             -e "OUTNAME=$outname" \
-            local/claude-sandbox \
+            local/agent-sandbox \
             -c '
                 key_id=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --keyid-format long 2>/dev/null | grep -oP "(?<=ed25519/)[A-F0-9]+" | head -1)
                 if [ -z "$key_id" ]; then
@@ -416,7 +416,7 @@ GPGEOF
             echo "Erase the sandbox GPG key"
             echo ""
             echo "Usage:"
-            echo "  claude-sandbox gpg-erase"
+            echo "  agent-sandbox gpg-erase"
             echo ""
             echo "This permanently deletes all GPG keys from the sandbox volume."
             echo "A new key will be generated on the next launch if GPG_SIGNING is enabled."
@@ -427,7 +427,7 @@ GPGEOF
         case "$confirm" in
             y|Y)
                 ensure_docker_running
-                docker run --rm --entrypoint bash -v claude-sandbox:/data local/claude-sandbox \
+                docker run --rm --entrypoint bash -v agent-sandbox:/data local/agent-sandbox \
                     -c 'rm -rf /data/.gnupg/* && echo "GPG keys erased."'
                 ;;
             *)
@@ -442,7 +442,7 @@ GPGEOF
             echo "Open a shell in the sandbox volume"
             echo ""
             echo "Usage:"
-            echo "  claude-sandbox volume-shell"
+            echo "  agent-sandbox volume-shell"
             echo ""
             echo "Opens an interactive shell in the sandbox Docker volume"
             echo "for inspecting or modifying its contents."
@@ -450,7 +450,7 @@ GPGEOF
         fi
 
         ensure_docker_running
-        docker run --rm -it -v claude-sandbox:/data -w /data alpine sh
+        docker run --rm -it -v agent-sandbox:/data -w /data alpine sh
         ;;
 
     volume-backup)
@@ -463,7 +463,7 @@ GPGEOF
                     echo "Backup the sandbox volume to a file"
                     echo ""
                     echo "Usage:"
-                    echo "  claude-sandbox volume-backup --file <path>"
+                    echo "  agent-sandbox volume-backup --file <path>"
                     echo ""
                     echo "Options:"
                     echo "  --file <path>   Output file (required, .tgz)"
@@ -475,7 +475,7 @@ GPGEOF
 
         if [ -z "$outfile" ]; then
             echo "Error: --file is required"
-            echo "Usage: claude-sandbox volume-backup --file <path>"
+            echo "Usage: agent-sandbox volume-backup --file <path>"
             exit 1
         fi
 
@@ -484,7 +484,7 @@ GPGEOF
         outdir="$(cd "$(dirname "$outfile")" && pwd)"
         outname="$(basename "$outfile")"
 
-        docker run --rm -v claude-sandbox:/data -v "$outdir:/backup" alpine \
+        docker run --rm -v agent-sandbox:/data -v "$outdir:/backup" alpine \
             tar -czf "/backup/$outname" -C /data .
 
         echo "Volume backed up to: $outfile"
@@ -500,7 +500,7 @@ GPGEOF
                     echo "Restore the sandbox volume from a backup"
                     echo ""
                     echo "Usage:"
-                    echo "  claude-sandbox volume-restore --file <path>"
+                    echo "  agent-sandbox volume-restore --file <path>"
                     echo ""
                     echo "Options:"
                     echo "  --file <path>   Backup file to restore (required, .tgz)"
@@ -514,7 +514,7 @@ GPGEOF
 
         if [ -z "$infile" ]; then
             echo "Error: --file is required"
-            echo "Usage: claude-sandbox volume-restore --file <path>"
+            echo "Usage: agent-sandbox volume-restore --file <path>"
             exit 1
         fi
 
@@ -537,7 +537,7 @@ GPGEOF
         indir="$(cd "$(dirname "$infile")" && pwd)"
         inname="$(basename "$infile")"
 
-        docker run --rm -v claude-sandbox:/data -v "$indir:/backup" alpine \
+        docker run --rm -v agent-sandbox:/data -v "$indir:/backup" alpine \
             sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; tar -xzf /backup/$inname -C /data"
 
         echo "Volume restored from: $infile"
@@ -549,7 +549,7 @@ GPGEOF
             echo "Remove the sandbox volume"
             echo ""
             echo "Usage:"
-            echo "  claude-sandbox volume-rm"
+            echo "  agent-sandbox volume-rm"
             echo ""
             echo "Permanently deletes the sandbox Docker volume and all its data"
             echo "(credentials, settings, GPG keys, installed tools, etc.)."
@@ -561,8 +561,8 @@ GPGEOF
         case "$confirm" in
             y|Y)
                 ensure_docker_running
-                docker volume rm claude-sandbox
-                echo "Volume 'claude-sandbox' removed."
+                docker volume rm agent-sandbox
+                echo "Volume 'agent-sandbox' removed."
                 ;;
             *)
                 echo "Aborted."
@@ -576,14 +576,14 @@ GPGEOF
             echo "Open the sandbox Claude Code settings.json in vi"
             echo ""
             echo "Usage:"
-            echo "  claude-sandbox settings"
+            echo "  agent-sandbox settings"
             echo ""
             echo "Edits ~/.claude/settings.json inside the sandbox Docker volume."
             exit 0
         fi
 
         ensure_docker_running
-        docker run --rm -it --entrypoint vi -v claude-sandbox:/data local/claude-sandbox \
+        docker run --rm -it --entrypoint vi -v agent-sandbox:/data local/agent-sandbox \
             /data/.claude/settings.json
         ;;
 

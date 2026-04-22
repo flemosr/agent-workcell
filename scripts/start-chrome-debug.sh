@@ -1,7 +1,7 @@
 #!/bin/bash
-# Start Chrome with remote debugging enabled for Claude sandbox connection
+# Start Chrome with remote debugging enabled for Agent Sandbox connection
 #
-# Run this script on your Mac BEFORE starting the Claude sandbox.
+# Run this script on your Mac BEFORE starting the Agent Sandbox.
 # The sandbox will connect to Chrome via CDP (Chrome DevTools Protocol).
 #
 # Configuration (REQUIRED):

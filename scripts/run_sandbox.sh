@@ -1,5 +1,5 @@
 #!/bin/bash
-# Claude Code Sandbox - runs in Docker with current directory mounted
+# Agent Sandbox - runs in Docker with current directory mounted
 
 set -e
 
@@ -41,7 +41,7 @@ done
 mkdir -p "$(pwd)/.claude/sessions"
 
 project_name="${PWD##*/}"
-container_name="claude-sandbox-$$"
+container_name="agent-sandbox-$$"
 
 # Source config.sh if it exists (required for Chrome integration)
 if [ -f "$REPO_ROOT/config.sh" ]; then
@@ -128,7 +128,7 @@ docker_args=(
   --name "$container_name"
   -v "$(pwd):/workspaces/${project_name}"
   -w "/workspaces/${project_name}"
-  -v claude-sandbox:/home/claude/persist
+  -v agent-sandbox:/home/claude/persist
   -v "$(pwd)/.claude/sessions:/home/claude/persist/.claude/projects/-workspaces-${project_name}"
   -e TERM=xterm-256color
   --add-host=host.docker.internal:host-gateway
@@ -188,7 +188,7 @@ fi
 # The watchdog ignores SIGHUP and is disowned from bash's job table, so it
 # survives terminal close on both macOS and Linux.
 
-docker run -d "${docker_args[@]}" local/claude-sandbox $yolo_flag "${args[@]}" >/dev/null
+docker run -d "${docker_args[@]}" local/agent-sandbox $yolo_flag "${args[@]}" >/dev/null
 
 # Spawn watchdog immune to SIGHUP
 ( trap '' HUP
