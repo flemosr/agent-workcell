@@ -217,8 +217,8 @@ These edits persist across container restarts.
 - opencode session history and storage persist in the Docker volume under
   `~/.local/share/opencode/`
 - Agent settings (claude and opencode) persist between sessions via a Docker volume
-- The container runs as non-root user `claude` for safety (the username is kept as `claude` for
-  backwards compatibility, regardless of which agent is launched)
+- The container runs as non-root user `agent` for safety (agent-neutral, regardless of which agent
+  CLI is launched)
 - Full network access is available (for web searches, docs, git, etc.)
 - Filesystem access is isolated to the mounted directory
 - Host services are accessible via `host.docker.internal`
@@ -232,10 +232,10 @@ These edits persist across container restarts.
 ### User data (Docker volume)
 
 User-level data (credentials, settings, plugins) is stored in a Docker volume `agent-sandbox`,
-mounted at `/home/claude/persist` inside the container.
+mounted at `/home/agent/persist` inside the container.
 
 ```
-agent-sandbox → /home/claude/persist/
+agent-sandbox → /home/agent/persist/
 ├── .claude/                  # Claude Code configuration (~/.claude)
 │   ├── .credentials.json     # (plaintext — keep the volume private)
 │   ├── settings.json
