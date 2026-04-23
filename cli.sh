@@ -16,6 +16,7 @@
 #   agent-sandbox volume-rm               Remove the sandbox volume
 #   agent-sandbox settings <agent>        Open an agent's settings/config in vi
 #   agent-sandbox opencode-sessions-export Export opencode sessions for current workspace
+#   agent-sandbox opencode-sessions-import Import opencode sessions from workspace backup
 #   agent-sandbox help                    Show this help message
 #
 # For detailed help on each command:
@@ -58,6 +59,8 @@ Commands:
   settings <agent>   Open an agent's settings/config in vi
   opencode-sessions-export  Export opencode sessions for current workspace
                             to .agent-sandbox/opencode-sessions/
+  opencode-sessions-import  Import opencode sessions from
+                            .agent-sandbox/opencode-sessions/
   help            Show this help message
 
 Examples:
@@ -78,6 +81,7 @@ Examples:
   agent-sandbox settings claude
   agent-sandbox settings opencode
   agent-sandbox opencode-sessions-export
+  agent-sandbox opencode-sessions-import
 
 For more information, see README.md
 EOF
@@ -693,6 +697,51 @@ EOF
                     count=$((count + 1))
                 done
                 echo "Exported $count session(s) to .agent-sandbox/opencode-sessions/"
+            '
+        ;;
+
+    opencode-sessions-import)
+        shift
+        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+            echo "Import opencode sessions from a workspace backup"
+            echo ""
+            echo "Usage:"
+            echo "  agent-sandbox opencode-sessions-import"
+            echo ""
+            echo "Imports every .json file under .agent-sandbox/opencode-sessions/"
+            echo "back into opencode's session store. Session IDs and project"
+            echo "scoping are preserved from the JSON, so sessions restore to"
+            echo "their original workspace as long as the git root-commit SHA"
+            echo "matches (or for non-git dirs, as long as projectID is \"global\")."
+            echo "Re-importing an existing session is a no-op."
+            exit 0
+        fi
+
+        ensure_docker_running
+
+        project_name="${PWD##*/}"
+        input_dir="$(pwd)/.agent-sandbox/opencode-sessions"
+        if [ ! -d "$input_dir" ] || [ -z "$(ls -A "$input_dir"/*.json 2>/dev/null)" ]; then
+            echo "No session files found in .agent-sandbox/opencode-sessions/"
+            exit 0
+        fi
+
+        docker run --rm --entrypoint sh \
+            --user claude \
+            -e HOME=/home/claude \
+            -v agent-sandbox:/home/claude/persist \
+            -v "$(pwd):/workspaces/${project_name}" \
+            -w "/workspaces/${project_name}" \
+            local/agent-sandbox -c '
+                set -e
+                export PATH="/home/claude/.local/bin:$PATH"
+                count=0
+                for f in .agent-sandbox/opencode-sessions/*.json; do
+                    [ -e "$f" ] || continue
+                    opencode import "$f" >/dev/null
+                    count=$((count + 1))
+                done
+                echo "Imported $count session(s) from .agent-sandbox/opencode-sessions/"
             '
         ;;
 
