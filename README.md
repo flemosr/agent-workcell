@@ -320,7 +320,17 @@ This writes one JSON file per session to `.agent-sandbox/opencode-sessions/<sess
 auto-scoped to the current workspace (opencode derives the project ID from the git root-commit
 SHA, or uses `"global"` for non-git directories). Re-running the command overwrites existing
 files; session files for sessions later deleted in opencode are left in place as recovery
-artifacts. Use opencode's native `opencode import` to restore a session.
+artifacts.
+
+To restore after a `volume-rm` (or on a fresh machine), run:
+
+```bash
+agent-sandbox opencode-sessions-import
+```
+
+This imports every JSON file under `.agent-sandbox/opencode-sessions/`. Session IDs and project
+scoping are preserved from the JSON, so sessions restore to the original workspace as long as the
+git root-commit SHA matches. Re-importing an existing session is a no-op.
 
 > **Tip.** Add `.agent-sandbox/` to your `.gitignore` (global or per-repo). These files are local
 > state, not source — and like any agent history they may contain secrets the agent read during
