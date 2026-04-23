@@ -141,9 +141,9 @@ agent-sandbox run opencode run "summarize the repo"
 ```
 
 **Choosing an agent.** The first positional arg after `run` selects the agent: `claude` (default)
-or `opencode`. Omitting it runs claude for backwards compatibility. Both agents use the same
-sandbox image, the same persistent Docker volume, and the same `--yolo` / `--firewalled` /
-`--with-chrome` / `--port` flags. `--yolo` maps to each agent's native bypass:
+or `opencode`. Both agents use the same sandbox image, the same persistent Docker volume, and the
+same `--yolo` / `--firewalled` / `--with-chrome` / `--port` flags. `--yolo` maps to each agent's
+native bypass:
 
 - **claude** → `--dangerously-skip-permissions` CLI flag
 - **opencode** → `{"permission":"allow"}` injected via the `OPENCODE_CONFIG_CONTENT` env var
@@ -296,9 +296,35 @@ sessions and task-management files:
 - `.agent-sandbox/opencode-sessions/` — destination for `agent-sandbox opencode-sessions-export`
   (one JSON file per session; see [opencode session data](#opencode-session-data))
 - `.agent-sandbox/tasks/` — task-management files and scratch notes for multi-agent workflows
+  (see [Multi-agent task files](#multi-agent-task-files))
 
-If you already have `.agent-sessions/claude/` from an earlier sandbox version, the next Claude
-launch moves it to `.agent-sandbox/claude-sessions/` automatically.
+### Multi-agent task files
+
+`.agent-sandbox/tasks/` is a shared scratchpad for coordinating work across multiple agent
+sessions — sub-agents within a single run or different agents across different sessions. Agents
+are instructed (via the injected global context file) to create a task file whenever a request
+spans multiple steps or is likely to continue later, and to read existing task files before
+starting non-trivial work so handoffs don't lose context.
+
+Each task file is a single Markdown document named
+`YYYYMMDD-HHMMSS-brief-descriptive-slug.md` (UTC timestamp prefix for chronological ordering and
+uniqueness across agents). The expected sections are:
+
+- **Status / Created / Updated** — lifecycle metadata.
+- **Objective** — what the task aims to accomplish, and why.
+- **Context** — background a fresh agent needs (prior discoveries, constraints, user preferences,
+  relevant files/commits/PRs).
+- **Plan** — checklist of steps.
+- **Findings** — append-only, timestamped log of discoveries and decisions. Previous entries are
+  never rewritten; corrections are added as new entries.
+- **Next Steps** — handoff note left when pausing; cleared on completion.
+- **Dependencies** — links to other task files or external blockers.
+- **Notes** — free-form scratch area.
+
+Sub-tasks go in their own task files, linked via `Dependencies`, rather than being nested inside
+a single file. The full rule set agents follow lives in
+[`sandbox/agent-context.md`](sandbox/agent-context.md) under *Task Management (Multi-Agent
+Workflows)*.
 
 ### OpenCode session data
 
