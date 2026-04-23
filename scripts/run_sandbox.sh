@@ -7,7 +7,21 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-yolo_flag=""
+# First positional arg selects the agent CLI. Defaults to `claude` for backwards compatibility.
+agent_cli="claude"
+if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+  agent_cli="$1"
+  shift
+fi
+case "$agent_cli" in
+  claude|opencode) ;;
+  *)
+    echo "Error: unknown agent '$agent_cli' (expected 'claude' or 'opencode')" >&2
+    exit 1
+    ;;
+esac
+
+yolo=false
 firewalled=false
 chrome_enabled=false
 ports=()
@@ -16,7 +30,7 @@ args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yolo)
-      yolo_flag="--dangerously-skip-permissions"
+      yolo=true
       shift
       ;;
     --firewalled)
@@ -38,9 +52,43 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-mkdir -p "$(pwd)/.claude/sessions"
+# Per-agent yolo mapping.
+# claude supports a CLI flag directly; opencode has no equivalent flag for its TUI, so we
+# inject `{"permission": "allow"}` via OPENCODE_CONFIG_CONTENT (precedence slot #6 in
+# opencode's config chain — won't clobber the user's project or global config).
+yolo_flag=""
+yolo_env=()
+if $yolo; then
+  case "$agent_cli" in
+    claude)   yolo_flag="--dangerously-skip-permissions" ;;
+    opencode) yolo_env+=(-e 'OPENCODE_CONFIG_CONTENT={"permission":"allow"}') ;;
+  esac
+fi
 
+# .agent-sandbox/ is the workspace-local home for project-scoped sandbox state,
+# including Claude session files and task-management scratch files for multi-agent
+# workflows. opencode persists its session DB and storage under
+# ~/.local/share/opencode in the Docker volume.
 project_name="${PWD##*/}"
+workspace_sandbox_dir="$(pwd)/.agent-sandbox"
+tasks_dir="${workspace_sandbox_dir}/tasks"
+session_mount_args=()
+mkdir -p "$workspace_sandbox_dir" "$tasks_dir"
+case "$agent_cli" in
+  claude)
+    legacy_session_host_dir="$(pwd)/.agent-sessions/claude"
+    session_host_dir="${workspace_sandbox_dir}/claude-sessions"
+    if [ ! -e "$session_host_dir" ] && [ -d "$legacy_session_host_dir" ]; then
+      mv "$legacy_session_host_dir" "$session_host_dir"
+    fi
+    mkdir -p "$session_host_dir"
+    session_mount_args=(
+      -v "${session_host_dir}:/home/claude/persist/.claude/projects/-workspaces-${project_name}"
+    )
+    ;;
+  opencode) ;;
+esac
+
 container_name="agent-sandbox-$$"
 
 # Source config.sh if it exists (required for Chrome integration)
@@ -129,10 +177,18 @@ docker_args=(
   -v "$(pwd):/workspaces/${project_name}"
   -w "/workspaces/${project_name}"
   -v agent-sandbox:/home/claude/persist
-  -v "$(pwd)/.claude/sessions:/home/claude/persist/.claude/projects/-workspaces-${project_name}"
   -e TERM=xterm-256color
+  -e "AGENT_CLI=${agent_cli}"
   --add-host=host.docker.internal:host-gateway
 )
+
+if [ ${#session_mount_args[@]} -gt 0 ]; then
+  docker_args+=("${session_mount_args[@]}")
+fi
+
+if [ ${#yolo_env[@]} -gt 0 ]; then
+  docker_args+=("${yolo_env[@]}")
+fi
 
 # Pass host timezone so git commits use local time instead of UTC
 host_tz=""

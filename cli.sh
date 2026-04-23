@@ -2,7 +2,8 @@
 # Agent Sandbox CLI
 #
 # Usage:
-#   agent-sandbox run [options]           Run the sandbox in current directory
+#   agent-sandbox run [agent] [options]   Run the sandbox in current directory
+#                                          (agent: claude [default] | opencode)
 #   agent-sandbox start-chrome [options]  Start Chrome with remote debugging
 #   agent-sandbox gpg-new                  Generate a new sandbox GPG key
 #   agent-sandbox gpg-export --file <f>    Export sandbox GPG key to a file
@@ -13,7 +14,7 @@
 #   agent-sandbox volume-backup --file <f> Backup the sandbox volume
 #   agent-sandbox volume-restore --file <f> Restore the sandbox volume from backup
 #   agent-sandbox volume-rm               Remove the sandbox volume
-#   agent-sandbox settings                Open sandbox settings.json in vi
+#   agent-sandbox settings <agent>        Open an agent's settings/config in vi
 #   agent-sandbox help                    Show this help message
 #
 # For detailed help on each command:
@@ -35,13 +36,14 @@ done
 
 show_help() {
     cat << 'EOF'
-Agent Sandbox - Run Claude Code safely in Docker
+Agent Sandbox - Run coding agents safely in Docker
 
 Usage:
   agent-sandbox <command> [options]
 
 Commands:
-  run             Run the sandbox in current directory (default)
+  run [agent]     Run the sandbox in current directory (default: claude)
+                  agent: claude | opencode
   start-chrome    Start Chrome with remote debugging (run on host)
   gpg-new         Generate a new sandbox GPG key
   gpg-export      Export the sandbox GPG key to a file
@@ -52,12 +54,13 @@ Commands:
   volume-backup   Backup the sandbox volume to a file
   volume-restore  Restore the sandbox volume from a backup
   volume-rm       Remove the sandbox volume
-  settings        Open sandbox settings.json in vi
+  settings <agent>   Open an agent's settings/config in vi
   help            Show this help message
 
 Examples:
   agent-sandbox run
-  agent-sandbox run --yolo --with-chrome --port 3000
+  agent-sandbox run claude --yolo --with-chrome --port 3000
+  agent-sandbox run opencode --yolo
   agent-sandbox start-chrome
   agent-sandbox start-chrome --restart
   agent-sandbox gpg-new
@@ -69,7 +72,8 @@ Examples:
   agent-sandbox volume-backup --file backup.tgz
   agent-sandbox volume-restore --file backup.tgz
   agent-sandbox volume-rm
-  agent-sandbox settings
+  agent-sandbox settings claude
+  agent-sandbox settings opencode
 
 For more information, see README.md
 EOF
@@ -80,20 +84,27 @@ show_run_help() {
 Run the Agent Sandbox in the current directory
 
 Usage:
-  agent-sandbox run [options] [-- claude-args]
+  agent-sandbox run [agent] [options] [-- agent-args]
+
+Agents:
+  claude     (default) Launch Claude Code
+  opencode   Launch opencode
 
 Options:
   --yolo            Enable YOLO mode (no permission prompts)
+                    claude:   passes --dangerously-skip-permissions
+                    opencode: injects {"permission":"allow"} via
+                              OPENCODE_CONFIG_CONTENT
   --firewalled      Restrict network to essential domains only
   --with-chrome     Start Chrome with remote debugging
   --port <port>     Expose a port for dev servers (can be repeated)
 
 Examples:
   agent-sandbox run
-  agent-sandbox run --yolo
-  agent-sandbox run --yolo --with-chrome --port 3000
-  agent-sandbox run --port 3000 --port 5173
-  agent-sandbox run --yolo -p "fix the tests"
+  agent-sandbox run claude --yolo
+  agent-sandbox run opencode --yolo
+  agent-sandbox run claude --yolo --with-chrome --port 3000
+  agent-sandbox run opencode --port 3000 --port 5173
 EOF
 }
 
@@ -573,18 +584,61 @@ GPGEOF
     settings)
         shift
         if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Open the sandbox Claude Code settings.json in vi"
+            echo "Open an agent's config file in vi (inside the sandbox volume)"
             echo ""
             echo "Usage:"
-            echo "  agent-sandbox settings"
+            echo "  agent-sandbox settings <agent>"
             echo ""
-            echo "Edits ~/.claude/settings.json inside the sandbox Docker volume."
+            echo "Agents (required):"
+            echo "  claude    ~/.claude/settings.json"
+            echo "  opencode  ~/.config/opencode/opencode.jsonc (preferred if it exists)"
+            echo "            ~/.config/opencode/opencode.json"
             exit 0
         fi
 
+        if [ -z "${1:-}" ]; then
+            echo "Error: agent is required (expected 'claude' or 'opencode')"
+            echo "Usage: agent-sandbox settings <agent>"
+            exit 1
+        fi
+
+        settings_agent="$1"
         ensure_docker_running
-        docker run --rm -it --entrypoint vi -v agent-sandbox:/data local/agent-sandbox \
-            /data/.claude/settings.json
+        case "$settings_agent" in
+            claude)
+                docker run --rm -it --entrypoint sh -v agent-sandbox:/data local/agent-sandbox -lc '
+                    mkdir -p /data/.claude
+                    chown -R claude:claude /data/.claude
+                    [ -f /data/.claude/settings.json ] || printf "{}\n" > /data/.claude/settings.json
+                    chown claude:claude /data/.claude/settings.json
+                    exec runuser -u claude -- vi /data/.claude/settings.json
+                '
+                ;;
+            opencode)
+                docker run --rm -it --entrypoint sh -v agent-sandbox:/data local/agent-sandbox -lc '
+                    mkdir -p /data/.config/opencode
+                    chown -R claude:claude /data/.config/opencode
+                    if [ -f /data/.config/opencode/opencode.jsonc ]; then
+                        settings_path=/data/.config/opencode/opencode.jsonc
+                    else
+                        settings_path=/data/.config/opencode/opencode.json
+                        if [ ! -f "$settings_path" ]; then
+                            cat > "$settings_path" <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json"
+}
+EOF
+                        fi
+                    fi
+                    chown claude:claude "$settings_path"
+                    exec runuser -u claude -- vi "$settings_path"
+                '
+                ;;
+            *)
+                echo "Error: unknown agent '$settings_agent' (expected 'claude' or 'opencode')"
+                exit 1
+                ;;
+        esac
         ;;
 
     help|--help|-h)
