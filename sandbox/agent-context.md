@@ -208,3 +208,87 @@ mkdir my-app && cd my-app && npm init -y && npm install express
 ```
 
 The `--` before template flags is required for npm create commands to pass arguments to the scaffolding tool.
+
+## Task Management (Multi-Agent Workflows)
+
+The `.agent-sandbox/tasks/` directory is a shared scratchpad for coordinating work across multiple agent sessions — sub-agents within a single run, or different agents across different sessions. Use it to record plans, findings, and handoff notes so any agent can pick up where another left off without re-reading the whole conversation.
+
+### When to Use Task Files
+
+Create a task file when:
+- The user's request spans multiple steps or is likely to continue in a later session.
+- You need to hand off work to another agent (sub-agent or future session).
+- You are researching or exploring and want to persist context beyond the current conversation.
+
+For trivial one-step requests, skip the task file.
+
+### Naming Convention
+
+Use a UTC timestamp prefix to guarantee chronological ordering and uniqueness across agents:
+
+```
+YYYYMMDD-HHMMSS-brief-descriptive-slug.md
+```
+
+Example: `20260423-143052-add-user-auth.md`
+
+One task per file. If a task spawns sub-tasks, create new files and link them via `Dependencies` rather than nesting plans inside a single file.
+
+### File Structure
+
+Each task file should contain these sections:
+
+```markdown
+# <Short Title>
+
+- **Status:** pending | in_progress | blocked | completed | cancelled
+- **Created:** <YYYY-MM-DD HH:MM UTC>
+- **Updated:** <YYYY-MM-DD HH:MM UTC>
+
+## Objective
+
+What this task aims to accomplish, and why. Specific enough that a fresh agent can act on it without re-reading the conversation.
+
+## Context
+
+Background a new agent needs to be effective: prior discoveries, constraints, user preferences stated in the original conversation, relevant files, commits, or PRs. Carry forward anything that would otherwise be lost when the conversation ends.
+
+## Plan
+
+- [ ] Step one
+- [ ] Step two
+- [ ] Step three
+
+## Findings
+
+Append-only log of discoveries, decisions, and issues. Prefix each entry with a UTC timestamp.
+
+Example:
+- `2026-04-23 14:35 UTC` — The login flow actually hits `/api/v2/auth`, not `/api/auth` as the README suggests.
+
+Do not delete or rewrite previous findings. If a prior finding was wrong, add a new entry that references it and explains the correction.
+
+## Next Steps
+
+When pausing without completing the task, leave a short note here describing exactly what the next agent should pick up first. Clear this section once the task is `completed`.
+
+## Dependencies
+
+- Links to other task files or external blockers.
+
+## Notes
+
+Free-form scratch area for any agent.
+```
+
+### Workflow Rules
+
+1. **Before starting non-trivial work**, list `.agent-sandbox/tasks/` and read any task file whose title or objective relates to the current request. Skipping this is the main way multi-agent coordination breaks down.
+2. **Continue, don't duplicate.** If an existing task file already covers the request, continue in that file rather than creating a parallel one.
+3. **When you begin**, set `Status` to `in_progress` and update the `Updated` timestamp (UTC).
+4. **While working**, append findings with a UTC timestamp and check off plan items as you complete them. Record decisions and their reasoning, not just outcomes.
+5. **Never rewrite history.** Previous findings stay. Correct mistakes by adding a new entry that references and overrides the earlier one.
+6. **When pausing**, fill in `Next Steps` so the next agent has a clear starting point, and update `Updated`.
+7. **When finishing**, set `Status` to `completed` (or `blocked` if stuck), clear `Next Steps`, update `Updated`, and summarize the outcome in `Findings`.
+8. **Sub-tasks** go in their own task files, linked via `Dependencies`. Do not nest plans within a single file.
+9. **If `.agent-sandbox/tasks/` does not exist**, create it before writing the first task file.
