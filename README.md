@@ -1,12 +1,12 @@
-# Agent Workcell
+# agent workcell
 
-An opinionated, containerized environment for running coding agents in YOLO mode, with Chrome
+An opinionated, containerized environment for running TUI coding agents in YOLO mode, with Chrome
 integration, selective persistence, and isolated GPG-signed commits.
 
 Supports [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai/), and
-[Codex](https://github.com/openai/codex), selectable per-launch. Geared towards Rust, Python,
-and TypeScript development. A global context file is injected so the agent is aware of the
-sandbox's capabilities and constraints.
+[Codex](https://github.com/openai/codex), selectable per-launch. Geared towards Rust, Python, and
+TypeScript development. A global context file is injected so the agent is aware of the sandbox's
+capabilities and constraints.
 
 ## Prerequisites
 
@@ -55,11 +55,11 @@ To use browser integration (`--with-chrome`), you need to configure Chrome setti
 brew install socat
 ```
 
-**Create a dedicated Chrome profile for Claude:**
+**Create a dedicated Chrome profile for Agent:**
 
 1. Open Chrome and click your profile icon (top-right)
 2. Click "Add" to create a new profile
-3. Name it "Claude" (or any name you prefer)
+3. Name it "Agent" (or any name you prefer)
 4. Go to `chrome://version` in the new profile
 5. Look at "Profile Path" - note the last folder name (e.g., "Profile 3")
 
@@ -222,7 +222,7 @@ These edits persist across container restarts.
 
 - Your current directory is mounted at `/workspaces/<project-name>` inside the container
 - Workspace-local workcell files for the current project live under `.workcell/`
-- Claude session history for the project is stored in `.workcell/claude-sessions/`
+- Claude Code session history for the project is stored in `.workcell/claude-sessions/`
 - `.workcell/tasks/` is created for task-management files and other local multi-agent scratch work
 - OpenCode session history and storage persist in the Docker volume under
   `~/.local/share/opencode/`
@@ -297,13 +297,13 @@ The entrypoint creates symlinks so tools find their config in the expected locat
 - `~/.gnupg` → `~/persist/.gnupg`
 - `~/.nvm` → `~/persist/.nvm`
 
-This ensures authentication, settings, OpenCode's local model-picker state, installed claude
+This ensures authentication, settings, OpenCode's local model-picker state, installed Claude Code
 and OpenCode versions, Rust toolchains, Node.js versions, and global npm packages persist
 across container restarts and image rebuilds. Codex ships as a standalone binary baked into
 the image, so image rebuilds pick up the newer Codex version without any volume interaction.
 
 > **Security note.** All agents store credentials as plaintext inside the Docker volume
-> (`~/.claude/.credentials.json` for claude, `~/.local/share/opencode/auth.json` for OpenCode,
+> (`~/.claude/.credentials.json` for Claude Code, `~/.local/share/opencode/auth.json` for OpenCode,
 > `~/.codex/auth.json` for Codex). Anyone who can read the `agent-workcell` volume can read those
 > keys. Treat volume backups (`workcell volume-backup`) as sensitive.
 
@@ -405,7 +405,7 @@ workcell volume-rm
 
 ## Browser Integration (Web Development)
 
-The workcell includes browser control tools for web development workflows. Claude can interact with
+The workcell includes browser control tools for web development workflows. Agents can interact with
 Chrome running on your host machine via the Chrome DevTools Protocol (CDP).
 
 ### Prerequisites
@@ -425,7 +425,7 @@ workcell --with-chrome
 ```
 
 This automatically:
-1. Starts Chrome with remote debugging (using your "claude" profile)
+1. Starts Chrome with remote debugging (using your "Agent" profile)
 2. Sets up port forwarding via socat
 3. Sets `CHROME_LOG` env var and mounts the log file (for troubleshooting)
 4. Cleans up Chrome when the workcell exits
@@ -502,10 +502,11 @@ The workcell comes with the following pre-installed:
 
 ## Network restrictions
 
-Use the `--firewalled` flag to restrict network access to essential domains only:
+Use the `--firewalled` flag to restrict network access to essential agent and tooling domains only:
 
 - Anthropic API (api.anthropic.com, claude.ai)
 - OpenAI / Codex (api.openai.com, chatgpt.com, auth.openai.com)
+- OpenCode, including Zen and Go (opencode.ai)
 - JavaScript/TypeScript (npm, Yarn, nodejs.org)
 - Rust (crates.io, docs.rs, rust-lang.org)
 - GitHub
