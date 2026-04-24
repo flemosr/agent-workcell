@@ -17,6 +17,7 @@ Two types of data persist between sessions:
    - `~/.rustup/` - Rust toolchains and components
    - `~/.cargo/` - Cargo registry cache, installed binaries, and config
    - `~/.gnupg/` - GPG keys for commit signing (when GPG_SIGNING is enabled)
+   - `~/.codex/` - Codex config, auth, sessions, and history (when using Codex)
 
 This means installed Node versions (`nvm install 20`), global packages (`npm i -g typescript`), Rust toolchains, and agent upgrades persist across container restarts.
 
@@ -143,6 +144,11 @@ If the firewall is active, only the following domains are accessible:
 - claude.ai
 - statsig.anthropic.com
 - sentry.io
+
+**OpenAI / Codex**
+- api.openai.com
+- chatgpt.com
+- auth.openai.com
 
 **JavaScript/TypeScript**
 - registry.npmjs.org

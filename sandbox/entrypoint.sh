@@ -1,8 +1,7 @@
 #!/bin/bash
 # Entrypoint script for Agent Sandbox
 
-# Always sync CLAUDE.md from image to persist volume (ensures freshness).
-# Also write AGENTS.md for opencode (same content, opencode's native convention).
+# Sync injected agent context files.
 mkdir -p /home/agent/persist/.claude
 cp /opt/agent-context.md /home/agent/persist/.claude/CLAUDE.md
 chown -R agent:agent /home/agent/persist/.claude 2>/dev/null || true
@@ -11,28 +10,47 @@ mkdir -p /home/agent/persist/.config/opencode
 cp /opt/agent-context.md /home/agent/persist/.config/opencode/AGENTS.md
 chown -R agent:agent /home/agent/persist/.config/opencode 2>/dev/null || true
 
-# Initialize nvm in persistent volume if empty (first run)
+# Seed nvm on first run.
 if [ ! -d /home/agent/persist/.nvm/versions ]; then
   echo "Initializing nvm in persistent volume..."
   cp -a --no-target-directory /opt/nvm-template /home/agent/persist/.nvm
   chown -R agent:agent /home/agent/persist/.nvm
+elif [ -d /opt/nvm-template/versions/node ]; then
+  # Copy any image-baked Node versions that the persisted tree is missing.
+  # We deliberately do not touch versions that already exist: overwriting a
+  # running `node` or globally-installed binary (e.g. codex) with `cp -a`
+  # fails with "Text file busy" when another container is using the same
+  # volume concurrently. Users who want to pick up a newer bundled global
+  # package on an existing volume can run `npm i -g <pkg>` in the sandbox,
+  # or delete the affected `~/.nvm/versions/node/<ver>` directory so this
+  # block re-seeds it on the next boot.
+  for version_path in /opt/nvm-template/versions/node/*; do
+    version=$(basename "$version_path")
+    dest_path="/home/agent/persist/.nvm/versions/node/$version"
+    if [ ! -d "$dest_path" ]; then
+      echo "Installing Node version $version into persistent volume..."
+      mkdir -p "$dest_path"
+      cp -a "$version_path"/. "$dest_path"/
+      chown -R agent:agent "$dest_path"
+    fi
+  done
 fi
 
-# Ensure nvm symlink exists (handles both first run and image updates)
+# Ensure the nvm symlink exists.
 if [ -d /home/agent/.nvm ] && [ ! -L /home/agent/.nvm ]; then
   rm -rf /home/agent/.nvm
 fi
 ln -sfn /home/agent/persist/.nvm /home/agent/.nvm
 
-# Update the "current" symlink to point to the actual node version
+# Point `current` at the latest installed Node version.
 if [ -d /home/agent/.nvm/versions/node ]; then
-  latest_node=$(ls -1 /home/agent/.nvm/versions/node | tail -1)
+  latest_node=$(ls -1 /home/agent/.nvm/versions/node | sort -V | tail -1)
   if [ -n "$latest_node" ]; then
     ln -sfn "/home/agent/.nvm/versions/node/$latest_node" /home/agent/.nvm/current
   fi
 fi
 
-# Initialize Rust toolchain in persistent volume if empty (first run)
+# Seed Rust toolchains on first run.
 if [ ! -d /home/agent/persist/.rustup/toolchains ]; then
   echo "Initializing Rust toolchain in persistent volume..."
   cp -a --no-target-directory /opt/rustup-template /home/agent/persist/.rustup
@@ -40,38 +58,33 @@ if [ ! -d /home/agent/persist/.rustup/toolchains ]; then
   chown -R agent:agent /home/agent/persist/.rustup /home/agent/persist/.cargo
 fi
 
-# Ensure rustup symlink exists (handles both first run and image updates)
+# Ensure the rustup symlink exists.
 if [ -d /home/agent/.rustup ] && [ ! -L /home/agent/.rustup ]; then
   rm -rf /home/agent/.rustup
 fi
 ln -sfn /home/agent/persist/.rustup /home/agent/.rustup
 
-# Ensure cargo symlink exists
+# Ensure the cargo symlink exists.
 if [ -d /home/agent/.cargo ] && [ ! -L /home/agent/.cargo ]; then
   rm -rf /home/agent/.cargo
 fi
 ln -sfn /home/agent/persist/.cargo /home/agent/.cargo
 
-# Initialize Claude Code versions in persistent volume if empty (first run)
-# This prevents re-downloading Claude Code updates on every container restart
+# Seed Claude Code versions on first run.
 if [ ! -d /home/agent/persist/.claude-versions/versions ]; then
   echo "Initializing Claude Code versions in persistent volume..."
-  # Use cp --no-target-directory so that if .claude-versions already exists
-  # (e.g. after a volume cleanup) the contents are merged instead of creating
-  # a nested subdirectory.
   cp -a --no-target-directory /opt/claude-versions-template /home/agent/persist/.claude-versions
   chown -R agent:agent /home/agent/persist/.claude-versions
 fi
 
-# Ensure Claude Code versions symlink exists (handles both first run and image updates)
+# Ensure the Claude versions symlink exists.
 mkdir -p /home/agent/.local/share
 if [ -d /home/agent/.local/share/claude ] && [ ! -L /home/agent/.local/share/claude ]; then
   rm -rf /home/agent/.local/share/claude
 fi
 ln -sfn /home/agent/persist/.claude-versions /home/agent/.local/share/claude
 
-# Update claude binary symlink to point to the persisted version
-# (handles image rebuild where baked-in version differs from persisted version)
+# Point the Claude binary at the persisted version.
 if [ -d /home/agent/.local/share/claude/versions ]; then
   latest_claude=$(ls -1 /home/agent/.local/share/claude/versions | sort -V | tail -1)
   if [ -n "$latest_claude" ]; then
@@ -79,16 +92,22 @@ if [ -d /home/agent/.local/share/claude/versions ]; then
   fi
 fi
 
-# Initialize opencode install home in persistent volume if missing (first run)
-# This preserves the installer-managed binary and any upgrades across restarts.
+# Seed the opencode install on first run.
 if [ ! -d /home/agent/persist/.opencode ]; then
   echo "Initializing opencode install in persistent volume..."
   cp -a --no-target-directory /opt/opencode-template /home/agent/persist/.opencode
   chown -R agent:agent /home/agent/persist/.opencode
+else
+  # Restore the baked install if the persisted binary tree is missing.
+  if [ -d /opt/opencode-template/bin ]; then
+    if [ ! -d /home/agent/persist/.opencode/bin ]; then
+        cp -a --no-target-directory /opt/opencode-template /home/agent/persist/.opencode
+        chown -R agent:agent /home/agent/persist/.opencode
+    fi
+  fi
 fi
 
-# Initialize opencode persist dirs if missing (first run only — avoids a wasteful
-# chown -R over accumulated session data on every container start)
+# Create opencode state directories if missing.
 for opencode_dir in \
     /home/agent/persist/.local/share/opencode \
     /home/agent/persist/.local/state/opencode \
@@ -99,7 +118,7 @@ for opencode_dir in \
   fi
 done
 
-# Ensure opencode symlinks exist (idempotent; handles first run and image rebuilds)
+# Ensure opencode symlinks exist.
 if [ -d /home/agent/.opencode ] && [ ! -L /home/agent/.opencode ]; then
   rm -rf /home/agent/.opencode
 fi
@@ -121,14 +140,29 @@ if [ -d /home/agent/.config/opencode ] && [ ! -L /home/agent/.config/opencode ];
 fi
 ln -sfn /home/agent/persist/.config/opencode /home/agent/.config/opencode
 
-# Initialize .gnupg in persistent volume if missing (first run)
+# Codex stores everything (config, auth, sessions, history, logs) under
+# ~/.codex, which we persist via a symlink into ~/persist/.codex. Nothing is
+# baked into the image — Codex creates its own files on first use. The
+# sessions/ and archived_sessions/ subdirectories are bind-mounted from the
+# workspace by the host runner, so we deliberately do not recurse when
+# chown'ing to avoid rewriting host-file ownership.
+mkdir -p /home/agent/persist/.codex
+chown agent:agent /home/agent/persist/.codex 2>/dev/null || true
+cp /opt/agent-context.md /home/agent/persist/.codex/AGENTS.md
+chown agent:agent /home/agent/persist/.codex/AGENTS.md 2>/dev/null || true
+if [ -d /home/agent/.codex ] && [ ! -L /home/agent/.codex ]; then
+  rm -rf /home/agent/.codex
+fi
+ln -sfn /home/agent/persist/.codex /home/agent/.codex
+
+# Initialize .gnupg on first run.
 if [ ! -d /home/agent/persist/.gnupg ]; then
   mkdir -p /home/agent/persist/.gnupg
   chmod 700 /home/agent/persist/.gnupg
   chown agent:agent /home/agent/persist/.gnupg
 fi
 
-# Ensure gnupg symlink exists
+# Ensure the gnupg symlink exists.
 if [ -d /home/agent/.gnupg ] && [ ! -L /home/agent/.gnupg ]; then
   rm -rf /home/agent/.gnupg
 fi
@@ -233,9 +267,9 @@ echo
 # AGENT_CLI is set by the host runner (run_sandbox.sh); defaults to claude.
 agent_cli="${AGENT_CLI:-claude}"
 case "$agent_cli" in
-  claude|opencode) ;;
+  claude|opencode|codex) ;;
   *)
-    echo "Error: unknown AGENT_CLI '$agent_cli' (expected 'claude' or 'opencode')" >&2
+    echo "Error: unknown AGENT_CLI '$agent_cli' (expected 'claude', 'opencode', or 'codex')" >&2
     exit 1
     ;;
 esac

@@ -4,6 +4,7 @@ FROM debian:bookworm
 
 # Install development tools and security packages
 RUN apt-get update && apt-get install -y \
+    bubblewrap \
     git \
     curl \
     wget \
@@ -84,6 +85,23 @@ RUN chmod +x /home/agent/.local/browser-tools/browser.sh && \
 RUN curl -fsSL https://opencode.ai/install | bash \
     && ln -sf /home/agent/.opencode/bin/opencode /home/agent/.local/bin/opencode
 
+# Install Codex CLI from the official GitHub release (standalone musl binary).
+# The ADD URL below acts as the layer's cache key: its response changes when a
+# new release is published, so `docker compose build` picks up new Codex
+# versions automatically without --no-cache or a version bump.
+ADD --chown=agent:agent https://api.github.com/repos/openai/codex/releases/latest /tmp/codex-release.json
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in \
+        amd64) CODEX_ARCH="x86_64-unknown-linux-musl" ;; \
+        arm64) CODEX_ARCH="aarch64-unknown-linux-musl" ;; \
+        *) echo "Unsupported architecture for codex: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${CODEX_ARCH}.tar.gz" \
+        -o /tmp/codex.tar.gz && \
+    tar -xzf /tmp/codex.tar.gz -C /tmp && \
+    install -m 0755 "/tmp/codex-${CODEX_ARCH}" /home/agent/.local/bin/codex && \
+    rm -f /tmp/codex.tar.gz /tmp/codex-release.json "/tmp/codex-${CODEX_ARCH}"
+
 # Create persistent volume directory structure
 # All persistent data goes in persist which is mounted from a single Docker volume
 RUN mkdir -p /home/agent/persist/.claude
@@ -117,8 +135,17 @@ RUN mkdir -p /home/agent/persist/.local/share /home/agent/persist/.local/state /
     && ln -sf /home/agent/persist/.local/state/opencode /home/agent/.local/state/opencode \
     && ln -sf /home/agent/persist/.config/opencode /home/agent/.config/opencode
 
-# Backup nvm, Rust, Claude Code, and opencode install data to template locations for
-# volume initialization.
+# Set up persistence for Codex data (~/.codex).
+# Codex stores config, auth, sessions, history, and logs under its home
+# directory, but it only creates that directory on first use — nothing is
+# baked in at build time. We bake in the symlink so the agent user has
+# ~/.codex -> ~/persist/.codex ready before the entrypoint runs; the
+# entrypoint remains authoritative and re-applies this idempotently.
+RUN mkdir -p /home/agent/persist/.codex \
+    && ln -sf /home/agent/persist/.codex /home/agent/.codex
+
+# Backup nvm, Rust, Claude Code, and OpenCode install data to template
+# locations for volume initialization.
 # This allows the entrypoint to seed the persistent volume on first run
 USER root
 RUN cp -a /home/agent/.nvm /opt/nvm-template \

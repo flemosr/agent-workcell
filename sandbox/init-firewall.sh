@@ -1,6 +1,5 @@
 #!/bin/bash
 # Firewall initialization script for Agent Sandbox
-# Based on: https://github.com/anthropics/claude-code/blob/main/.devcontainer/init-firewall.sh
 
 set -e
 
@@ -11,6 +10,11 @@ ALLOWED_DOMAINS=(
     "claude.ai"
     "statsig.anthropic.com"
     "sentry.io"
+
+    # OpenAI / Codex
+    "api.openai.com"
+    "chatgpt.com"
+    "auth.openai.com"
 
     # JavaScript/TypeScript
     "registry.npmjs.org"
