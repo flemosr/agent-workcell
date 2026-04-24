@@ -1,4 +1,4 @@
-# Agent Sandbox Environment
+# Agent Workcell Environment
 # Based on official devcontainer: https://github.com/anthropics/claude-code/tree/main/.devcontainer
 FROM debian:bookworm
 

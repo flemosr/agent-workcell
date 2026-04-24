@@ -1,5 +1,5 @@
 #!/bin/bash
-# Firewall initialization script for Agent Sandbox
+# Firewall initialization script for Agent Workcell
 
 set -e
 

@@ -217,7 +217,7 @@ The `--` before template flags is required for npm create commands to pass argum
 
 ## Task Management (Multi-Agent Workflows)
 
-The `.agent-sandbox/tasks/` directory is a shared scratchpad for coordinating work across multiple agent sessions — sub-agents within a single run, or different agents across different sessions. Use it to record plans, findings, and handoff notes so any agent can pick up where another left off without re-reading the whole conversation.
+The `.workcell/tasks/` directory is a shared scratchpad for coordinating work across multiple agent sessions — sub-agents within a single run, or different agents across different sessions. Use it to record plans, findings, and handoff notes so any agent can pick up where another left off without re-reading the whole conversation.
 
 ### When to Use Task Files
 
@@ -289,7 +289,7 @@ Free-form scratch area for any agent.
 
 ### Workflow Rules
 
-1. **Before starting non-trivial work**, list `.agent-sandbox/tasks/` and read any task file whose title or objective relates to the current request. Skipping this is the main way multi-agent coordination breaks down.
+1. **Before starting non-trivial work**, list `.workcell/tasks/` and read any task file whose title or objective relates to the current request. Skipping this is the main way multi-agent coordination breaks down.
 2. **Continue, don't duplicate.** If an existing task file already covers the request, continue in that file rather than creating a parallel one.
 3. **When you begin**, set `Status` to `in_progress` and update the `Updated` timestamp (UTC).
 4. **While working**, append findings with a UTC timestamp and check off plan items as you complete them. Record decisions and their reasoning, not just outcomes.
@@ -297,4 +297,4 @@ Free-form scratch area for any agent.
 6. **When pausing**, fill in `Next Steps` so the next agent has a clear starting point, and update `Updated`.
 7. **When finishing**, set `Status` to `completed` (or `blocked` if stuck), clear `Next Steps`, update `Updated`, and summarize the outcome in `Findings`.
 8. **Sub-tasks** go in their own task files, linked via `Dependencies`. Do not nest plans within a single file.
-9. **If `.agent-sandbox/tasks/` does not exist**, create it before writing the first task file.
+9. **If `.workcell/tasks/` does not exist**, create it before writing the first task file.
