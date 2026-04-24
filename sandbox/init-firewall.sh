@@ -3,7 +3,7 @@
 
 set -e
 
-# Allowed domains for Claude Code operation
+# Allowed domains for supported agent operation
 ALLOWED_DOMAINS=(
     # Claude API
     "api.anthropic.com"
@@ -15,6 +15,9 @@ ALLOWED_DOMAINS=(
     "api.openai.com"
     "chatgpt.com"
     "auth.openai.com"
+
+    # OpenCode, including Zen and Go
+    "opencode.ai"
 
     # JavaScript/TypeScript
     "registry.npmjs.org"

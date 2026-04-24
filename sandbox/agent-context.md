@@ -150,6 +150,9 @@ If the firewall is active, only the following domains are accessible:
 - chatgpt.com
 - auth.openai.com
 
+**OpenCode**
+- opencode.ai
+
 **JavaScript/TypeScript**
 - registry.npmjs.org
 - npmjs.com
