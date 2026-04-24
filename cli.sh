@@ -3,7 +3,7 @@
 #
 # Usage:
 #   agent-sandbox run [agent] [options]   Run the sandbox in current directory
-#                                          (agent: claude [default] | opencode)
+#                                          (agent: claude [default] | opencode | codex)
 #   agent-sandbox start-chrome [options]  Start Chrome with remote debugging
 #   agent-sandbox gpg-new                  Generate a new sandbox GPG key
 #   agent-sandbox gpg-export --file <f>    Export sandbox GPG key to a file
@@ -45,7 +45,7 @@ Usage:
 
 Commands:
   run [agent]     Run the sandbox in current directory (default: claude)
-                  agent: claude | opencode
+                  agent: claude | opencode | codex
   start-chrome    Start Chrome with remote debugging (run on host)
   gpg-new         Generate a new sandbox GPG key
   gpg-export      Export the sandbox GPG key to a file
@@ -67,6 +67,7 @@ Examples:
   agent-sandbox run
   agent-sandbox run claude --yolo --with-chrome --port 3000
   agent-sandbox run opencode --yolo
+  agent-sandbox run codex --yolo
   agent-sandbox start-chrome
   agent-sandbox start-chrome --restart
   agent-sandbox gpg-new
@@ -80,6 +81,7 @@ Examples:
   agent-sandbox volume-rm
   agent-sandbox settings claude
   agent-sandbox settings opencode
+  agent-sandbox settings codex
   agent-sandbox opencode-sessions-export
   agent-sandbox opencode-sessions-import
 
@@ -97,12 +99,14 @@ Usage:
 Agents:
   claude     (default) Launch Claude Code
   opencode   Launch opencode
+  codex      Launch Codex
 
 Options:
   --yolo            Enable YOLO mode (no permission prompts)
                     claude:   passes --dangerously-skip-permissions
                     opencode: injects {"permission":"allow"} via
                               OPENCODE_CONFIG_CONTENT
+                    codex:    passes --dangerously-bypass-approvals-and-sandbox
   --firewalled      Restrict network to essential domains only
   --with-chrome     Start Chrome with remote debugging
   --port <port>     Expose a port for dev servers (can be repeated)
@@ -111,8 +115,10 @@ Examples:
   agent-sandbox run
   agent-sandbox run claude --yolo
   agent-sandbox run opencode --yolo
+  agent-sandbox run codex --yolo
   agent-sandbox run claude --yolo --with-chrome --port 3000
   agent-sandbox run opencode --port 3000 --port 5173
+  agent-sandbox run codex --yolo --port 3000
 EOF
 }
 
@@ -601,11 +607,12 @@ GPGEOF
             echo "  claude    ~/.claude/settings.json"
             echo "  opencode  ~/.config/opencode/opencode.jsonc (preferred if it exists)"
             echo "            ~/.config/opencode/opencode.json"
+            echo "  codex     ~/.codex/config.toml"
             exit 0
         fi
 
         if [ -z "${1:-}" ]; then
-            echo "Error: agent is required (expected 'claude' or 'opencode')"
+            echo "Error: agent is required (expected 'claude', 'opencode', or 'codex')"
             echo "Usage: agent-sandbox settings <agent>"
             exit 1
         fi
@@ -642,8 +649,20 @@ EOF
                     exec runuser -u agent -- vi "$settings_path"
                 '
                 ;;
+            codex)
+                docker run --rm -it --entrypoint sh -v agent-sandbox:/data local/agent-sandbox -lc '
+                    mkdir -p /data/.codex
+                    chown -R agent:agent /data/.codex
+                    settings_path=/data/.codex/config.toml
+                    if [ ! -f "$settings_path" ]; then
+                        printf "# Codex user configuration\n" > "$settings_path"
+                    fi
+                    chown agent:agent "$settings_path"
+                    exec runuser -u agent -- vi "$settings_path"
+                '
+                ;;
             *)
-                echo "Error: unknown agent '$settings_agent' (expected 'claude' or 'opencode')"
+                echo "Error: unknown agent '$settings_agent' (expected 'claude', 'opencode', or 'codex')"
                 exit 1
                 ;;
         esac

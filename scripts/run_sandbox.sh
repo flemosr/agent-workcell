@@ -14,9 +14,9 @@ if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
   shift
 fi
 case "$agent_cli" in
-  claude|opencode) ;;
+  claude|opencode|codex) ;;
   *)
-    echo "Error: unknown agent '$agent_cli' (expected 'claude' or 'opencode')" >&2
+    echo "Error: unknown agent '$agent_cli' (expected 'claude', 'opencode', or 'codex')" >&2
     exit 1
     ;;
 esac
@@ -56,19 +56,18 @@ done
 # claude supports a CLI flag directly; opencode has no equivalent flag for its TUI, so we
 # inject `{"permission": "allow"}` via OPENCODE_CONFIG_CONTENT (precedence slot #6 in
 # opencode's config chain — won't clobber the user's project or global config).
+# codex exposes --dangerously-bypass-approvals-and-sandbox for YOLO mode.
 yolo_flag=""
 yolo_env=()
 if $yolo; then
   case "$agent_cli" in
     claude)   yolo_flag="--dangerously-skip-permissions" ;;
     opencode) yolo_env+=(-e 'OPENCODE_CONFIG_CONTENT={"permission":"allow"}') ;;
+    codex)    yolo_flag="--dangerously-bypass-approvals-and-sandbox" ;;
   esac
 fi
 
-# .agent-sandbox/ is the workspace-local home for project-scoped sandbox state,
-# including Claude session files and task-management scratch files for multi-agent
-# workflows. opencode persists its session DB and storage under
-# ~/.local/share/opencode in the Docker volume.
+# .agent-sandbox/ is the workspace-local home for project-scoped sandbox state.
 project_name="${PWD##*/}"
 workspace_sandbox_dir="$(pwd)/.agent-sandbox"
 tasks_dir="${workspace_sandbox_dir}/tasks"
@@ -88,6 +87,25 @@ case "$agent_cli" in
     ;;
   opencode)
     mkdir -p "${workspace_sandbox_dir}/opencode-sessions"
+    ;;
+  codex)
+    codex_session_dir="${workspace_sandbox_dir}/codex-sessions"
+    mkdir -p "${codex_session_dir}/sessions" "${codex_session_dir}/archived_sessions"
+    # Codex's Linux sandbox protects a missing project-root `.codex` path by
+    # masking it, which can leave behind a zero-byte read-only file on the host.
+    # Pre-create the directory so the protected path already has the expected
+    # shape and project-local Codex config remains possible.
+    project_codex_dir="$(pwd)/.codex"
+    if [ -f "$project_codex_dir" ] && [ ! -s "$project_codex_dir" ]; then
+      rm -f "$project_codex_dir"
+    fi
+    if [ ! -e "$project_codex_dir" ]; then
+      mkdir -p "$project_codex_dir"
+    fi
+    session_mount_args=(
+      -v "${codex_session_dir}/sessions:/home/agent/persist/.codex/sessions"
+      -v "${codex_session_dir}/archived_sessions:/home/agent/persist/.codex/archived_sessions"
+    )
     ;;
 esac
 
