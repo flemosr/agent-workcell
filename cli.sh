@@ -78,7 +78,6 @@ Examples:
   workcell start-chrome
   workcell start-chrome --restart
   workcell start-flutter-bridge
-  workcell start-flutter-bridge --device ios
   workcell gpg-new
   workcell gpg-export --file my-key.asc
   workcell gpg-import --file my-key.asc
@@ -236,17 +235,17 @@ Usage:
 Options:
   --port <port>         Override bridge port from config
   --project <dir>       Override Flutter project directory
-  --device <id>         Override default device ID
   --target <file>       Override Flutter target file
   --token <token>       Specify bridge bearer token
 
 Examples:
   workcell start-flutter-bridge
-  workcell start-flutter-bridge --device ios
   workcell start-flutter-bridge --port 8766 --project ~/my-flutter-app
 
 The bridge exposes an HTTP API on the configured port. The sandbox
-connects via host.docker.internal using the bearer token for auth.
+connects via host.docker.internal using the bearer token for auth. Agents
+choose the Flutter target with `flutterctl devices` and
+`flutterctl launch --device <id>`.
 EOF
 }
 

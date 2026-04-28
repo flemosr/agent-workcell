@@ -320,14 +320,13 @@ PY
   echo "  Port: $FLUTTER_BRIDGE_PORT"
   echo "  Log: ${FLUTTER_BRIDGE_LOG_FILE:-/tmp/flutter-bridge.log}"
 
-  # Start bridge as a background process with the per-session token and device
+  # Start bridge as a background process with the per-session token.
   FLUTTER_BRIDGE_LOG_FILE="${FLUTTER_BRIDGE_LOG_FILE:-/tmp/flutter-bridge.log}"
   : > "$FLUTTER_BRIDGE_LOG_FILE"
   python3 "$SCRIPT_DIR/flutter-bridge.py" \
     --port "$FLUTTER_BRIDGE_PORT" \
     --host "0.0.0.0" \
     --project-dir "$flutter_project_dir" \
-    ${FLUTTER_DEVICE_ID:+--device-id "$FLUTTER_DEVICE_ID"} \
     --target "$flutter_target" \
     --flutter-path "${FLUTTER_PATH:-flutter}" \
     --token "$FLUTTER_BRIDGE_TOKEN" \

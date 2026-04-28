@@ -11,7 +11,6 @@
 #   ./start-flutter-bridge.sh                        # Use current directory
 #   ./start-flutter-bridge.sh --port 8766            # Override port
 #   ./start-flutter-bridge.sh --project /path/to/app # Override project dir
-#   ./start-flutter-bridge.sh --device ios           # Override device
 
 set -e
 
@@ -63,10 +62,6 @@ while [[ $# -gt 0 ]]; do
             flutter_project_dir="$2"
             shift 2
             ;;
-        --device|-d)
-            FLUTTER_DEVICE_ID="$2"
-            shift 2
-            ;;
         --target)
             flutter_target_override="$2"
             shift 2
@@ -81,7 +76,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--port PORT] [--project DIR] [--device ID] [--target FILE] [--run-args ARGS] [--token TOKEN]"
+            echo "Usage: $0 [--port PORT] [--project DIR] [--target FILE] [--run-args ARGS] [--token TOKEN]"
             exit 1
             ;;
     esac
@@ -154,9 +149,6 @@ echo "Starting Flutter Bridge..." >&2
 echo "  Port: $FLUTTER_BRIDGE_PORT" >&2
 echo "  Project: $flutter_project_dir" >&2
 echo "  Target: $flutter_target" >&2
-if [ -n "$FLUTTER_DEVICE_ID" ]; then
-    echo "  Device: $FLUTTER_DEVICE_ID" >&2
-fi
 if [ -n "$flutter_run_args" ]; then
     echo "  Run args: $flutter_run_args" >&2
 fi
@@ -213,7 +205,6 @@ exec python3 "$SCRIPT_DIR/flutter-bridge.py" \
     --port "$FLUTTER_BRIDGE_PORT" \
     --host "0.0.0.0" \
     --project-dir "$flutter_project_dir" \
-    ${FLUTTER_DEVICE_ID:+--device-id "$FLUTTER_DEVICE_ID"} \
     --target "$flutter_target" \
     --flutter-path "$FLUTTER_PATH" \
     --token "$FLUTTER_BRIDGE_TOKEN" \
