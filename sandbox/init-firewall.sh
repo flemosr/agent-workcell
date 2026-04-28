@@ -69,6 +69,23 @@ for domain in "${ALLOWED_DOMAINS[@]}"; do
     done
 done
 
+# Allow Flutter bridge connections if configured
+if [ -n "$FLUTTER_BRIDGE_URL" ]; then
+    # Extract host and port from FLUTTER_BRIDGE_URL (e.g., http://host.docker.internal:8765)
+    bridge_host=$(echo "$FLUTTER_BRIDGE_URL" | sed -n 's|http://\([^:/]*\).*|\1|p')
+    bridge_port=$(echo "$FLUTTER_BRIDGE_URL" | sed -n 's|.*:\([0-9]*\)$|\1|p')
+    if [ -n "$bridge_host" ] && [ -n "$bridge_port" ]; then
+        bridge_ip=$(getent hosts "$bridge_host" 2>/dev/null | awk '{print $1}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+        if [ -z "$bridge_ip" ]; then
+            bridge_ip=$(dig +short "$bridge_host" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+        fi
+        if [ -n "$bridge_ip" ]; then
+            echo "Allowing Flutter bridge: $bridge_ip:$bridge_port"
+            iptables -A OUTPUT -d "$bridge_ip" -p tcp --dport "$bridge_port" -j ACCEPT
+        fi
+    fi
+fi
+
 # Default deny - block everything else
 iptables -A OUTPUT -j DROP
 

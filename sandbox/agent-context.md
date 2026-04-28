@@ -127,6 +127,146 @@ Check Chrome debug logs if you have connection issues:
 cat "$CHROME_LOG"
 ```
 
+## Flutter Bridge Integration
+
+A Flutter app can run on the **host machine** (iOS Simulator, Android Emulator, macOS desktop, or physical device) and you can control it via the Flutter host bridge. This lets you launch apps, hot reload, take screenshots, and view logs without running Flutter toolchains inside the container.
+
+**IMPORTANT:** Flutter native toolchains (iOS Simulator, Android Emulator, Xcode, Android Studio) live on the host. The bridge lets you interact with them from inside the container, but you cannot run simulators or emulators inside Docker.
+
+To check if Flutter bridge control is available, use `flutterctl test`. Note that the bridge may not be running, so always verify connectivity before use:
+
+```bash
+flutterctl test  # Returns success if bridge is reachable
+```
+
+If the bridge is not available, inform the user they can either:
+1. Run `workcell start-flutter-bridge --device <device>` on the host machine from their Flutter project directory (no restart needed)
+2. Restart the sandbox with `--with-flutter`
+
+`--with-flutter` and `--with-chrome` are mutually exclusive. For Flutter web,
+use the Chrome workflow. For native/device Flutter targets, use the Flutter bridge.
+When the sandbox is started with `--with-flutter`, `--port <port>` selects the host
+Flutter bridge port and does not expose a container dev-server port.
+
+The bridge requires a bearer token for all requests (except health checks). The token
+is auto-generated when the bridge starts. Connection details (token, port)
+are written to `.workcell/flutter-config.json` in the workspace root, so agents can
+read them directly without the user needing to copy anything:
+
+```bash
+cat .workcell/flutter-config.json
+```
+
+The same file may contain project-local Flutter launch settings such as `target`
+and `run_args`; the bridge preserves those fields when it updates runtime
+connection details.
+
+Example project-local launch settings:
+
+```json
+{
+  "target": "lib/main_dev.dart",
+  "run_args": ["--flavor", "staging", "--dart-define", "API_BASE_URL=https://api.example.test"]
+}
+```
+
+The host-side Flutter project path is intentionally not passed into the sandbox.
+Use the current workspace path inside the container for file edits; the bridge maps
+commands to the host project path internally.
+
+The intended model is one bridge per sandbox/agent. Concurrent agents should use separate
+bridge instances on distinct ports rather than sharing one bridge.
+
+### Flutterctl CLI Commands
+
+```bash
+flutterctl test                    # Test connection to Flutter bridge
+flutterctl status                  # Get bridge status (idle, running, attached, error)
+# idle = no app process managed by bridge
+# running = app launched via bridge
+# attached = bridge connected to externally-running app
+# error = subprocess failed
+flutterctl devices                 # List available Flutter devices
+flutterctl launch [-d <device>]    # Launch Flutter app on a device
+flutterctl attach [-d <device>]    # Attach to a running Flutter app
+flutterctl detach                  # Stop the app process managed by the bridge
+flutterctl hot-reload              # Hot reload
+flutterctl hot-restart             # Hot restart
+flutterctl logs                    # Get recent Flutter logs
+flutterctl screenshot -o <path>    # Take screenshot (PNG) — iOS/Android only, not supported on macOS/Linux desktop
+```
+
+### Flutter Development Workflow
+
+When building Flutter apps, use the bridge to verify your work:
+
+1. **First, verify the bridge is running:**
+   ```bash
+   flutterctl test
+   ```
+
+2. **Check available devices:**
+   ```bash
+   flutterctl devices
+   ```
+
+3. **Launch your Flutter app** — `--device` is required. Pick from the device list (step 2):
+    ```bash
+    flutterctl launch --device ios
+    # or: flutterctl launch --device macos
+    # or: flutterctl launch --device emulator-5554
+    ```
+
+4. **Or attach to an already-running app:**
+   ```bash
+   flutterctl attach --device ios
+   ```
+
+5. **Check bridge status** (includes VM service URL when running):
+   ```bash
+   flutterctl status
+   ```
+
+6. **Edit Dart files** in the container, then trigger hot reload:
+   ```bash
+   flutterctl hot-reload
+   ```
+
+7. **Take screenshots** to verify UI changes (iOS/Android only — not supported on macOS/Linux desktop):
+    ```bash
+    flutterctl screenshot -o before.png
+    # ... edit code ...
+    flutterctl hot-reload
+    flutterctl screenshot -o after.png
+    ```
+
+8. **View app logs** if you need to debug:
+   ```bash
+   flutterctl logs
+   ```
+
+### Troubleshooting
+
+Check the Flutter bridge log if you have connection issues:
+
+```bash
+cat "$FLUTTER_BRIDGE_LOG_FILE"  # or: cat /tmp/flutter-bridge.log
+```
+
+Check if the bridge env vars are set (env vars override the config file):
+
+```bash
+echo "URL: $FLUTTER_BRIDGE_URL"
+```
+
+If `flutterctl test` succeeds but `flutterctl launch` fails, check the bridge log for Flutter build errors on the host side.
+
+### Flutter Web vs Native
+
+For **Flutter web**, prefer the existing Chrome/CDP workflow (`--with-chrome`). Build and serve Flutter web from inside the container and use `browser` commands to interact with it.
+
+Use the Flutter bridge (`--with-flutter`) for **native targets** only: iOS Simulator, Android Emulator, macOS desktop, Linux desktop, Windows desktop, and physical devices.
+
 ## Firewall Status
 
 To check if network restrictions are active:
@@ -189,6 +329,7 @@ The following tools are pre-installed:
 | **Node.js** | `nvm` (version manager), `npm`, `npx` - versions and global packages persist |
 | **Python** | `pyright` (type checker), `ruff` (linter), `playwright`, `matplotlib`, `numpy` |
 | **Browser** | `browser` CLI for Chrome automation (use `browser test` to check availability) |
+| **Flutter** | `flutterctl` CLI for Flutter bridge control (use `flutterctl test` to check availability) |
 | **Database** | `psql` (PostgreSQL client) - connect to host DBs via `host.docker.internal` |
 | **Utilities** | `git`, `curl`, `wget`, `jq`, `yq`, `ripgrep`, `fd` |
 

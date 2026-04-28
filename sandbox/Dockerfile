@@ -77,6 +77,11 @@ COPY --chown=agent:agent browser-tools/ /home/agent/.local/browser-tools/
 RUN chmod +x /home/agent/.local/browser-tools/browser.sh && \
     ln -sf /home/agent/.local/browser-tools/browser.sh /home/agent/.local/bin/browser
 
+# Copy flutter tools
+COPY --chown=agent:agent flutter-tools/ /home/agent/.local/flutter-tools/
+RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh && \
+    ln -sf /home/agent/.local/flutter-tools/flutterctl.sh /home/agent/.local/bin/flutterctl
+
 # Install opencode using the official installer.
 # Placed after the Python venv so frequent opencode releases don't invalidate
 # the heavier venv layer's cache.
