@@ -532,6 +532,8 @@ control Flutter apps running on the host.
 - Flutter SDK installed on the host machine
 - At least one configured target: iOS Simulator, Android Emulator, macOS desktop, or physical device
 - macOS host (primary supported platform; Linux Android Emulator can follow)
+- For macOS desktop UI automation and screenshots, allow the host terminal/agent process in macOS
+  Accessibility and Screen Recording privacy settings when prompted.
 
 ### Setup
 
@@ -541,7 +543,6 @@ Add Flutter bridge settings to `config.sh`:
 # Flutter host bridge integration
 FLUTTER_DEFAULT_BRIDGE_PORT=8765
 FLUTTER_BRIDGE_LOG_FILE="/tmp/flutter-bridge.log"
-FLUTTER_DEVICE_ID="macos"          # or "ios", "emulator-5554", etc.
 ```
 
 Project-specific Flutter run settings can live in `.workcell/flutter-config.json`:
@@ -602,12 +603,14 @@ If you want to start the bridge independently (e.g., to keep it running across w
 # Start Flutter bridge using defaults and project-local settings
 workcell start-flutter-bridge
 
-# Override settings
-workcell start-flutter-bridge --device ios --port 8766 --project ~/my-flutter-app
+# Override bridge settings
+workcell start-flutter-bridge --port 8766 --project ~/my-flutter-app
 ```
 
 Then run the workcell without `--with-flutter`. The launcher writes connection details to
-`.workcell/flutter-config.json`, and `flutterctl` reads that file automatically.
+`.workcell/flutter-config.json`, and `flutterctl` reads that file automatically. The bridge
+starts without a selected device; agents choose a target later with `flutterctl devices` and
+`flutterctl launch --device <id>`.
 
 ### Agent Workflow Inside Container
 
@@ -635,9 +638,58 @@ flutterctl hot-reload
 # Take screenshot after changes
 flutterctl screenshot -o after.png
 
+# Check UI automation capability before using UI action commands
+flutterctl status
+
+# UI action commands return structured errors until the active backend
+# reports support in status.ui_automation.actions
+flutterctl tap --x 150 --y 300
+flutterctl type "hello"
+flutterctl press enter
+flutterctl scroll --dy 600
+flutterctl inspect --text "Settings"
+flutterctl wait --text "Ready" --timeout 5000
+
 # View logs
 flutterctl logs
 ```
+
+`flutterctl status` includes a `ui_automation` object with backend, target
+platform, readiness, missing host tools, coordinate-space metadata, and
+per-action capabilities. Treat `status.ui_automation.actions` as authoritative
+before using `tap`, `type`, `press`, `scroll`, `inspect`, or `wait`.
+For macOS desktop, coordinate taps use `app-window-points`: `x=0,y=0` is the
+top-left of the Flutter app window reported in `status.ui_automation.screen`,
+not the top-left of the full display.
+macOS `scroll` approximates scrolling with keyboard dispatch (`pagedown`,
+`pageup`, arrows, `home`, or `end`), so `dx`/`dy` values choose direction and
+dominant axis rather than a pixel-exact distance. The actual movement depends
+on current focus and how the Flutter widget handles those keys.
+macOS `inspect`, `wait --text`, and `tap --text` use the host Accessibility
+tree plus Flutter inspector text previews and selected tooltip labels when a
+VM service is available.
+Returned rectangles are normalized into the same `app-window-points`
+coordinate space when the backend can derive bounds. Flutter widget-key
+selectors are still unsupported.
+Text selectors are not arbitrary Flutter widget selectors: they work only for
+elements that `inspect` can resolve to a rectangle, such as visible `Text`
+previews, macOS Accessibility labels, and selected tooltip labels whose bounds
+can be derived. Custom controls, `ValueKey` values, tooltip-only widgets without
+derivable bounds, and widgets without visible text or accessible labels may
+require coordinate taps instead. Run `flutterctl inspect` first when targeting
+anything beyond obvious visible text.
+
+UI automation is currently scoped to iOS Simulator and macOS desktop backends.
+Android, Linux desktop, Windows desktop, physical iOS, and Flutter web are not
+supported by the Flutter bridge UI action API. Flutter web should use the
+Chrome/CDP workflow. The bridge returns structured errors such as
+`NO_APP_RUNNING`, `UI_NOT_READY`, `UNSUPPORTED_TARGET`, `INVALID_BODY`, and
+`UNKNOWN_KEY` when an action cannot run.
+
+On macOS desktop, `flutterctl screenshot` captures only the Flutter app window.
+If the bridge cannot identify a visible app window or macOS privacy permissions
+block capture, the command fails instead of falling back to a full-screen
+screenshot.
 
 ### How It Works
 
@@ -650,7 +702,8 @@ flutterctl logs
 │   │                                                                  │
 │   ├── flutter run / flutter attach  (subprocess management)          │
 │   ├── flutter screenshot             (on-demand)                     │
-│   └── flutter devices                (device discovery)              │
+│   ├── flutter devices                (device discovery)              │
+│   └── UI automation capability/status and action API                 │
 │                                                                      │
 │   iOS Simulator / Android Emulator / macOS Desktop / Device          │
 └──────────────────────────────────────────────────────────────────────┘
