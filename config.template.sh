@@ -44,3 +44,16 @@ CHROME_LOG_FILE="/tmp/chrome-debug.log"
 # Enable GPG commit signing (generates a sandbox-specific key on first run)
 # Requires GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL to be set
 # GPG_SIGNING=true
+
+# Flutter host bridge integration
+# Default port for the Flutter bridge HTTP server (reachable from Docker via host.docker.internal)
+FLUTTER_DEFAULT_BRIDGE_PORT=8765
+
+# Log file for Flutter bridge output (mounted into container read-only)
+FLUTTER_BRIDGE_LOG_FILE="/tmp/flutter-bridge.log"
+
+# Default device ID for launch/attach (e.g., "macos", "ios", "emulator-5554")
+FLUTTER_DEVICE_ID=""
+
+# Path to flutter executable (unset = use PATH)
+# FLUTTER_PATH="/usr/local/bin/flutter"

@@ -6,6 +6,7 @@
 #   workcell run [agent] [options]   Run the sandbox in current directory
 #                                          (agent: claude [default] | opencode | codex)
 #   workcell start-chrome [options]  Start Chrome with remote debugging
+#   workcell start-flutter-bridge     Start Flutter host bridge
 #   workcell gpg-new                  Generate a new sandbox GPG key
 #   workcell gpg-export --file <f>    Export sandbox GPG key to a file
 #   workcell gpg-import --file <f>   Import a GPG key into the sandbox
@@ -51,6 +52,7 @@ Commands:
   run [agent]     Run the sandbox in current directory (default: claude)
                   agent: claude | opencode | codex
   start-chrome    Start Chrome with remote debugging (run on host)
+  start-flutter-bridge  Start Flutter host bridge (run on host)
   gpg-new         Generate a new sandbox GPG key
   gpg-export      Export the sandbox GPG key to a file
   gpg-import      Import a GPG key into the sandbox
@@ -75,6 +77,8 @@ Examples:
   workcell run codex --yolo
   workcell start-chrome
   workcell start-chrome --restart
+  workcell start-flutter-bridge
+  workcell start-flutter-bridge --device ios
   workcell gpg-new
   workcell gpg-export --file my-key.asc
   workcell gpg-import --file my-key.asc
@@ -114,7 +118,10 @@ Options:
                     codex:    passes --dangerously-bypass-approvals-and-sandbox
   --firewalled      Restrict network to essential domains only
   --with-chrome     Start Chrome with remote debugging
-  --port <port>     Expose a port for dev servers (can be repeated)
+  --with-flutter    Start Flutter host bridge
+                    Mutually exclusive with --with-chrome
+  --port <port>     Expose a dev-server port, or select Flutter bridge port
+                    when used with --with-flutter (repeatable except with Flutter)
 
 Examples:
   workcell run
@@ -122,6 +129,7 @@ Examples:
   workcell run opencode --yolo
   workcell run codex --yolo
   workcell run claude --yolo --with-chrome --port 3000
+  workcell run codex --with-flutter --port 8765
   workcell run opencode --port 3000 --port 5173
   workcell run codex --yolo --port 3000
 EOF
@@ -218,6 +226,30 @@ Note: Chrome must not be running, or use --restart to auto-restart it.
 EOF
 }
 
+show_start_flutter_bridge_help() {
+    cat << 'EOF'
+Start Flutter bridge for sandbox connection
+
+Usage:
+  workcell start-flutter-bridge [options]
+
+Options:
+  --port <port>         Override bridge port from config
+  --project <dir>       Override Flutter project directory
+  --device <id>         Override default device ID
+  --target <file>       Override Flutter target file
+  --token <token>       Specify bridge bearer token
+
+Examples:
+  workcell start-flutter-bridge
+  workcell start-flutter-bridge --device ios
+  workcell start-flutter-bridge --port 8766 --project ~/my-flutter-app
+
+The bridge exposes an HTTP API on the configured port. The sandbox
+connects via host.docker.internal using the bearer token for auth.
+EOF
+}
+
 # Parse command
 command="${1:-}"
 
@@ -257,6 +289,17 @@ case "$command" in
         fi
 
         exec "$SCRIPT_DIR/scripts/start-chrome-debug.sh" "$@"
+        ;;
+
+    start-flutter-bridge)
+        shift
+
+        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+            show_start_flutter_bridge_help
+            exit 0
+        fi
+
+        exec "$SCRIPT_DIR/scripts/start-flutter-bridge.sh" "$@"
         ;;
 
     gpg-new)

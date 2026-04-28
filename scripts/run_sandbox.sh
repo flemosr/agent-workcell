@@ -28,6 +28,7 @@ esac
 yolo=false
 firewalled=false
 chrome_enabled=false
+flutter_enabled=false
 ports=()
 args=()
 
@@ -45,6 +46,10 @@ while [[ $# -gt 0 ]]; do
       chrome_enabled=true
       shift
       ;;
+    --with-flutter)
+      flutter_enabled=true
+      shift
+      ;;
     --port)
       ports+=("$2")
       shift 2
@@ -55,6 +60,17 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if $chrome_enabled && $flutter_enabled; then
+  echo "Error: --with-chrome and --with-flutter are mutually exclusive."
+  echo "Use --with-chrome for web targets or --with-flutter for native/device targets."
+  exit 1
+fi
+
+if $flutter_enabled && [ ${#ports[@]} -gt 1 ]; then
+  echo "Error: --with-flutter accepts at most one --port value for the bridge."
+  exit 1
+fi
 
 # Per-agent yolo mapping.
 # claude supports a CLI flag directly; opencode has no equivalent flag for its TUI, so we
@@ -130,6 +146,11 @@ cleanup() {
     kill $CHROME_PID 2>/dev/null || true
     wait $CHROME_PID 2>/dev/null || true
   fi
+  if $FLUTTER_BRIDGE_STARTED_BY_US && [ -n "$FLUTTER_BRIDGE_PID" ]; then
+    echo "Stopping Flutter bridge..."
+    kill $FLUTTER_BRIDGE_PID 2>/dev/null || true
+    wait $FLUTTER_BRIDGE_PID 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM HUP
 
@@ -197,6 +218,169 @@ if $chrome_enabled; then
   fi
 fi
 
+FLUTTER_BRIDGE_STARTED_BY_US=false
+FLUTTER_BRIDGE_PID=""
+
+# Start Flutter bridge if enabled
+if $flutter_enabled; then
+  # Validate config.sh exists and has required Flutter settings
+  if [ ! -f "$REPO_ROOT/config.sh" ]; then
+    echo "Error: Flutter integration requires config.sh"
+    echo ""
+    echo "Please create config.sh from the template:"
+    echo ""
+    echo "  cd $REPO_ROOT"
+    echo "  cp config.template.sh config.sh"
+    echo ""
+    echo "Then edit config.sh with your Flutter settings."
+    exit 1
+  fi
+
+  flutter_project_dir="$PWD"
+  FLUTTER_BRIDGE_CONFIG_FILE="${workspace_workcell_dir}/flutter-config.json"
+  flutter_config_port=$(python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+    port = config.get("port") if isinstance(config, dict) else None
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    port = None
+if port:
+    print(port)
+PY
+)
+  if [ ${#ports[@]} -gt 0 ]; then
+    FLUTTER_BRIDGE_PORT="${ports[0]}"
+  elif [ -n "$flutter_config_port" ]; then
+    FLUTTER_BRIDGE_PORT="$flutter_config_port"
+  else
+    FLUTTER_BRIDGE_PORT="${FLUTTER_DEFAULT_BRIDGE_PORT:-${FLUTTER_BRIDGE_PORT:-8765}}"
+  fi
+  flutter_target=$(python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+target = "lib/main.dart"
+try:
+    with open(path) as f:
+        config = json.load(f)
+    if isinstance(config, dict) and isinstance(config.get("target"), str) and config["target"]:
+        target = config["target"]
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    pass
+print(target)
+PY
+)
+  flutter_run_args=$(python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+    run_args = config.get("run_args", []) if isinstance(config, dict) else []
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    run_args = []
+if isinstance(run_args, list) and run_args:
+    print(json.dumps([str(item) for item in run_args], separators=(",", ":")))
+elif isinstance(run_args, str) and run_args:
+    print(run_args)
+PY
+)
+
+  if [ ! -f "$SCRIPT_DIR/start-flutter-bridge.sh" ]; then
+    echo "Error: start-flutter-bridge.sh not found in $SCRIPT_DIR"
+    exit 1
+  fi
+
+  # Generate a per-session token for this sandbox's bridge.
+  if [ -z "$FLUTTER_BRIDGE_TOKEN" ]; then
+    FLUTTER_BRIDGE_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(16))" 2>/dev/null || \
+                           openssl rand -hex 16 2>/dev/null || \
+                           od -vAn -N16 -tx1 /dev/urandom | tr -d ' \n')
+  fi
+
+  FLUTTER_BRIDGE_URL="http://host.docker.internal:${FLUTTER_BRIDGE_PORT}"
+
+  # Check if port is in use
+  if lsof -i :$FLUTTER_BRIDGE_PORT >/dev/null 2>&1; then
+    echo "Error: Flutter bridge port $FLUTTER_BRIDGE_PORT is already in use."
+    echo "If a bridge is already running, omit --with-flutter; flutterctl can read .workcell/flutter-config.json."
+    exit 1
+  fi
+
+  echo "Starting Flutter bridge..."
+  echo "  Project: $flutter_project_dir"
+  echo "  Port: $FLUTTER_BRIDGE_PORT"
+  echo "  Log: ${FLUTTER_BRIDGE_LOG_FILE:-/tmp/flutter-bridge.log}"
+
+  # Start bridge as a background process with the per-session token and device
+  FLUTTER_BRIDGE_LOG_FILE="${FLUTTER_BRIDGE_LOG_FILE:-/tmp/flutter-bridge.log}"
+  : > "$FLUTTER_BRIDGE_LOG_FILE"
+  python3 "$SCRIPT_DIR/flutter-bridge.py" \
+    --port "$FLUTTER_BRIDGE_PORT" \
+    --host "0.0.0.0" \
+    --project-dir "$flutter_project_dir" \
+    ${FLUTTER_DEVICE_ID:+--device-id "$FLUTTER_DEVICE_ID"} \
+    --target "$flutter_target" \
+    --flutter-path "${FLUTTER_PATH:-flutter}" \
+    --token "$FLUTTER_BRIDGE_TOKEN" \
+    --log-file "$FLUTTER_BRIDGE_LOG_FILE" \
+    ${flutter_run_args:+--run-args "$flutter_run_args"} \
+    >> "$FLUTTER_BRIDGE_LOG_FILE" 2>&1 &
+  FLUTTER_BRIDGE_PID=$!
+  FLUTTER_BRIDGE_STARTED_BY_US=true
+
+  # Wait for bridge to be ready (up to 10s)
+  echo "Waiting for Flutter bridge to be ready..."
+  bridge_ready=false
+  for _ in {1..20}; do
+    if lsof -i :$FLUTTER_BRIDGE_PORT >/dev/null 2>&1; then
+      bridge_ready=true
+      echo "Flutter bridge is ready!"
+      break
+    fi
+    if ! kill -0 $FLUTTER_BRIDGE_PID 2>/dev/null; then break; fi
+    sleep 0.5
+  done
+
+  if ! $bridge_ready; then
+    echo "Error: Flutter bridge failed to start on port $FLUTTER_BRIDGE_PORT"
+    echo "Check logs: $FLUTTER_BRIDGE_LOG_FILE"
+    tail -20 "$FLUTTER_BRIDGE_LOG_FILE"
+    exit 1
+  fi
+
+  # Write bridge config to workspace .workcell/ so agents can discover it
+  # without requiring the user to manually copy tokens/URLs. Writing on the
+  # host side means it is immediately visible inside the mounted workspace.
+  mkdir -p "${workspace_workcell_dir}"
+  python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" "$FLUTTER_BRIDGE_TOKEN" "$FLUTTER_BRIDGE_PORT" <<'PY'
+import json
+import sys
+
+path, token, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+try:
+    with open(path) as f:
+        config = json.load(f)
+    if not isinstance(config, dict):
+        config = {}
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    config = {}
+config["token"] = token
+config["port"] = port
+with open(path, "w") as f:
+    json.dump(config, f, indent=4)
+    f.write("\n")
+PY
+fi
+
 docker_args=(
   --rm -it --init
   --name "$container_name"
@@ -249,11 +433,25 @@ if [ -n "$CHROME_LOG_FILE" ]; then
   )
 fi
 
-# Add port mappings if specified
-for port in "${ports[@]}"; do
-  docker_args+=(-p "$port:$port")
-done
-if [ ${#ports[@]} -gt 0 ]; then
+# Pass Flutter bridge env vars and mount log if enabled
+if $flutter_enabled; then
+  touch "${FLUTTER_BRIDGE_LOG_FILE:-/tmp/flutter-bridge.log}"
+  docker_args+=(
+    -e "FLUTTER_BRIDGE_URL=$FLUTTER_BRIDGE_URL"
+    -e "FLUTTER_BRIDGE_TOKEN=$FLUTTER_BRIDGE_TOKEN"
+    -e "FLUTTER_BRIDGE_LOG_FILE=/tmp/flutter-bridge.log"
+    -v "${FLUTTER_BRIDGE_LOG_FILE:-/tmp/flutter-bridge.log}:/tmp/flutter-bridge.log:ro"
+  )
+fi
+
+# Add port mappings if specified. In Flutter mode, --port selects the host
+# bridge port and must not also bind a container port on the host.
+if ! $flutter_enabled; then
+  for port in "${ports[@]}"; do
+    docker_args+=(-p "$port:$port")
+  done
+fi
+if [ ${#ports[@]} -gt 0 ] && ! $flutter_enabled; then
   port_list=$(IFS=,; echo "${ports[*]}")
   docker_args+=(-e "EXPOSED_PORTS=$port_list")
 fi
