@@ -140,7 +140,7 @@ flutterctl test  # Returns success if bridge is reachable
 ```
 
 If the bridge is not available, inform the user they can either:
-1. Run `workcell start-flutter-bridge --device <device>` on the host machine from their Flutter project directory (no restart needed)
+1. Run `workcell start-flutter-bridge` on the host machine from their Flutter project directory (no restart needed)
 2. Restart the sandbox with `--with-flutter`
 
 `--with-flutter` and `--with-chrome` are mutually exclusive. For Flutter web,
@@ -193,8 +193,49 @@ flutterctl detach                  # Stop the app process managed by the bridge
 flutterctl hot-reload              # Hot reload
 flutterctl hot-restart             # Hot restart
 flutterctl logs                    # Get recent Flutter logs
-flutterctl screenshot -o <path>    # Take screenshot (PNG) — iOS/Android only, not supported on macOS/Linux desktop
+flutterctl screenshot -o <path>    # Take screenshot (PNG; macOS captures app window only)
+flutterctl tap --x 150 --y 300     # UI automation tap, if status says supported
+flutterctl tap --text "Sign in"    # Selector tap, if status says supported
+flutterctl type "hello"            # Type into current focus, if supported
+flutterctl press enter             # Press a named key, if supported
+flutterctl scroll --dy 600         # Scroll by delta, if supported
+flutterctl inspect [--text <text>] # Inspect UI state, if supported
+flutterctl wait --text "Ready"     # Wait for UI state, if supported
 ```
+
+`flutterctl status` includes a `ui_automation` object with backend, target,
+readiness, missing host tools, coordinate-space metadata, and per-action
+capabilities. Treat that object as authoritative before running UI automation
+commands. If an action is unsupported, not ready, or no app is running, the
+bridge returns structured JSON errors such as `UNSUPPORTED_TARGET`,
+`UI_NOT_READY`, or `NO_APP_RUNNING`.
+On macOS desktop, coordinate taps use `app-window-points`: `x=0,y=0` is the
+top-left of the Flutter app window reported in `status.ui_automation.screen`,
+not the top-left of the full display.
+macOS `scroll` approximates scrolling with keyboard dispatch (`pagedown`,
+`pageup`, arrows, `home`, or `end`), so `dx`/`dy` values choose direction and
+dominant axis rather than a pixel-exact distance. The actual movement depends
+on current focus and how the Flutter widget handles those keys.
+macOS `inspect`, `wait --text`, and `tap --text` use the host Accessibility
+tree plus Flutter inspector text previews and selected tooltip labels when a
+VM service is available.
+Returned rectangles are normalized into the same `app-window-points`
+coordinate space when the backend can derive bounds. Flutter widget-key
+selectors are still unsupported.
+Text selectors are not arbitrary Flutter widget selectors: they work only for
+elements that `inspect` can resolve to a rectangle, such as visible `Text`
+previews, macOS Accessibility labels, and selected tooltip labels whose bounds
+can be derived. Custom controls, `ValueKey` values, tooltip-only widgets without
+derivable bounds, and widgets without visible text or accessible labels may
+require coordinate taps instead. Run `flutterctl inspect` first when targeting
+anything beyond obvious visible text.
+
+Current UI automation target scope is intentionally narrow: iOS Simulator and
+macOS desktop only. Android, Linux desktop, Windows desktop, physical iOS, and
+Flutter web should be treated as unsupported by the Flutter bridge UI action
+API. Flutter web remains covered by the Chrome/CDP workflow. Coordinate taps and
+selectors must not be assumed available unless `status.ui_automation.actions`
+marks them as supported.
 
 ### Flutter Development Workflow
 
@@ -210,7 +251,7 @@ When building Flutter apps, use the bridge to verify your work:
    flutterctl devices
    ```
 
-3. **Launch your Flutter app** — `--device` is required. Pick from the device list (step 2):
+3. **Launch your Flutter app.** Pick from the device list (step 2):
     ```bash
     flutterctl launch --device ios
     # or: flutterctl launch --device macos
@@ -227,20 +268,30 @@ When building Flutter apps, use the bridge to verify your work:
    flutterctl status
    ```
 
-6. **Edit Dart files** in the container, then trigger hot reload:
+6. **If UI automation is needed, inspect `ui_automation` from status before acting:**
+   ```bash
+   flutterctl status
+   flutterctl tap --x 150 --y 300
+   flutterctl press enter
+   ```
+
+7. **Edit Dart files** in the container, then trigger hot reload:
    ```bash
    flutterctl hot-reload
    ```
 
-7. **Take screenshots** to verify UI changes (iOS/Android only — not supported on macOS/Linux desktop):
+8. **Take screenshots** to verify UI changes:
     ```bash
     flutterctl screenshot -o before.png
     # ... edit code ...
     flutterctl hot-reload
     flutterctl screenshot -o after.png
     ```
+   On macOS desktop, screenshots are app-window-only. If the bridge cannot
+   identify the Flutter window or host privacy permissions block capture, the
+   command fails rather than capturing the full screen.
 
-8. **View app logs** if you need to debug:
+9. **View app logs** if you need to debug:
    ```bash
    flutterctl logs
    ```

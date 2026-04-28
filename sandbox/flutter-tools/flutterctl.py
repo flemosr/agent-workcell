@@ -13,6 +13,9 @@ Usage:
     ctl.logs()
     ctl.screenshot("screen.png")
     ctl.hot_reload()
+    ctl.tap(x=100, y=200)
+    ctl.type_text("hello")
+    ctl.press("enter")
 """
 
 import argparse
@@ -150,6 +153,66 @@ class FlutterCtl:
             f.write(data)
         return {"path": output_path, "size": len(data)}
 
+    def tap(self, x=None, y=None, text=None, key=None):
+        """Tap coordinates or an element selected by text/key."""
+        body = {}
+        if x is not None or y is not None:
+            if x is None or y is None:
+                raise ValueError("Coordinate taps require both --x and --y")
+            body["x"] = x
+            body["y"] = y
+        if text is not None:
+            body["text"] = text
+        if key is not None:
+            body["key"] = key
+        return self._request("POST", "/tap", body=body)
+
+    def type_text(self, text):
+        """Type text into the currently focused input."""
+        return self._request("POST", "/type", body={"text": text})
+
+    def press(self, key):
+        """Press a named key or key combination."""
+        return self._request("POST", "/press", body={"key": key})
+
+    def scroll(self, dx=None, dy=None, edge=None):
+        """Scroll by delta or to an edge."""
+        body = {}
+        if dx is not None:
+            body["dx"] = dx
+        if dy is not None:
+            body["dy"] = dy
+        if edge is not None:
+            body["edge"] = edge
+        return self._request("POST", "/scroll", body=body)
+
+    def inspect(self, text=None, key=None):
+        """Inspect the current UI automation tree or selector match."""
+        body = {}
+        if text is not None:
+            body["text"] = text
+        if key is not None:
+            body["key"] = key
+        return self._request("POST", "/inspect", body=body)
+
+    def wait(self, text=None, key=None, timeout_ms=5000):
+        """Wait for an element matching text/key."""
+        body = {"timeout_ms": timeout_ms}
+        if text is not None:
+            body["text"] = text
+        if key is not None:
+            body["key"] = key
+        return self._request("POST", "/wait", body=body)
+
+
+def print_json_result(result, *, error_exit=True):
+    if "error" in result:
+        print(json.dumps(result, indent=2), file=sys.stderr)
+        if error_exit:
+            sys.exit(1)
+    else:
+        print(json.dumps(result, indent=2))
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -193,6 +256,54 @@ def main():
     )
     screenshot_parser.add_argument(
         "--output", "-o", required=True, help="Output file path"
+    )
+
+    tap_parser = subparsers.add_parser(
+        "tap", help="Tap coordinates or an element selected by text/key"
+    )
+    tap_parser.add_argument(
+        "--x", type=float, help="X coordinate in the active coordinate space"
+    )
+    tap_parser.add_argument(
+        "--y", type=float, help="Y coordinate in the active coordinate space"
+    )
+    tap_parser.add_argument("--text", help="Text selector")
+    tap_parser.add_argument("--key", help="Key selector")
+
+    type_parser = subparsers.add_parser(
+        "type", help="Type text into the currently focused input"
+    )
+    type_parser.add_argument("text", help="Text to type")
+
+    press_parser = subparsers.add_parser(
+        "press", help="Press a named key or key combination"
+    )
+    press_parser.add_argument("key", help="Key name, e.g. enter or command+r")
+
+    scroll_parser = subparsers.add_parser(
+        "scroll", help="Scroll by delta or to an edge"
+    )
+    scroll_parser.add_argument("--dx", type=float, help="Horizontal delta")
+    scroll_parser.add_argument("--dy", type=float, help="Vertical delta")
+    scroll_parser.add_argument(
+        "--edge", choices=["top", "bottom", "left", "right"],
+        help="Scroll to an edge",
+    )
+
+    inspect_parser = subparsers.add_parser(
+        "inspect", help="Inspect the current UI automation tree or selector"
+    )
+    inspect_parser.add_argument("--text", help="Text selector")
+    inspect_parser.add_argument("--key", help="Key selector")
+
+    wait_parser = subparsers.add_parser(
+        "wait", help="Wait for an element matching text/key"
+    )
+    wait_parser.add_argument("--text", help="Text selector")
+    wait_parser.add_argument("--key", help="Key selector")
+    wait_parser.add_argument(
+        "--timeout", type=int, default=5000,
+        help="Timeout in milliseconds",
     )
 
     args = parser.parse_args()
@@ -271,6 +382,34 @@ def main():
                 print(f"Error: {result['error']}", file=sys.stderr)
                 sys.exit(1)
             print(f"Screenshot saved to {result['path']} ({result['size']} bytes)")
+
+        elif args.command == "tap":
+            result = ctl.tap(
+                x=args.x, y=args.y, text=args.text, key=args.key
+            )
+            print_json_result(result)
+
+        elif args.command == "type":
+            result = ctl.type_text(args.text)
+            print_json_result(result)
+
+        elif args.command == "press":
+            result = ctl.press(args.key)
+            print_json_result(result)
+
+        elif args.command == "scroll":
+            result = ctl.scroll(dx=args.dx, dy=args.dy, edge=args.edge)
+            print_json_result(result)
+
+        elif args.command == "inspect":
+            result = ctl.inspect(text=args.text, key=args.key)
+            print_json_result(result)
+
+        elif args.command == "wait":
+            result = ctl.wait(
+                text=args.text, key=args.key, timeout_ms=args.timeout
+            )
+            print_json_result(result)
 
     except ConnectionError as e:
         print(f"Error: {e}", file=sys.stderr)
