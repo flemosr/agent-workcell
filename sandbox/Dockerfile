@@ -62,7 +62,14 @@ RUN ARCH=$(dpkg --print-architecture) && \
     fi && \
     chown -R agent:agent /opt/flutter-sdk-template
 
-# Switch to agent user; /opt/flutter-sdk-template/ is already chown'd to agent.
+# Pre-create /opt/ template dirs owned by agent so each installer writes directly
+# there via home symlinks — eliminating the end-of-build cp -a that doubled storage.
+RUN mkdir -p /opt/nvm-template /opt/rustup-template /opt/cargo-template \
+             /opt/claude-versions-template /opt/opencode-template \
+    && chown agent:agent /opt/nvm-template /opt/rustup-template /opt/cargo-template \
+                          /opt/claude-versions-template /opt/opencode-template
+
+# Switch to agent user; /opt/ template dirs are already chown'd to agent.
 USER agent
 WORKDIR /home/agent
 
@@ -71,17 +78,32 @@ ENV FLUTTER_CLI_ANALYTICS_DISABLED=1
 RUN /opt/flutter-sdk-template/bin/flutter precache \
         --no-android --no-ios --no-fuchsia --no-macos --no-windows --no-web
 
-# Install Rust stable
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+# Install Rust stable directly into /opt/ templates; symlink home dirs so the
+# build-time PATH (/home/agent/.cargo/bin) resolves correctly.
+ENV RUSTUP_HOME=/opt/rustup-template
+ENV CARGO_HOME=/opt/cargo-template
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
+    && ln -sf /opt/rustup-template /home/agent/.rustup \
+    && ln -sf /opt/cargo-template /home/agent/.cargo
 
-# Install nvm and Node.js LTS
+# Install nvm and Node.js LTS directly into /opt/nvm-template; symlink home dir so
+# $NVM_DIR (/home/agent/.nvm) resolves correctly during the build.
 ENV NVM_DIR="/home/agent/.nvm"
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
-    && . "$NVM_DIR/nvm.sh" \
+RUN ln -sf /opt/nvm-template /home/agent/.nvm \
+    && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
+    && . /opt/nvm-template/nvm.sh \
     && nvm install --lts \
     && nvm use --lts \
     && nvm alias default lts/* \
     && ln -sf "$NVM_DIR/versions/node/$(nvm current)" "$NVM_DIR/current"
+
+# Set up home→persist/ symlinks for Claude config and home→/opt/ for Claude binaries
+# before running the installer so it writes directly to the final locations.
+RUN mkdir -p /home/agent/persist/.claude /home/agent/.local/share \
+    && echo '{}' > /home/agent/persist/.claude.json \
+    && ln -sf /opt/claude-versions-template /home/agent/.local/share/claude \
+    && ln -sf /home/agent/persist/.claude /home/agent/.claude \
+    && ln -sf /home/agent/persist/.claude.json /home/agent/.claude.json
 
 # Install Claude Code using the official native installer
 RUN curl -fsSL https://claude.ai/install.sh | bash
@@ -106,6 +128,9 @@ COPY --chown=agent:agent flutter-tools/ /home/agent/.local/flutter-tools/
 RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh && \
     ln -sf /home/agent/.local/flutter-tools/flutterctl.sh /home/agent/.local/bin/flutterctl
 
+# Set up home→/opt/ symlink for opencode before running the installer.
+RUN ln -sf /opt/opencode-template /home/agent/.opencode
+
 # Install opencode. Placed after the Python venv to preserve that heavier layer's cache.
 # The installer drops the binary at ~/.opencode/bin/opencode; symlink into ~/.local/bin.
 RUN curl -fsSL https://opencode.ai/install | bash \
@@ -126,48 +151,22 @@ RUN ARCH=$(dpkg --print-architecture) && \
     install -m 0755 "/tmp/codex-${CODEX_ARCH}" /home/agent/.local/bin/codex && \
     rm -f /tmp/codex.tar.gz /tmp/codex-release.json "/tmp/codex-${CODEX_ARCH}"
 
-# Persistent volume structure: all user data lives under ~/persist/.
-RUN mkdir -p /home/agent/persist/.claude
-
-# Move installer-created files to volume location
-RUN mv /home/agent/.claude.json /home/agent/persist/.claude.json 2>/dev/null || true \
-    && mv /home/agent/.claude/* /home/agent/persist/.claude/ 2>/dev/null || true
-
-# Remove original directory and create symlinks to volume
-RUN rm -rf /home/agent/.claude \
-    && ln -sf /home/agent/persist/.claude /home/agent/.claude \
-    && ln -sf /home/agent/persist/.claude.json /home/agent/.claude.json
-
-# Persist Claude Code binaries to avoid re-downloading on every container restart.
-RUN mv /home/agent/.local/share/claude /home/agent/persist/.claude-versions 2>/dev/null || true \
-    && ln -sf /home/agent/persist/.claude-versions /home/agent/.local/share/claude
-
-# Persist opencode data, config, and UI state; mirrors the claude pattern.
-RUN mkdir -p /home/agent/persist/.local/share /home/agent/persist/.local/state /home/agent/persist/.config \
-    && mv /home/agent/.local/share/opencode /home/agent/persist/.local/share/opencode 2>/dev/null || true \
-    && mv /home/agent/.config/opencode /home/agent/persist/.config/opencode 2>/dev/null || true \
-    && mv /home/agent/.local/state/opencode /home/agent/persist/.local/state/opencode 2>/dev/null || true \
-    && mkdir -p /home/agent/persist/.local/share/opencode /home/agent/persist/.local/state/opencode /home/agent/persist/.config/opencode \
-    && mkdir -p /home/agent/.local/share /home/agent/.local/state /home/agent/.config \
-    && rm -rf /home/agent/.local/share/opencode /home/agent/.local/state/opencode /home/agent/.config/opencode \
-    && ln -sf /home/agent/persist/.local/share/opencode /home/agent/.local/share/opencode \
-    && ln -sf /home/agent/persist/.local/state/opencode /home/agent/.local/state/opencode \
-    && ln -sf /home/agent/persist/.config/opencode /home/agent/.config/opencode
-
 # Persist Codex data. Codex creates ~/.codex on first use; bake in the symlink
 # so it points to the volume before the entrypoint runs.
 RUN mkdir -p /home/agent/persist/.codex \
     && ln -sf /home/agent/persist/.codex /home/agent/.codex
 
-# Copy toolchain installs to /opt/ templates for volume seeding on first run.
-USER root
-RUN cp -a /home/agent/.nvm /opt/nvm-template \
-    && cp -a /home/agent/.rustup /opt/rustup-template \
-    && cp -a /home/agent/.cargo /opt/cargo-template \
-    && cp -a /home/agent/persist/.claude-versions /opt/claude-versions-template \
-    && cp -a /home/agent/.opencode /opt/opencode-template
+# Persist opencode data directories so config/state written at runtime lands on the volume.
+RUN mkdir -p /home/agent/persist/.local/share/opencode \
+             /home/agent/persist/.local/state/opencode \
+             /home/agent/persist/.config/opencode \
+             /home/agent/.local/share /home/agent/.local/state /home/agent/.config \
+    && ln -sf /home/agent/persist/.local/share/opencode /home/agent/.local/share/opencode \
+    && ln -sf /home/agent/persist/.local/state/opencode /home/agent/.local/state/opencode \
+    && ln -sf /home/agent/persist/.config/opencode /home/agent/.config/opencode
 
 # Copy scripts (after tool installs to preserve cache)
+USER root
 RUN mkdir -p /workspaces && chown agent:agent /workspaces
 COPY init-firewall.sh /opt/init-firewall.sh
 COPY entrypoint.sh /opt/entrypoint.sh
