@@ -1,10 +1,19 @@
 # Flutter Integration
 
-The workcell includes a host Flutter bridge for native/device development. Agents edit Dart code
-inside the container while the bridge runs host-side `flutter` commands against simulators,
-emulators, desktop apps, or devices.
+The workcell supports Flutter development in two ways:
+
+- **In-container Flutter SDK** — `flutter test`, `flutter analyze`, `dart format`, and `flutter pub`
+  run directly inside the container with no host setup required.
+- **Host Flutter bridge** — for native/device work, a bridge runs host-side `flutter` commands
+  against simulators, emulators, desktop apps, or devices while agents edit code in the container.
 
 For Flutter web, use [Chrome integration](chrome-integration.md) instead.
+
+## In-Container Flutter SDK
+
+A Flutter SDK is bundled with the container image. Agents can run tests, static analysis,
+formatting, and package management against any workspace project with no host setup required.
+The rest of this document covers the host bridge for native/device targets.
 
 ## Prerequisites
 
@@ -134,9 +143,9 @@ CONTAINER
 Sandboxed agent -> Flutter bridge
 ```
 
-The host owns Flutter SDK execution, simulators, emulators, devices, desktop windows, and OS-level
-automation permissions. The container owns source edits, in-container checks, and calls to the
-fixed-purpose bridge API.
+The host owns Flutter SDK execution for native/device builds, simulators, emulators, desktop
+windows, and OS-level automation permissions. The container owns source edits, in-container
+SDK tooling (tests, analysis, formatting), and calls to the fixed-purpose bridge API.
 
 ## Limitations
 

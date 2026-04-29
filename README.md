@@ -12,7 +12,8 @@ aware of the sandbox's capabilities and constraints.
 ## Documentation
 
 - [Chrome integration](docs/chrome-integration.md) - host Chrome control for web development.
-- [Flutter integration](docs/flutter-integration.md) - host bridge for native/device Flutter work.
+- [Flutter integration](docs/flutter-integration.md) - in-container SDK and host bridge for
+  native/device Flutter work.
 - [GPG setup](docs/gpg-setup.md) - verified Git commits from inside the workcell.
 
 ## Prerequisites
@@ -23,9 +24,8 @@ aware of the sandbox's capabilities and constraints.
 Optional integrations have their own host requirements:
 
 - Chrome integration requires Google Chrome and `socat`.
-- Flutter integration requires the Flutter SDK and at least one configured target.
-- GPG signing requires `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, and `GPG_SIGNING=true` in
-  `config.sh`.
+- Flutter bridge integration requires the Flutter SDK and at least one configured target on the host.
+- GPG signing requires `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, and `GPG_SIGNING=true` in `config.sh`.
 
 ## Setup
 
@@ -46,12 +46,17 @@ source ~/.zshrc
 ### 2. Build the image
 
 Build the image before first use. Rebuilding also refreshes the bundled agent TUIs in the image to
-their latest releases. See [Build and authenticate](#build-and-authenticate) for the command.
+their latest releases.
+
+```bash
+# Build the image
+workcell build
+```
 
 ### 3. Authenticate
 
 Run the workcell with a selected agent once to authenticate with the corresponding account. See
-[Build and authenticate](#build-and-authenticate) for examples.
+[Run Agents](#run-agents) below for the commands.
 
 ### 4. Configure optional integrations
 
@@ -71,14 +76,11 @@ Then follow the focused setup guide you need:
 
 ## Command Reference
 
-### Build and Authenticate
+### Build
 
 ```bash
 # Build the image
 workcell build
-
-# Authenticate with the default agent
-workcell run claude
 ```
 
 `workcell build` runs `docker compose build` from the workcell repository root, so it works even
@@ -247,9 +249,12 @@ Important persisted paths include:
 - `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
 - `~/.gnupg/` - GPG keys for commit signing when enabled.
 - `~/.nvm/` - Node.js versions and global npm packages.
+- `~/persist/.flutter-sdk/` - Flutter SDK (seeded from image on first run; `flutter` and `dart` on PATH).
+- `~/.pub-cache/` - Dart pub package cache shared across projects.
+- `~/.flutter/` - Flutter CLI config and version state.
 
-The entrypoint symlinks these locations from `~/persist` so each tool sees its expected home
-directory paths.
+The entrypoint sets up symlinks and seeds toolchain templates on first run so each tool sees its
+expected home directory paths.
 
 > **Security note.** Agent credentials are stored as plaintext inside the Docker volume. Treat the
 > `agent-workcell` volume and its backups as sensitive.
@@ -304,7 +309,8 @@ JSON files before removing the volume. See [OpenCode sessions](#opencode-session
 | **Node.js** | `nvm`, `npm`, `npx` |
 | **Python** | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
 | **Browser** | Chrome automation support |
-| **Flutter** | Flutter bridge support |
+| **Flutter SDK** | `flutter`, `dart` — tests, analysis, formatting, pub (in-container, no host setup) |
+| **Flutter Bridge** | `flutterctl` — launch, hot-reload, screenshots, UI automation via host bridge |
 | **Database** | `psql` |
 | **Utilities** | `git`, `curl`, `wget`, `jq`, `yq`, `ripgrep`, `fd` |
 
