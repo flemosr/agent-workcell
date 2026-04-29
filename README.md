@@ -258,12 +258,35 @@ directory paths.
 
 Each project gets a `.workcell/` directory for project-scoped agent state:
 
+- `.workcell/artifacts/` - temporary agent artifacts such as screenshots, logs, traces, and
+  generated previews. Use timestamped filenames such as `20260429-132400-home-page.png`.
 - `.workcell/claude-sessions/` - bind-mounted Claude project sessions.
 - `.workcell/opencode-sessions/` - exported OpenCode session backups.
 - `.workcell/codex-sessions/` - workspace-local Codex conversation files.
 - `.workcell/tasks/` - multi-agent task files and scratch notes.
 - `.workcell/flutter-config.json` - project-local Flutter bridge launch and connection settings
   when Flutter integration is used.
+
+Recommended `.workcell/` layout:
+
+```text
+.workcell/
+├── .gitignore
+├── artifacts/
+├── claude-sessions/
+├── codex-sessions/
+├── opencode-sessions/
+├── tasks/
+└── flutter-config.json
+```
+
+On first run, the launcher creates `.workcell/.gitignore` if it does not already exist:
+
+```gitignore
+.DS_Store
+flutter-config.json
+artifacts/
+```
 
 It is recommended to gitignore `.workcell/` in the parent project repository. If you want version
 control for local agent state, initialize a separate Git repository inside `.workcell/`.

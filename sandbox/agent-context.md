@@ -23,6 +23,19 @@ Two kinds of data persist between sessions:
 1. **Workspace data:** the mounted project directory, including `.workcell/`.
 2. **User data:** Docker volume data under `~/persist/`, symlinked into expected home paths.
 
+Project-specific workcell data lives under `.workcell/`:
+
+- `.workcell/artifacts/` - temporary artifacts from agent work, such as screenshots, logs, traces, and generated previews. Put throwaway files here instead of the repo root.
+- `.workcell/tasks/` - shared task notes for multi-step work and handoffs.
+- `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
+
+Prefer timestamped artifact names so files sort chronologically and avoid collisions. For example:
+
+```text
+.workcell/artifacts/20260429-132400-home-page.png
+.workcell/artifacts/20260429-132405-test-output.txt
+```
+
 Important persisted user paths:
 
 - `~/.nvm/` - Node.js versions and global npm packages.

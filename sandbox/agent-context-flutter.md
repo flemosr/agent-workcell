@@ -53,7 +53,7 @@ flutterctl detach                     # Stop the app process managed by the brid
 flutterctl hot-reload                 # Hot reload
 flutterctl hot-restart                # Hot restart
 flutterctl logs                       # Recent Flutter logs
-flutterctl screenshot -o <path>       # Screenshot; macOS captures app window only
+flutterctl screenshot -o <path>       # Screenshot; use .workcell/artifacts/
 flutterctl inspect                    # Discover visible UI state when supported
 flutterctl inspect --key <key>        # Inspect a keyed widget when supported
 flutterctl inspect --text <text>      # Inspect resolvable visible text when supported
@@ -101,12 +101,14 @@ flutterctl attach --device ios
 Screenshot example:
 
 ```bash
-flutterctl screenshot -o before.png
+flutterctl screenshot -o .workcell/artifacts/20260429-132400-before.png
 flutterctl hot-reload
-flutterctl screenshot -o after.png
+flutterctl screenshot -o .workcell/artifacts/20260429-132405-after.png
 ```
 
 On macOS desktop, screenshots are app-window-only. If the bridge cannot identify the Flutter window or host privacy permissions block capture, the command fails instead of capturing the full screen.
+
+Save temporary screenshots and other generated verification artifacts under `.workcell/artifacts/`. Prefer timestamped filenames so repeated runs do not overwrite useful evidence.
 
 ## UI Automation
 
