@@ -112,6 +112,7 @@ class BridgeState:
             "device_id": self.device_id,
             "app_name": self.app_name,
             "message": self._status_message,
+            "screenshot": self.screenshot_status(),
             "ui_automation": self.ui_automation_status(),
         }
 
@@ -208,6 +209,16 @@ class BridgeState:
             elif error:
                 status["screen"] = {"error": error}
         return status
+
+    def screenshot_status(self):
+        metadata = self.active_device_metadata()
+        target = classify_device(self.device_id, metadata)
+        return build_screenshot_status(
+            bridge_status=self.status,
+            has_process=self.has_live_process(),
+            device_id=self.device_id,
+            target=target,
+        )
 
 
 # ---- UI Automation Capability and Validation Helpers ----
@@ -1665,9 +1676,60 @@ def _macos_desktop_action_capabilities():
     }
 
 
+def _macos_desktop_capabilities():
+    return {
+        "screenshot": {
+            "supported": True,
+            "method": "screencapture-window",
+            "scope": "app-window-only",
+            "requires": [
+                "visible Flutter app window",
+                "macOS Screen Recording permission",
+            ],
+        },
+        "ui_actions": _macos_desktop_action_capabilities(),
+    }
+
+
+def _mobile_capabilities():
+    return {
+        "screenshot": {
+            "supported": True,
+            "method": "flutter screenshot",
+            "scope": "device-screen",
+            "requires": ["Flutter target available"],
+        },
+        "ui_actions": unsupported_actions("No verified backend"),
+    }
+
+
+def _unsupported_capabilities():
+    reason = (
+        "No verified screenshot backend for this target; macOS desktop "
+        "uses app-window capture and mobile targets use flutter screenshot"
+    )
+    return {
+        "screenshot": {
+            "supported": False,
+            "method": None,
+            "scope": None,
+            "reason": reason,
+        },
+        "ui_actions": unsupported_actions("No verified backend"),
+    }
+
+
+def _target_capabilities(target):
+    if target["backend"] == "macos-desktop":
+        return _macos_desktop_capabilities()
+    if target["target_platform"] in {"ios", "android"}:
+        return _mobile_capabilities()
+    return _unsupported_capabilities()
+
+
 def _backend_action_capabilities(backend):
     if backend == "macos-desktop":
-        return _macos_desktop_action_capabilities()
+        return _macos_desktop_capabilities()["ui_actions"]
     return unsupported_actions("No verified backend")
 
 
@@ -1677,6 +1739,31 @@ def backend_permissions(backend):
             "accessibility": "unknown",
         }
     return {}
+
+
+def build_screenshot_status(bridge_status, has_process, device_id, target):
+    if not device_id:
+        return {
+            "supported": None,
+            "available": False,
+            "method": None,
+            "scope": None,
+            "supported_targets": {
+                "macos": _macos_desktop_capabilities()["screenshot"],
+                "ios": _mobile_capabilities()["screenshot"],
+                "android": _mobile_capabilities()["screenshot"],
+            },
+            "reason": (
+                "No target device selected; launch or attach to a device "
+                "first. Screenshot support depends on the selected target."
+            ),
+        }
+
+    status = dict(_target_capabilities(target)["screenshot"])
+    status["available"] = bool(has_process and status["supported"])
+    if status["supported"] and not has_process:
+        status["reason"] = "No Flutter app process is running under the bridge"
+    return status
 
 
 def build_ui_automation_status(

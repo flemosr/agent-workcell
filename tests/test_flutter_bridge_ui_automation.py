@@ -129,6 +129,70 @@ class UiAutomationCapabilityTests(unittest.TestCase):
             status["actions"]["wait"]["selectors"], ["text", "key"]
         )
 
+    def test_screenshot_status_reports_macos_app_window_capture(self):
+        target = bridge.classify_device(
+            "macos", {"id": "macos", "targetPlatform": "darwin"}
+        )
+
+        status = bridge.build_screenshot_status(
+            bridge_status="running",
+            has_process=True,
+            device_id="macos",
+            target=target,
+        )
+
+        self.assertTrue(status["supported"])
+        self.assertTrue(status["available"])
+        self.assertEqual(status["method"], "screencapture-window")
+        self.assertEqual(status["scope"], "app-window-only")
+        self.assertIn("macOS Screen Recording permission", status["requires"])
+
+    def test_screenshot_status_does_not_depend_on_ui_automation_readiness(self):
+        target = bridge.classify_device(
+            "macos", {"id": "macos", "targetPlatform": "darwin"}
+        )
+
+        screenshot = bridge.build_screenshot_status(
+            bridge_status="running",
+            has_process=True,
+            device_id="macos",
+            target=target,
+        )
+        ui_automation = bridge.build_ui_automation_status(
+            bridge_status="running",
+            has_process=True,
+            has_vm_service=False,
+            device_id="macos",
+            target=target,
+            tools={"osascript": True},
+        )
+
+        self.assertTrue(screenshot["supported"])
+        self.assertTrue(screenshot["available"])
+        self.assertFalse(ui_automation["ready"])
+
+    def test_screenshot_status_reports_target_dependent_when_none_selected(self):
+        target = bridge.classify_device(None, None)
+
+        status = bridge.build_screenshot_status(
+            bridge_status="idle",
+            has_process=False,
+            device_id=None,
+            target=target,
+        )
+
+        self.assertIsNone(status["supported"])
+        self.assertFalse(status["available"])
+        self.assertEqual(
+            status["supported_targets"]["macos"]["method"],
+            "screencapture-window",
+        )
+        self.assertEqual(
+            status["supported_targets"]["macos"]["scope"],
+            "app-window-only",
+        )
+        self.assertIn("No target device selected", status["reason"])
+
 
 class MacosScreenshotHelperTests(unittest.TestCase):
     def test_selects_first_visible_layer_zero_window_for_pid(self):
