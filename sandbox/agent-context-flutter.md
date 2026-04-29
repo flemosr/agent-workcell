@@ -1,8 +1,53 @@
 # Flutter Native Agent Context
 
-Use this document when a task involves native/device Flutter targets, the host Flutter bridge, hot reload, screenshots, UI automation, or the `flutterctl` CLI.
+Use this document when a task involves Flutter or Dart development: in-container
+SDK tooling (`flutter test`, `flutter analyze`, `dart format`, `flutter pub`),
+native/device targets, the host Flutter bridge, hot reload, screenshots, or UI
+automation.
 
 For Flutter web, use [agent-context-web.md](agent-context-web.md) instead.
+
+## Container Flutter SDK
+
+A Flutter SDK is installed inside the container. Use it for all operations that do
+not require a running device or simulator:
+
+```bash
+# Run unit and widget tests (headless, no device needed)
+flutter test
+flutter test test/widget_test.dart
+flutter test --coverage
+
+# Static analysis
+flutter analyze
+dart analyze
+
+# Format checking and application
+dart format --output=none .          # check only, exit 1 if unformatted
+dart format .                        # apply formatting in place
+
+# Package management
+flutter pub get
+flutter pub upgrade
+flutter pub outdated
+
+# Automated fixes
+dart fix --dry-run
+dart fix --apply
+
+# Code generation (build_runner, l10n, etc.)
+flutter gen-l10n
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
+These commands run directly in the container without the Flutter bridge. Run them
+against the workspace project (`pubspec.yaml` in scope) before and after editing
+Dart source.
+
+The `dart` binary is available alongside `flutter`. Both are on `PATH`.
+
+Downloaded pub packages are cached in `~/.pub-cache/` which persists in the Docker
+volume across container restarts.
 
 ## Bridge Model
 
@@ -76,9 +121,18 @@ Status values:
 
 ## Development Workflow
 
-1. Run `flutterctl test`.
-2. Run `flutterctl devices`.
-3. Launch or attach to the app.
+For tasks that only need tests, analysis, or formatting — no device required:
+
+1. Run `flutter pub get` if dependencies are not yet fetched.
+2. Edit Dart files in the container workspace.
+3. Run `flutter analyze` and `flutter test` to verify correctness.
+4. Run `dart format .` to apply formatting.
+
+For tasks that require a running native/device target:
+
+1. Run `flutter analyze` and `flutter test` in the container first.
+2. Run `flutterctl test` to confirm bridge connectivity.
+3. Run `flutterctl devices` and launch or attach to the app.
 4. Run `flutterctl status` and inspect any reported errors.
 5. Edit Dart files in the container workspace.
 6. Run `flutterctl hot-reload` or `flutterctl hot-restart`.

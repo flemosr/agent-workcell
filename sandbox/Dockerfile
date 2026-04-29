@@ -2,7 +2,6 @@
 # Based on official devcontainer: https://github.com/anthropics/claude-code/tree/main/.devcontainer
 FROM debian:bookworm
 
-# Install development tools and security packages
 RUN apt-get update && apt-get install -y \
     bubblewrap \
     git \
@@ -28,24 +27,49 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-venv \
     unzip \
+    xz-utils \
     strace \
     gnupg \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Install yq (YAML processor) - detect architecture
+# Install yq
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}" -o /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq
 
-# Create a non-root user for safety
 RUN useradd -m -s /bin/bash agent \
     && mkdir -p /home/agent/.local/bin \
     && chown -R agent:agent /home/agent
 
-# Switch to agent user for tool installation
+# Download Flutter SDK to /opt/flutter-sdk-template/ for volume seeding (nvm/Rust pattern).
+# amd64: official tarball; arm64: git clone (no prebuilt arm64 Linux tarball available).
+# First in the file so only a FLUTTER_VERSION bump invalidates this layer.
+ARG FLUTTER_VERSION=3.41.8
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        mkdir -p /opt/flutter-sdk-template && \
+        curl -fsSL \
+            "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
+            -o /tmp/flutter.tar.xz && \
+        tar -xJf /tmp/flutter.tar.xz --strip-components=1 -C /opt/flutter-sdk-template && \
+        rm -f /tmp/flutter.tar.xz; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        git clone --depth 1 -b "${FLUTTER_VERSION}" \
+            https://github.com/flutter/flutter.git /opt/flutter-sdk-template; \
+    else \
+        echo "Unsupported architecture for Flutter SDK: $ARCH" >&2; exit 1; \
+    fi && \
+    chown -R agent:agent /opt/flutter-sdk-template
+
+# Switch to agent user; /opt/flutter-sdk-template/ is already chown'd to agent.
 USER agent
 WORKDIR /home/agent
+
+# Precache Linux engine artifacts into the SDK's bin/cache/ for offline use.
+ENV FLUTTER_CLI_ANALYTICS_DISABLED=1
+RUN /opt/flutter-sdk-template/bin/flutter precache \
+        --no-android --no-ios --no-fuchsia --no-macos --no-windows --no-web
 
 # Install Rust stable
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
@@ -62,13 +86,13 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | b
 # Install Claude Code using the official native installer
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Prefer image-baked tools over volume-backed npm globals on PATH.
-# Activate Python venv globally so all packages are available via `python3`.
+# Prefer image-baked tools over volume-backed npm globals; activate Python venv globally.
 ENV PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
 ENV VIRTUAL_ENV="/home/agent/.local/python-venv"
+# Flutter SDK is volume-backed; add to PATH for runtime use.
+ENV PATH="/home/agent/persist/.flutter-sdk/bin:${PATH}"
 
-# Install Python packages: browser tools (Playwright), linters (pyright, ruff),
-# and data science libraries (matplotlib, numpy)
+# Install Python linters, data science libs, and Playwright.
 RUN python3 -m venv ~/.local/python-venv && \
     ~/.local/python-venv/bin/pip install playwright pyright ruff matplotlib numpy
 
@@ -82,18 +106,13 @@ COPY --chown=agent:agent flutter-tools/ /home/agent/.local/flutter-tools/
 RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh && \
     ln -sf /home/agent/.local/flutter-tools/flutterctl.sh /home/agent/.local/bin/flutterctl
 
-# Install opencode using the official installer.
-# Placed after the Python venv so frequent opencode releases don't invalidate
-# the heavier venv layer's cache.
-# The installer ignores XDG_BIN_DIR and always drops the binary at
-# ~/.opencode/bin/opencode, so we symlink it into ~/.local/bin (alongside claude).
+# Install opencode. Placed after the Python venv to preserve that heavier layer's cache.
+# The installer drops the binary at ~/.opencode/bin/opencode; symlink into ~/.local/bin.
 RUN curl -fsSL https://opencode.ai/install | bash \
     && ln -sf /home/agent/.opencode/bin/opencode /home/agent/.local/bin/opencode
 
-# Install Codex CLI from the official GitHub release (standalone musl binary).
-# The ADD URL below acts as the layer's cache key: its response changes when a
-# new release is published, so `docker compose build` picks up new Codex
-# versions automatically without --no-cache or a version bump.
+# Install Codex. ADD fetches the releases API as the layer cache key so docker
+# compose build picks up new releases automatically without --no-cache.
 ADD --chown=agent:agent https://api.github.com/repos/openai/codex/releases/latest /tmp/codex-release.json
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
@@ -107,8 +126,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     install -m 0755 "/tmp/codex-${CODEX_ARCH}" /home/agent/.local/bin/codex && \
     rm -f /tmp/codex.tar.gz /tmp/codex-release.json "/tmp/codex-${CODEX_ARCH}"
 
-# Create persistent volume directory structure
-# All persistent data goes in persist which is mounted from a single Docker volume
+# Persistent volume structure: all user data lives under ~/persist/.
 RUN mkdir -p /home/agent/persist/.claude
 
 # Move installer-created files to volume location
@@ -120,15 +138,11 @@ RUN rm -rf /home/agent/.claude \
     && ln -sf /home/agent/persist/.claude /home/agent/.claude \
     && ln -sf /home/agent/persist/.claude.json /home/agent/.claude.json
 
-# Set up persistence for Claude Code binary versions (~/.local/share/claude)
-# This prevents re-downloading Claude Code updates on every container restart
+# Persist Claude Code binaries to avoid re-downloading on every container restart.
 RUN mv /home/agent/.local/share/claude /home/agent/persist/.claude-versions 2>/dev/null || true \
     && ln -sf /home/agent/persist/.claude-versions /home/agent/.local/share/claude
 
-# Set up persistence for opencode data (~/.local/share/opencode), config
-# (~/.config/opencode), and local UI state (~/.local/state/opencode).
-# Mirrors the claude pattern: move any installer-created content into the persist tree,
-# then symlink the expected locations into it.
+# Persist opencode data, config, and UI state; mirrors the claude pattern.
 RUN mkdir -p /home/agent/persist/.local/share /home/agent/persist/.local/state /home/agent/persist/.config \
     && mv /home/agent/.local/share/opencode /home/agent/persist/.local/share/opencode 2>/dev/null || true \
     && mv /home/agent/.config/opencode /home/agent/persist/.config/opencode 2>/dev/null || true \
@@ -140,44 +154,31 @@ RUN mkdir -p /home/agent/persist/.local/share /home/agent/persist/.local/state /
     && ln -sf /home/agent/persist/.local/state/opencode /home/agent/.local/state/opencode \
     && ln -sf /home/agent/persist/.config/opencode /home/agent/.config/opencode
 
-# Set up persistence for Codex data (~/.codex).
-# Codex stores config, auth, sessions, history, and logs under its home
-# directory, but it only creates that directory on first use — nothing is
-# baked in at build time. We bake in the symlink so the agent user has
-# ~/.codex -> ~/persist/.codex ready before the entrypoint runs; the
-# entrypoint remains authoritative and re-applies this idempotently.
+# Persist Codex data. Codex creates ~/.codex on first use; bake in the symlink
+# so it points to the volume before the entrypoint runs.
 RUN mkdir -p /home/agent/persist/.codex \
     && ln -sf /home/agent/persist/.codex /home/agent/.codex
 
-# Backup nvm, Rust, Claude Code, and OpenCode install data to template
-# locations for volume initialization.
-# This allows the entrypoint to seed the persistent volume on first run
+# Copy toolchain installs to /opt/ templates for volume seeding on first run.
 USER root
 RUN cp -a /home/agent/.nvm /opt/nvm-template \
     && cp -a /home/agent/.rustup /opt/rustup-template \
     && cp -a /home/agent/.cargo /opt/cargo-template \
     && cp -a /home/agent/persist/.claude-versions /opt/claude-versions-template \
     && cp -a /home/agent/.opencode /opt/opencode-template
-USER agent
 
-# Copy firewall and entrypoint scripts (after installs to preserve cache)
-USER root
-
-# Create workspaces directory with proper permissions
+# Copy scripts (after tool installs to preserve cache)
 RUN mkdir -p /workspaces && chown agent:agent /workspaces
-
 COPY init-firewall.sh /opt/init-firewall.sh
 COPY entrypoint.sh /opt/entrypoint.sh
 RUN chmod +x /opt/init-firewall.sh /opt/entrypoint.sh
 
-# Copy global context files to non-volume locations (source of truth for entrypoint)
+# Copy agent context files; entrypoint syncs these to the volume on each start.
 COPY agent-context.md /opt/agent-context.md
 COPY agent-context-web.md /opt/agent-context-web.md
 COPY agent-context-flutter.md /opt/agent-context-flutter.md
 
-# Run as root by default so entrypoint can set up firewall if needed
-# Entrypoint drops privileges to the agent user for running the agent CLI
+# Run as root so entrypoint can configure the firewall; drops to agent user after.
 WORKDIR /workspaces
-
 ENTRYPOINT ["/opt/entrypoint.sh"]
 CMD []

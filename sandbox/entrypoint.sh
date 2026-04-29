@@ -165,6 +165,29 @@ if [ -d /home/agent/.codex ] && [ ! -L /home/agent/.codex ]; then
 fi
 ln -sfn /home/agent/persist/.codex /home/agent/.codex
 
+# Seed Flutter SDK on first run.
+if [ ! -d /home/agent/persist/.flutter-sdk/bin ]; then
+  echo "Initializing Flutter SDK in persistent volume..."
+  cp -a --no-target-directory /opt/flutter-sdk-template /home/agent/persist/.flutter-sdk
+  chown -R agent:agent /home/agent/persist/.flutter-sdk
+fi
+
+# Ensure ~/.pub-cache symlink exists (persists packages downloaded by flutter/dart pub).
+mkdir -p /home/agent/persist/.pub-cache
+chown agent:agent /home/agent/persist/.pub-cache 2>/dev/null || true
+if [ -d /home/agent/.pub-cache ] && [ ! -L /home/agent/.pub-cache ]; then
+  rm -rf /home/agent/.pub-cache
+fi
+ln -sfn /home/agent/persist/.pub-cache /home/agent/.pub-cache
+
+# Ensure ~/.flutter symlink exists (persists Flutter CLI config and version state).
+mkdir -p /home/agent/persist/.flutter-config
+chown agent:agent /home/agent/persist/.flutter-config 2>/dev/null || true
+if [ -d /home/agent/.flutter ] && [ ! -L /home/agent/.flutter ]; then
+  rm -rf /home/agent/.flutter
+fi
+ln -sfn /home/agent/persist/.flutter-config /home/agent/.flutter
+
 # Initialize .gnupg on first run.
 if [ ! -d /home/agent/persist/.gnupg ]; then
   mkdir -p /home/agent/persist/.gnupg
