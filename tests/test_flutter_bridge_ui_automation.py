@@ -23,6 +23,9 @@ def load_module(name, relative_path):
 
 
 bridge = load_module("flutter_bridge", "scripts/flutter-bridge.py")
+import flutter_bridge_lib.ios as bridge_ios
+import flutter_bridge_lib.macos as bridge_macos
+
 flutterctl = load_module(
     "flutterctl", "sandbox/flutter-tools/flutterctl.py"
 )
@@ -518,9 +521,9 @@ class MacosScreenshotHelperTests(unittest.TestCase):
 
     def test_get_app_window_info_reports_missing_visible_window(self):
         with mock.patch.object(
-            bridge, "_macos_get_process_id", return_value=(123, None)
+            bridge_macos, "_macos_get_process_id", return_value=(123, None)
         ), mock.patch.object(
-            bridge, "_macos_coregraphics_windows", return_value=[]
+            bridge_macos, "_macos_coregraphics_windows", return_value=[]
         ):
             window, error = bridge._macos_get_app_window_info("demo_app")
 
@@ -551,7 +554,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
             },
         ]
         with mock.patch.object(
-            bridge, "_macos_coregraphics_windows", return_value=windows
+            bridge_ios, "_macos_coregraphics_windows", return_value=windows
         ):
             result = bridge._ios_simulator_window_candidates()
 
@@ -578,7 +581,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
             "count": 2,
         }
         with mock.patch.object(
-            bridge, "_ios_simulator_window_candidates", return_value=candidates
+            bridge_ios, "_ios_simulator_window_candidates", return_value=candidates
         ):
             window, error = bridge._ios_first_simulator_window("iPhone 17")
 
@@ -603,7 +606,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
             "count": 2,
         }
         with mock.patch.object(
-            bridge, "_ios_simulator_window_candidates", return_value=candidates
+            bridge_ios, "_ios_simulator_window_candidates", return_value=candidates
         ):
             window, error = bridge._ios_first_simulator_window("iPhone SE")
 
@@ -734,16 +737,16 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         }
         with mock.patch.object(bridge.shutil, "which", return_value="/usr/bin/xcrun"), \
                 mock.patch.object(
-                    bridge, "_ios_simulator_screen_metadata",
+                    bridge_ios, "_ios_simulator_screen_metadata",
                     return_value={"simulator_window": window},
                 ), mock.patch.object(
-                    bridge, "_run_simctl_screenshot_probe",
+                    bridge_ios, "_run_simctl_screenshot_probe",
                     return_value=screenshot,
                 ), mock.patch.object(
-                    bridge, "_flutter_inspector_snapshot",
+                    bridge_ios, "_flutter_inspector_snapshot",
                     return_value=(inspector, None),
                 ), mock.patch.object(
-                    bridge,
+                    bridge_ios,
                     "_ios_host_window_content_match_probe",
                     return_value={
                         "available": True,
@@ -819,13 +822,13 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         }
         with mock.patch.object(bridge.shutil, "which", return_value="/usr/bin/xcrun"), \
                 mock.patch.object(
-                    bridge, "_ios_simulator_screen_metadata",
+                    bridge_ios, "_ios_simulator_screen_metadata",
                     return_value={"error": "no visible Simulator window found"},
                 ), mock.patch.object(
-                    bridge, "_run_simctl_screenshot_probe",
+                    bridge_ios, "_run_simctl_screenshot_probe",
                     return_value=screenshot,
                 ), mock.patch.object(
-                    bridge, "_flutter_inspector_snapshot",
+                    bridge_ios, "_flutter_inspector_snapshot",
                     return_value=(inspector, None),
                 ):
             result = bridge.ios_coordinate_map("http://127.0.0.1:123/abc=/")
@@ -856,11 +859,11 @@ class MacosScreenshotHelperTests(unittest.TestCase):
             "AXGroup\t\tLCD\t\t\t\t105\t270\t446\t902\n"
         )
         with mock.patch.object(
-            bridge, "_ios_first_simulator_window", return_value=(window, None)
+            bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
         ), mock.patch.object(
             bridge.shutil, "which", return_value="/usr/bin/osascript"
         ), mock.patch.object(
-            bridge, "_run_osascript_capture", return_value=(stdout, None)
+            bridge_ios, "_run_osascript_capture", return_value=(stdout, None)
         ):
             result = bridge._ios_simulator_accessibility_snapshot("iPhone 17")
 
@@ -886,11 +889,11 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         }
         stdout = "AXGroup\t\tContainer\t\t\t\t\t\t\t\n"
         with mock.patch.object(
-            bridge, "_ios_first_simulator_window", return_value=(window, None)
+            bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
         ), mock.patch.object(
             bridge.shutil, "which", return_value="/usr/bin/osascript"
         ), mock.patch.object(
-            bridge, "_run_osascript_capture", return_value=(stdout, None)
+            bridge_ios, "_run_osascript_capture", return_value=(stdout, None)
         ):
             result = bridge._ios_simulator_accessibility_snapshot("iPhone 17")
 
@@ -922,7 +925,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         with mock.patch.object(
             bridge.shutil, "which", return_value="/usr/sbin/screencapture"
         ), mock.patch.object(
-            bridge, "_run_probe_command", side_effect=fake_run_probe
+            bridge_ios, "_run_probe_command", side_effect=fake_run_probe
         ):
             result = bridge._run_screencapture_window_probe(window)
 
@@ -950,7 +953,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_scroll_dispatch_uses_backend_error_status(self):
         with mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_press",
             return_value={"error": "osascript failed", "code": "BACKEND_ERROR"},
         ):
@@ -963,7 +966,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_scroll_dispatch_reports_key_approximation(self):
         with mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_press",
             return_value={"action": "press", "key": "pagedown"},
         ):
@@ -981,9 +984,9 @@ class MacosBackendDispatchTests(unittest.TestCase):
     def test_tap_coordinates_are_app_window_local_points(self):
         window = {"window_id": 4, "bounds": (100, 200, 300, 400)}
         with mock.patch.object(
-            bridge, "_macos_get_app_window_info", return_value=(window, None)
+            bridge_macos, "_macos_get_app_window_info", return_value=(window, None)
         ), mock.patch.object(
-            bridge, "_macos_post_mouse_click", return_value=None
+            bridge_macos, "_macos_post_mouse_click", return_value=None
         ) as post_click:
             result = bridge._macos_tap_coordinates("demo_app", 12.5, 34.0)
 
@@ -1000,8 +1003,8 @@ class MacosBackendDispatchTests(unittest.TestCase):
     def test_tap_rejects_coordinates_outside_app_window(self):
         window = {"window_id": 4, "bounds": (100, 200, 300, 400)}
         with mock.patch.object(
-            bridge, "_macos_get_app_window_info", return_value=(window, None)
-        ), mock.patch.object(bridge, "_macos_post_mouse_click") as post_click:
+            bridge_macos, "_macos_get_app_window_info", return_value=(window, None)
+        ), mock.patch.object(bridge_macos, "_macos_post_mouse_click") as post_click:
             result = bridge._macos_tap_coordinates("demo_app", 300, 100)
 
         post_click.assert_not_called()
@@ -1326,9 +1329,9 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "AXStaticText\t\tReady\t\t\t\t120\t230\t60\t20\n"
         )
         with mock.patch.object(
-            bridge, "_macos_get_app_window_info", return_value=(window, None)
+            bridge_macos, "_macos_get_app_window_info", return_value=(window, None)
         ), mock.patch.object(
-            bridge, "_run_osascript_capture", return_value=(stdout, None)
+            bridge_macos, "_run_osascript_capture", return_value=(stdout, None)
         ):
             result = bridge._macos_inspect("demo_app", {"text": "ready"})
 
@@ -1368,11 +1371,11 @@ class MacosBackendDispatchTests(unittest.TestCase):
             },
         ]
         with mock.patch.object(
-            bridge, "_macos_get_app_window_info", return_value=(window, None)
+            bridge_macos, "_macos_get_app_window_info", return_value=(window, None)
         ), mock.patch.object(
-            bridge, "_run_osascript_capture", return_value=("", None)
+            bridge_macos, "_run_osascript_capture", return_value=("", None)
         ), mock.patch.object(
-            bridge,
+            bridge_macos,
             "_flutter_inspector_elements",
             return_value=(flutter_elements, None),
         ):
@@ -1401,11 +1404,11 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "source": "flutter-inspector",
         }
         with mock.patch.object(
-            bridge, "_macos_get_app_window_info", return_value=(window, None)
+            bridge_macos, "_macos_get_app_window_info", return_value=(window, None)
         ), mock.patch.object(
-            bridge, "_run_osascript_capture", return_value=("", None)
+            bridge_macos, "_run_osascript_capture", return_value=("", None)
         ), mock.patch.object(
-            bridge,
+            bridge_macos,
             "_flutter_inspector_elements",
             return_value=([flutter_element], None),
         ):
@@ -1426,11 +1429,11 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "rect": {"x": 10, "y": 20, "w": 80, "h": 40},
         }
         with mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_inspect",
             return_value={"elements": [element], "match_count": 1},
         ), mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_tap_coordinates",
             return_value={
                 "action": "tap",
@@ -1453,11 +1456,11 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "rect": {"x": 10, "y": 20, "w": 80, "h": 40},
         }
         with mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_inspect",
             return_value={"elements": [element], "match_count": 1},
         ), mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_tap_coordinates",
             return_value={
                 "action": "tap",
@@ -1474,7 +1477,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_wait_times_out_when_text_never_appears(self):
         with mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_inspect",
             return_value={"elements": [], "match_count": 0},
         ):
@@ -1486,7 +1489,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_wait_returns_when_key_appears(self):
         with mock.patch.object(
-            bridge,
+            bridge_macos,
             "_macos_inspect",
             return_value={"elements": [{"key": "add_item_button"}],
                           "match_count": 1},
@@ -1528,7 +1531,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
             },
         ]
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_flutter_inspector_elements",
             return_value=(flutter_elements, None),
         ) as inspector:
@@ -1547,7 +1550,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_ios_wait_returns_when_key_appears(self):
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_ios_inspect",
             return_value={"elements": [{"key": "add_item_button"}],
                           "match_count": 1},
@@ -1562,7 +1565,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_ios_type_text_sends_keystrokes_without_echoing_text(self):
         with mock.patch.object(
-            bridge, "_macos_type", return_value={"action": "type"}
+            bridge_ios, "_macos_type", return_value={"action": "type"}
         ) as type_text:
             result = bridge._ios_type_text("secret text")
 
@@ -1574,7 +1577,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_ios_press_key_sends_key_to_simulator(self):
         with mock.patch.object(
-            bridge, "_macos_press", return_value={"action": "press"}
+            bridge_ios, "_macos_press", return_value={"action": "press"}
         ) as press:
             result = bridge._ios_press_key("enter")
 
@@ -1584,7 +1587,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_ios_dispatch_type_and_press(self):
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_ios_type_text",
             return_value={"action": "type"},
         ) as type_text:
@@ -1592,7 +1595,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
                 "type", {"text": "hello"}, device_id="8F0F"
             )
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_ios_press_key",
             return_value={"action": "press"},
         ) as press_key:
@@ -1609,7 +1612,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_ios_scroll_dispatch_reports_key_approximation(self):
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_ios_press_key",
             return_value={"action": "press", "key": "pagedown"},
         ) as press_key:
@@ -1628,7 +1631,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_ios_scroll_dispatch_uses_backend_error_status(self):
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_ios_press_key",
             return_value={"error": "osascript failed", "code": "BACKEND_ERROR"},
         ):
@@ -1676,19 +1679,19 @@ class MacosBackendDispatchTests(unittest.TestCase):
             },
         }
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_flutter_inspector_snapshot",
             return_value=(snapshot, None),
         ), mock.patch.object(
             bridge.shutil, "which", return_value="/usr/bin/xcrun"
         ), mock.patch.object(
-            bridge, "_ios_first_simulator_window", return_value=(window, None)
+            bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
         ), mock.patch.object(
-            bridge,
+            bridge_ios,
             "_ios_host_window_content_match_probe",
             return_value=content_match,
         ), mock.patch.object(
-            bridge, "_ios_tap_coordinates", return_value={"action": "tap"}
+            bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
         ) as tap:
             result = bridge._ios_tap_selector(
                 "key",
@@ -1740,7 +1743,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
         }
         try:
             with mock.patch.object(
-                bridge,
+                bridge_ios,
                 "_flutter_inspector_snapshot",
                 return_value=(
                     None,
@@ -1749,15 +1752,15 @@ class MacosBackendDispatchTests(unittest.TestCase):
             ), mock.patch.object(
                 bridge.shutil, "which", return_value="/usr/bin/xcrun"
             ), mock.patch.object(
-                bridge,
+                bridge_ios,
                 "_ios_first_simulator_window",
                 return_value=({"bounds": {"width": 456, "height": 972}}, None),
             ), mock.patch.object(
-                bridge,
+                bridge_ios,
                 "_ios_host_window_content_match_probe",
                 return_value=content_match,
             ), mock.patch.object(
-                bridge, "_ios_tap_coordinates", return_value={"action": "tap"}
+                bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
             ):
                 result = bridge._ios_tap_selector(
                     "key",
@@ -1776,7 +1779,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
     def test_ios_dispatch_selector_tap(self):
         with mock.patch.object(
-            bridge,
+            bridge_ios,
             "_ios_tap_selector",
             return_value={"action": "tap"},
         ) as tap_selector:
@@ -1807,9 +1810,9 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
         }
         with mock.patch.object(
-            bridge, "_ios_first_simulator_window", return_value=(window, None)
+            bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
         ), mock.patch.object(
-            bridge, "_macos_post_mouse_click", return_value=None
+            bridge_ios, "_macos_post_mouse_click", return_value=None
         ) as post_click:
             result, status = bridge._ios_simulator_dispatch(
                 "tap",
@@ -1831,7 +1834,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
         }
         with mock.patch.object(
-            bridge, "_ios_first_simulator_window", return_value=(window, None)
+            bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
         ):
             result = bridge._ios_tap_coordinates(456, 20)
 
