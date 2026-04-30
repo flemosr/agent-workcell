@@ -406,11 +406,12 @@ if [ ${#yolo_env[@]} -gt 0 ]; then
   docker_args+=("${yolo_env[@]}")
 fi
 
-# Pass host timezone so git commits use local time instead of UTC
-host_tz=""
-if [ -L /etc/localtime ]; then
+# Pass local timezone so container logs and git commits use local time instead of UTC.
+# Set TZ in config.sh to override host auto-detection.
+host_tz="${TZ:-}"
+if [ -z "$host_tz" ] && [ -L /etc/localtime ]; then
   host_tz=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
-elif [ -f /etc/timezone ]; then
+elif [ -z "$host_tz" ] && [ -f /etc/timezone ]; then
   host_tz=$(cat /etc/timezone)
 fi
 if [ -n "$host_tz" ]; then

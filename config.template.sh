@@ -1,12 +1,16 @@
 #!/bin/bash
-# Agent Workcell Configuration (for Chrome integration)
+# Agent Workcell Configuration
 #
-# This config is only needed if you want to use the Chrome integration.
+# This config is only needed if you want optional integrations or local overrides.
 # Copy this file to config.sh and edit to match your setup:
 #
 #   cp config.template.sh config.sh
 #
 # Your config.sh is gitignored, so your personal settings won't be committed.
+#
+# Optional: override the timezone passed into the sandbox. By default the launcher
+# auto-detects the host timezone and sets TZ for container-local logs and commits.
+# TZ="America/Los_Angeles"
 #
 # REQUIRED: Create a dedicated Chrome profile for Claude:
 #   1. Open Chrome and click your profile icon (top-right)
