@@ -109,10 +109,12 @@ RUN mkdir -p /home/agent/persist/.claude /home/agent/.local/share \
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Prefer image-baked tools over volume-backed npm globals; activate Python venv globally.
+# Keep ~/.local/bin ahead of the SDK so the workcell flutter/dart wrappers can
+# repair package metadata before delegating to the real SDK binaries.
 ENV PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
 ENV VIRTUAL_ENV="/home/agent/.local/python-venv"
-# Flutter SDK is volume-backed; add to PATH for runtime use.
-ENV PATH="/home/agent/persist/.flutter-sdk/bin:${PATH}"
+# Flutter SDK is volume-backed; add to PATH for runtime use after wrappers.
+ENV PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/home/agent/persist/.flutter-sdk/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
 
 # Install Python linters, data science libs, and Playwright.
 RUN python3 -m venv ~/.local/python-venv && \

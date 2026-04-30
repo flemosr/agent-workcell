@@ -186,6 +186,11 @@ if [ -d /home/agent/.flutter ] && [ ! -L /home/agent/.flutter ]; then
 fi
 ln -sfn /home/agent/persist/.flutter-config /home/agent/.flutter
 
+# The Dockerfile declares these paths, but some launch paths provide a sanitized
+# runtime PATH. Re-assert the expected tool locations before dispatching the
+# agent so child shells can find flutter, dart, node, cargo, and local wrappers.
+export PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:/home/agent/persist/.flutter-sdk/bin:${PATH}"
+
 # Initialize .gnupg on first run.
 if [ ! -d /home/agent/persist/.gnupg ]; then
   mkdir -p /home/agent/persist/.gnupg
@@ -313,7 +318,7 @@ esac
 # cwd is inherited naturally (runuser doesn't chdir unless --login is passed).
 if [[ "$(id -u)" == "0" ]]; then
   exec runuser -m -u agent -- \
-    env HOME=/home/agent USER=agent LOGNAME=agent "$agent_cli" "$@"
+    env HOME=/home/agent USER=agent LOGNAME=agent PATH="$PATH" "$agent_cli" "$@"
 else
   exec "$agent_cli" "$@"
 fi
