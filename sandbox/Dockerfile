@@ -125,8 +125,13 @@ RUN chmod +x /home/agent/.local/browser-tools/browser.sh && \
 
 # Copy flutter tools
 COPY --chown=agent:agent flutter-tools/ /home/agent/.local/flutter-tools/
-RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh && \
-    ln -sf /home/agent/.local/flutter-tools/flutterctl.sh /home/agent/.local/bin/flutterctl
+RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh \
+             /home/agent/.local/flutter-tools/flutter.sh \
+             /home/agent/.local/flutter-tools/dart.sh \
+             /home/agent/.local/flutter-tools/package_config_guard.py && \
+    ln -sf /home/agent/.local/flutter-tools/flutterctl.sh /home/agent/.local/bin/flutterctl && \
+    ln -sf /home/agent/.local/flutter-tools/flutter.sh /home/agent/.local/bin/flutter && \
+    ln -sf /home/agent/.local/flutter-tools/dart.sh /home/agent/.local/bin/dart
 
 # Set up home→/opt/ symlink for opencode before running the installer.
 RUN ln -sf /opt/opencode-template /home/agent/.opencode

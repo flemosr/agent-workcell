@@ -29,10 +29,72 @@ import flutter_bridge_lib.macos as bridge_macos
 flutterctl = load_module(
     "flutterctl", "sandbox/flutter-tools/flutterctl.py"
 )
+package_config_guard = load_module(
+    "package_config_guard", "sandbox/flutter-tools/package_config_guard.py"
+)
 
 
 def subprocess_result(returncode=0, stdout="", stderr=""):
     return mock.Mock(returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+class PackageConfigGuardTests(unittest.TestCase):
+    def test_host_bridge_detects_missing_package_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = pathlib.Path(tmp)
+            dart_tool = project / ".dart_tool"
+            dart_tool.mkdir()
+            (dart_tool / "package_config.json").write_text(json.dumps({
+                "configVersion": 2,
+                "packages": [{
+                    "name": "flutter",
+                    "rootUri": "file:///definitely/missing/flutter",
+                    "packageUri": "lib/",
+                }],
+            }))
+
+            invalid = bridge._package_config_invalid_roots(str(project))
+
+        self.assertEqual(len(invalid), 1)
+        self.assertIn("flutter", invalid[0])
+
+    def test_container_guard_detects_host_package_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = pathlib.Path(tmp)
+            (project / "pubspec.yaml").write_text("name: demo\n")
+            dart_tool = project / ".dart_tool"
+            dart_tool.mkdir()
+            (dart_tool / "package_config.json").write_text(json.dumps({
+                "configVersion": 2,
+                "packages": [{
+                    "name": "flutter_lints",
+                    "rootUri": "file:///Users/me/.pub-cache/flutter_lints",
+                    "packageUri": "lib/",
+                }],
+            }))
+
+            self.assertTrue(
+                package_config_guard.package_config_has_foreign_paths(project)
+            )
+
+    def test_container_guard_accepts_container_package_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = pathlib.Path(tmp)
+            (project / "pubspec.yaml").write_text("name: demo\n")
+            dart_tool = project / ".dart_tool"
+            dart_tool.mkdir()
+            (dart_tool / "package_config.json").write_text(json.dumps({
+                "configVersion": 2,
+                "packages": [{
+                    "name": "flutter",
+                    "rootUri": "file:///home/agent/persist/.flutter-sdk/packages/flutter",
+                    "packageUri": "lib/",
+                }],
+            }))
+
+            self.assertFalse(
+                package_config_guard.package_config_has_foreign_paths(project)
+            )
 
 
 class UiAutomationCapabilityTests(unittest.TestCase):
