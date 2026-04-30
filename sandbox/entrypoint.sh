@@ -1,18 +1,20 @@
 #!/bin/bash
 # Entrypoint script for Agent Workcell
 
-# Sync injected agent context files.
+# Link each agent's global context path to the canonical image-baked file.
 mkdir -p /home/agent/persist/.claude
-cp /opt/agent-context.md /home/agent/persist/.claude/CLAUDE.md
-cp /opt/agent-context-web.md /home/agent/persist/.claude/agent-context-web.md
-cp /opt/agent-context-flutter.md /home/agent/persist/.claude/agent-context-flutter.md
-chown -R agent:agent /home/agent/persist/.claude 2>/dev/null || true
+ln -sfn /opt/agent-context.md /home/agent/persist/.claude/CLAUDE.md
+rm -f /home/agent/persist/.claude/agent-context-web.md \
+      /home/agent/persist/.claude/agent-context-flutter.md
+chown agent:agent /home/agent/persist/.claude 2>/dev/null || true
+chown -h agent:agent /home/agent/persist/.claude/CLAUDE.md 2>/dev/null || true
 
 mkdir -p /home/agent/persist/.config/opencode
-cp /opt/agent-context.md /home/agent/persist/.config/opencode/AGENTS.md
-cp /opt/agent-context-web.md /home/agent/persist/.config/opencode/agent-context-web.md
-cp /opt/agent-context-flutter.md /home/agent/persist/.config/opencode/agent-context-flutter.md
-chown -R agent:agent /home/agent/persist/.config/opencode 2>/dev/null || true
+ln -sfn /opt/agent-context.md /home/agent/persist/.config/opencode/AGENTS.md
+rm -f /home/agent/persist/.config/opencode/agent-context-web.md \
+      /home/agent/persist/.config/opencode/agent-context-flutter.md
+chown agent:agent /home/agent/persist/.config/opencode 2>/dev/null || true
+chown -h agent:agent /home/agent/persist/.config/opencode/AGENTS.md 2>/dev/null || true
 
 # Seed nvm on first run.
 if [ ! -d /home/agent/persist/.nvm/versions ]; then
@@ -152,14 +154,10 @@ ln -sfn /home/agent/persist/.config/opencode /home/agent/.config/opencode
 # chown'ing to avoid rewriting host-file ownership.
 mkdir -p /home/agent/persist/.codex
 chown agent:agent /home/agent/persist/.codex 2>/dev/null || true
-cp /opt/agent-context.md /home/agent/persist/.codex/AGENTS.md
-cp /opt/agent-context-web.md /home/agent/persist/.codex/agent-context-web.md
-cp /opt/agent-context-flutter.md /home/agent/persist/.codex/agent-context-flutter.md
-chown agent:agent \
-  /home/agent/persist/.codex/AGENTS.md \
-  /home/agent/persist/.codex/agent-context-web.md \
-  /home/agent/persist/.codex/agent-context-flutter.md \
-  2>/dev/null || true
+ln -sfn /opt/agent-context.md /home/agent/persist/.codex/AGENTS.md
+rm -f /home/agent/persist/.codex/agent-context-web.md \
+      /home/agent/persist/.codex/agent-context-flutter.md
+chown -h agent:agent /home/agent/persist/.codex/AGENTS.md 2>/dev/null || true
 if [ -d /home/agent/.codex ] && [ ! -L /home/agent/.codex ]; then
   rm -rf /home/agent/.codex
 fi

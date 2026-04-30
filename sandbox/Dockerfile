@@ -172,10 +172,12 @@ COPY init-firewall.sh /opt/init-firewall.sh
 COPY entrypoint.sh /opt/entrypoint.sh
 RUN chmod +x /opt/init-firewall.sh /opt/entrypoint.sh
 
-# Copy agent context files; entrypoint syncs these to the volume on each start.
+# Copy agent context files. Entrypoint symlinks the main context into each
+# agent config; focused context files stay available at their canonical /opt paths.
 COPY agent-context.md /opt/agent-context.md
 COPY agent-context-web.md /opt/agent-context-web.md
 COPY agent-context-flutter.md /opt/agent-context-flutter.md
+RUN chmod 0644 /opt/agent-context.md /opt/agent-context-web.md /opt/agent-context-flutter.md
 
 # Run as root so entrypoint can configure the firewall; drops to agent user after.
 WORKDIR /workspaces
