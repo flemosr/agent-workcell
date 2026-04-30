@@ -115,7 +115,9 @@ Task filenames use UTC timestamp prefixes:
 YYYYMMDD-HHMMSS-brief-descriptive-slug.md
 ```
 
-Inside task files, use local time for logs and metadata. Write the timezone as a compact GMT offset, such as `GMT-3`, to keep entries short.
+Inside task files, use local time for logs and metadata. Check the `TZ` environment variable to
+determine the configured local timezone, then write the timezone as a compact GMT offset, such as
+`GMT-3`, to keep entries short.
 
 Each task file should include:
 
