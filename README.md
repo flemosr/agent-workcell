@@ -310,7 +310,7 @@ JSON files before removing the volume. See [OpenCode sessions](#opencode-session
 | **Python** | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
 | **Browser** | Chrome automation support |
 | **Flutter SDK** | `flutter`, `dart` — tests, analysis, formatting, pub (in-container, no host setup) |
-| **Flutter Bridge** | `flutterctl` — launch, hot-reload, screenshots, UI automation via host bridge |
+| **Flutter Bridge** | `flutterctl` — launch, hot-reload, screenshots, and macOS-hosted macOS/iOS Simulator UI automation via host bridge |
 | **Database** | `psql` |
 | **Utilities** | `git`, `curl`, `wget`, `jq`, `yq`, `ripgrep`, `fd` |
 

@@ -110,24 +110,89 @@ Then run the workcell without `--with-flutter`. The launcher writes connection d
 `.workcell/flutter-config.json`, and future workcell sessions can reuse those connection details.
 The bridge starts without a selected device; the agent can choose one during the session.
 
+Agents can restart a reachable bridge without host shell access:
+
+```bash
+flutterctl restart-bridge
+```
+
+This authenticated command re-execs the existing host bridge process with the same project, port,
+token, target, and run arguments.
+
+Launch iOS Simulators with the exact device id reported by Flutter:
+
+```bash
+flutterctl devices
+flutterctl launch --device <ios-simulator-uuid>
+```
+
+`--device ios` only works if Flutter reports a device whose name or id matches `ios`; typical
+iOS Simulator devices use CoreSimulator UUIDs. If launch fails, `flutterctl status` reports the
+bridge state and `flutterctl logs` shows the underlying host `flutter run` output.
+
+`flutterctl hot-reload` and `flutterctl hot-restart` are command-send operations. They write `r` or
+`R` to the host Flutter process and return after the command is sent, not after compilation and
+frame rendering are complete. Before screenshots or UI automation, wait briefly or poll for the
+expected UI with `flutterctl wait`.
+
 ## UI Automation
 
-The bridge can support UI automation on selected targets. macOS desktop automation uses host
-Accessibility and Screen Recording permissions, so the first run may trigger privacy prompts.
+The bridge currently supports host Flutter workflows from macOS hosts only. UI automation is scoped
+to macOS desktop apps and iOS Simulator targets on those hosts. macOS desktop automation uses host
+Accessibility and Screen Recording permissions, so the first run may trigger privacy prompts. iOS
+Simulator coordinate taps require the host Simulator window to be visible and unminimized.
 
 Prefer widget-key selectors for agent-driven Flutter UI interactions when the app can provide them.
 Stable, descriptive `ValueKey<String>` values on controls and important containers give agents a
 reliable target independent of visible copy, localization, and layout changes. Useful examples:
 `login_button`, `email_field`, `settings_tab`, `todo_list`, and `delete_item_0`.
 
-UI automation is currently scoped to iOS Simulator and macOS desktop backends. Android, Linux
-desktop, Windows desktop, physical iOS, and Flutter web are not supported by the Flutter bridge UI
-action API.
+UI automation is currently scoped to iOS Simulator and macOS desktop backends on macOS hosts.
+Android, Linux desktop, Windows desktop, physical iOS, Flutter web, and non-macOS hosts are not
+supported by the Flutter bridge UI action API.
+
+iOS Simulator supports:
+
+- `flutterctl inspect` and `flutterctl wait` with `--key` and `--text` selectors through the
+  Flutter VM-service inspector.
+- `flutterctl tap --x <x> --y <y>` in `simulator-window-points`, relative to
+  `status.ui_automation.screen.simulator_window`.
+- `flutterctl tap --key <key>` and `flutterctl tap --text <text>` through Flutter inspector
+  geometry plus a sampled image match from native simulator pixels to the visible host Simulator
+  window.
+- `flutterctl type "text"` into the currently focused control. The bridge sends host keystrokes to
+  the Simulator, similar to the macOS desktop typing backend.
+- `flutterctl press <key>` for focused key input through the host Simulator process.
+- `flutterctl scroll --move <top|up|down>` as a page-key approximation through host key dispatch.
+  `top` sends `home`, `up` sends `pageup`, and `down` sends `pagedown`. This is not pixel-accurate
+  scrolling.
+- `flutterctl ios-map` as a read-only diagnostic for native screenshot size, Simulator window
+  bounds, host-window screenshot dimensions, sampled device-content matching, host Simulator
+  Accessibility frames when available, Flutter inspector root size, and coordinate estimates.
+
+When multiple iOS Simulators are booted, launch or attach with an explicit device id. The bridge
+uses that selected id for native screenshot probes and prefers the visible Simulator window whose
+title matches the selected Flutter device name.
+
+iOS inspector rectangles are reported in `flutter-logical-points`; selector taps map them to
+`simulator-window-points` at action time. Typing requires the intended text field to already be
+focused. After tapping a text field, wait briefly before typing so the iOS keyboard and focused
+input are ready. The keystroke backend avoids the iOS paste permission prompt, but may be less
+suitable for long text or unusual characters than a future paste-based implementation.
+
+The current scroll research points to XCTest/XCUI as Apple's supported gesture automation surface:
+`XCUICoordinate` supports swipes, coordinate scrolling, and press-then-drag gestures. Apple's
+`simctl` documentation still points users to `simctl io` for screenshots and video, and the bridge's
+fixed host probes have not found a direct `simctl` scroll or gesture primitive. The current
+`flutterctl scroll` implementation intentionally uses the simpler Simulator page-key behavior; a
+future precise scroll backend should be evaluated as either a minimal XCTest/XCUI helper or a
+constrained host-window drag implementation.
 
 ## Screenshots
 
 The bridge supports screenshots for native/device targets when a Flutter app is running under the
-bridge. On macOS desktop, screenshots capture only the Flutter app window. If the app window cannot
+bridge. On iOS Simulator and other mobile targets, screenshots use Flutter's device screenshot
+support. On macOS desktop, screenshots capture only the Flutter app window. If the app window cannot
 be found or macOS Screen Recording permission blocks capture, the request fails instead of falling
 back to a full-screen screenshot.
 
@@ -176,6 +241,7 @@ Common issues:
 
 - Cannot reach Flutter bridge: start it with `workcell start-flutter-bridge` or
   `workcell --with-flutter`.
+- Bridge is reachable but stale after code changes: run `flutterctl restart-bridge`.
 - Missing bridge token: when using `--with-flutter`, the token is auto-generated. For a separate
   bridge, start it from the workspace so `.workcell/flutter-config.json` is available.
 - Concurrent sandbox needs a bridge: start a separate bridge on a different port.
