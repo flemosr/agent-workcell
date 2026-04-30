@@ -107,15 +107,15 @@ flutterctl logs                       # Recent Flutter logs
 flutterctl screenshot -o <path>       # Screenshot; use .workcell/artifacts/
 flutterctl ios-map                    # Diagnose iOS coordinate mapping when applicable
 flutterctl inspect                    # Discover visible UI state when supported
-flutterctl inspect --key <key>        # Inspect a keyed widget when supported
+flutterctl inspect --key <key>        # Inspect an automation id when supported
 flutterctl inspect --text <text>      # Inspect resolvable visible text when supported
-flutterctl tap --key <key>            # Tap keyed widget when supported
+flutterctl tap --key <key>            # Tap an automation id when supported
 flutterctl tap --text "Sign in"       # Tap visible text when supported
 flutterctl tap --x 150 --y 300        # Coordinate tap when supported
 flutterctl type "hello"               # Type into focused input when supported
 flutterctl press enter                # Press a named key when supported
 flutterctl scroll --move down         # Scroll when supported
-flutterctl wait --key <key>           # Wait for keyed widget when supported
+flutterctl wait --key <key>           # Wait for an automation id when supported
 flutterctl wait --text "Ready"        # Wait for visible text when supported
 ```
 
@@ -214,9 +214,9 @@ Do not assume coordinate taps, selectors, scrolling, typing, or waits are availa
 
 Prefer this order for agent-driven interaction:
 
-1. `flutterctl inspect` to discover visible text, widget keys, widget types, and rectangles.
+1. `flutterctl inspect` to discover visible text, automation ids, widget types, and rectangles.
 2. `flutterctl inspect --key <key>` when a stable automation identifier should exist.
-3. `flutterctl tap --key` or `flutterctl wait --key` when key selectors are supported.
+3. `flutterctl tap --key` or `flutterctl wait --key` when automation id selectors are supported.
 4. Text selectors when inspect can resolve visible text to a rectangle.
 5. Coordinate taps only when selectors are unavailable and coordinates are known.
 6. Screenshots when visual layout is ambiguous or after UI changes need visual validation.
@@ -224,6 +224,8 @@ Prefer this order for agent-driven interaction:
 Stable `Semantics.identifier` values make automation reliable. Prefer identifiers on important controls and containers such as `login_button`, `email_field`, `settings_tab`, `todo_list`, and repeated row actions like `delete_item_0`.
 
 When building or modifying Flutter UI, add `Semantics(identifier: '<automation_id>', child: ...)` to every element that should be selectable by `flutterctl inspect --key`, `wait --key`, or `tap --key`. A `ValueKey` alone is useful for Flutter widget tests, but it is not the bridge automation selector contract.
+
+For macOS desktop automation, make sure Flutter is generating semantics. Desktop Flutter may skip semantics until assistive technology requests it; automation-ready debug builds can force generation after `WidgetsFlutterBinding.ensureInitialized()` with a retained `SemanticsBinding.instance.ensureSemantics()` handle.
 
 Text selectors are not arbitrary Flutter selectors. They work only for elements whose bounds can be resolved through inspect, accessibility, or selected tooltip labels. Key selectors use Flutter semantics identifiers.
 
@@ -252,7 +254,8 @@ On macOS desktop:
 
 - Coordinate taps use `app-window-points`; `x=0,y=0` is the top-left of the Flutter app window reported in `status.ui_automation.screen`.
 - `scroll` approximates scrolling with keyboard dispatch. `--move top` sends `home`, `--move up` sends `pageup`, and `--move down` sends `pagedown`; it is not pixel-accurate.
-- Inspect, wait, and selector taps use host Accessibility plus Flutter inspector previews, keys, and selected tooltip labels when a VM service is available.
+- Inspect, wait, and `tap --key` use Flutter VM-service semantics identifiers. If `inspect --key` returns no matches and the semantics dump says semantics are not generated, enable semantics in the app or turn on a host assistive technology before relying on key selectors.
+- Text selectors use host Accessibility plus Flutter inspector previews and selected tooltip labels when a VM service is available.
 
 ## Troubleshooting
 

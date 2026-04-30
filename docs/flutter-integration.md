@@ -157,6 +157,10 @@ examples: `login_button`, `email_field`, `settings_tab`, `todo_list`, and `delet
 When building or modifying Flutter UI, add a `Semantics.identifier` to every element that should be
 selectable by automation. A `ValueKey` alone is useful for Flutter widget tests, but it is not the
 automation selector contract for the bridge.
+For macOS desktop automation, ensure the app actually generates a semantics tree. Flutter desktop
+may skip semantics until assistive technology requests it; automation-ready debug builds can force
+generation after `WidgetsFlutterBinding.ensureInitialized()` with a retained
+`SemanticsBinding.instance.ensureSemantics()` handle.
 
 UI automation is currently scoped to iOS Simulator and macOS desktop backends on macOS hosts.
 Android, Linux desktop, Windows desktop, physical iOS, Flutter web, and non-macOS hosts are not
@@ -193,6 +197,13 @@ overlays than inspector layout rectangles. Typing requires the intended text fie
 focused. After tapping a text field, wait briefly before typing so the iOS keyboard and focused
 input are ready. The keystroke backend avoids the iOS paste permission prompt, but may be less
 suitable for long text or unusual characters than a future paste-based implementation.
+
+On macOS desktop, `flutterctl inspect --key`, `wait --key`, and `tap --key` also use Flutter
+VM-service semantics identifiers. Key selector taps use the matched semantics rect center in
+`app-window-points`. Text selectors continue to use host Accessibility plus Flutter inspector text
+and selected tooltip labels when a VM service is available. If `inspect --key` returns no matches
+and the semantics dump says semantics are not generated, enable semantics in the app or turn on a
+host assistive technology before relying on key selectors.
 
 The current scroll research points to XCTest/XCUI as Apple's supported gesture automation surface:
 `XCUICoordinate` supports swipes, coordinate scrolling, and press-then-drag gestures. Apple's
