@@ -13,6 +13,9 @@ For Flutter web, use [Chrome integration](chrome-integration.md) instead.
 
 A Flutter SDK is bundled with the container image. Agents can run tests, static analysis,
 formatting, and package management against any workspace project with no host setup required.
+The container puts `flutter` and `dart` on `PATH` through workcell wrappers that delegate to the
+bundled SDK under `~/persist/.flutter-sdk`. Those wrappers automatically repair host-generated
+`.dart_tool/package_config.json` metadata before local SDK commands.
 The rest of this document covers the host bridge for native/device targets.
 
 ## Prerequisites
@@ -135,6 +138,11 @@ bridge state and `flutterctl logs` shows the underlying host `flutter run` outpu
 frame rendering are complete. Before screenshots or UI automation, wait briefly or poll for the
 expected UI with `flutterctl wait`.
 
+The bridge checks `.dart_tool/package_config.json` before `launch`, `attach`, `hot-reload`, and
+`hot-restart`. If package roots point to container-only locations or the metadata is missing, it
+runs host-side `flutter pub get` first. This allows agents to alternate between in-container SDK
+commands and host bridge runs without manually deleting `.dart_tool` or `build`.
+
 ## UI Automation
 
 The bridge currently supports host Flutter workflows from macOS hosts only. UI automation is scoped
@@ -157,9 +165,10 @@ iOS Simulator supports:
   Flutter VM-service inspector.
 - `flutterctl tap --x <x> --y <y>` in `simulator-window-points`, relative to
   `status.ui_automation.screen.simulator_window`.
-- `flutterctl tap --key <key>` and `flutterctl tap --text <text>` through Flutter inspector
-  geometry plus a sampled image match from native simulator pixels to the visible host Simulator
-  window.
+- `flutterctl tap --key <key>` through Flutter inspector selectors, defaulting to the center of
+  the matched widget rectangle after mapping it into the visible host Simulator window.
+- `flutterctl tap --text <text>` through Flutter inspector selectors, with widget screenshot
+  matching when available and the same mapped rectangle-center fallback.
 - `flutterctl type "text"` into the currently focused control. The bridge sends host keystrokes to
   the Simulator, similar to the macOS desktop typing backend.
 - `flutterctl press <key>` for focused key input through the host Simulator process.
@@ -175,10 +184,12 @@ uses that selected id for native screenshot probes and prefers the visible Simul
 title matches the selected Flutter device name.
 
 iOS inspector rectangles are reported in `flutter-logical-points`; selector taps map them to
-`simulator-window-points` at action time. Typing requires the intended text field to already be
-focused. After tapping a text field, wait briefly before typing so the iOS keyboard and focused
-input are ready. The keystroke backend avoids the iOS paste permission prompt, but may be less
-suitable for long text or unusual characters than a future paste-based implementation.
+`simulator-window-points` at action time. Key selector taps use the mapped rectangle center, which
+is usually the right target for circular controls such as FABs. Typing requires the intended text
+field to already be focused. After tapping a text field, wait briefly before typing so the iOS
+keyboard and focused input are ready. The keystroke backend avoids the iOS paste permission prompt,
+but may be less suitable for long text or unusual characters than a future paste-based
+implementation.
 
 The current scroll research points to XCTest/XCUI as Apple's supported gesture automation surface:
 `XCUICoordinate` supports swipes, coordinate scrolling, and press-then-drag gestures. Apple's
@@ -249,4 +260,6 @@ Common issues:
   the existing process.
 - Flutter subprocess fails to start: ensure the project compiles and the target device is
   available. Run `flutter doctor -v` on the host.
-- `flutter: command not found`: set `FLUTTER_PATH` in `config.sh`.
+- Host bridge `flutter: command not found`: set host `FLUTTER_PATH` in `config.sh`.
+- Container `flutter: command not found`: restart with an updated workcell image; the entrypoint
+  re-asserts `~/persist/.flutter-sdk/bin` and workcell wrappers on `PATH`.

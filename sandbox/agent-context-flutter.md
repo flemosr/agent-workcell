@@ -44,7 +44,10 @@ These commands run directly in the container without the Flutter bridge. Run the
 against the workspace project (`pubspec.yaml` in scope) before and after editing
 Dart source.
 
-The `dart` binary is available alongside `flutter`. Both are on `PATH`.
+The `dart` binary is available alongside `flutter`. Both are on `PATH`. The
+container exposes workcell wrappers for `flutter` and `dart`; they repair
+host-generated `.dart_tool/package_config.json` metadata with `flutter pub get`
+before delegating to the real SDK binaries when needed.
 
 Downloaded pub packages are cached in `~/.pub-cache/` which persists in the Docker
 volume across container restarts.
@@ -187,6 +190,12 @@ return after the command is written. They do not wait for compilation or frame r
 Before taking screenshots or running UI automation, wait briefly or poll for the expected UI state
 with `flutterctl wait`.
 
+The host bridge validates `.dart_tool/package_config.json` before `launch`,
+`attach`, `hot-reload`, and `hot-restart`. If the file contains container-only
+paths, the bridge runs host-side `flutter pub get` first so host Flutter uses
+host-valid package metadata. Conversely, container `flutter` and `dart` wrappers
+repair host-only metadata before local format, analyze, test, and pub workflows.
+
 On macOS desktop, screenshots are app-window-only. If the bridge cannot identify the Flutter window or host privacy permissions block capture, the command fails instead of capturing the full screen.
 
 Screenshot support is reported by the top-level `status.screenshot` object, not by
@@ -226,7 +235,8 @@ On iOS Simulator:
 - `tap --x --y` uses `simulator-window-points`; `x=0,y=0` is the top-left of the visible host Simulator window reported in `status.ui_automation.screen.simulator_window`.
 - Use `flutterctl ios-map` to inspect the current mapping estimate before converting inspected rectangles into coordinate taps.
 - Coordinate taps require the host Simulator window to be visible and unminimized. If `status.ui_automation.screen` reports an error, coordinate taps should be treated as unavailable.
-- `tap --key` and `tap --text` use Flutter inspector rectangles plus a sampled image match between the native simulator screenshot and host Simulator window capture. They require a visible Simulator window and host `screencapture`.
+- `tap --key` uses Flutter inspector selectors and defaults to the center of the matched widget rectangle after mapping it into the visible host Simulator window.
+- `tap --text` uses Flutter inspector selectors, widget screenshot matching when available, and the same mapped rectangle-center fallback.
 - `type` sends host keystrokes to the currently focused control in the Simulator. Focus a text field first; the command does not choose a target by selector.
 - After tapping a text field on iOS, wait briefly before typing so the keyboard and focused input are ready.
 - The keystroke typing backend avoids the iOS paste permission prompt, but may be less suitable for long text or unusual characters than a future paste-based implementation.
