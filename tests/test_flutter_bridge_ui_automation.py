@@ -787,7 +787,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
             "root_size": {"width": 402, "height": 874},
             "elements": [
                 {
-                    "key": "new_item_field",
+                    "key": "new_item_button",
                     "rect": {"x": 16, "y": 134, "w": 282, "h": 56},
                     "coordinate_space": "flutter-logical-points",
                 }
@@ -1717,7 +1717,7 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "root_size": {"width": 402, "height": 874},
             "elements": [
                 {
-                    "key": "new_item_field",
+                    "key": "new_item_button",
                     "type": "flutter_widget",
                     "enabled": True,
                     "rect": {
@@ -1753,11 +1753,238 @@ class MacosBackendDispatchTests(unittest.TestCase):
             "_ios_host_window_content_match_probe",
             return_value=content_match,
         ), mock.patch.object(
+            bridge_ios, "_run_simctl_screenshot_image"
+        ) as screenshot_image, mock.patch.object(
+            bridge_ios, "_flutter_inspector_widget_screenshot"
+        ) as widget_screenshot, mock.patch.object(
+            bridge_ios, "_image_template_match"
+        ) as template_match, mock.patch.object(
             bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
         ) as tap:
             result = bridge._ios_tap_selector(
                 "key",
-                "new_item_field",
+                "new_item_button",
+                vm_service_url="http://127.0.0.1:123/abc=/",
+                device_id="8F0F",
+                device_name="iPhone 17",
+            )
+
+        screenshot_image.assert_not_called()
+        widget_screenshot.assert_not_called()
+        template_match.assert_not_called()
+        tap.assert_called_once()
+        x, y = tap.call_args.args[:2]
+        self.assertAlmostEqual(x, 175.0062236738442, places=3)
+        self.assertAlmostEqual(y, 221.62929061784897, places=3)
+        self.assertEqual(result["action"], "tap")
+        self.assertEqual(result["key"], "new_item_button")
+        self.assertEqual(result["method"], "flutter-inspector-rect-center")
+        self.assertEqual(result["inspector_snapshot"], "live")
+
+    def test_ios_tap_key_retries_poor_content_match(self):
+        snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 402, "height": 874},
+            "elements": [
+                {
+                    "key": "new_task_fab",
+                    "type": "flutter_widget",
+                    "enabled": True,
+                    "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
+                }
+            ],
+        }
+        poor_match = {
+            "score_mean_abs_rgb": 15.65,
+            "best_match": {
+                "simulator_window_rect_estimate": {
+                    "x": 32,
+                    "y": 154,
+                    "w": 350,
+                    "h": 760,
+                }
+            },
+        }
+        good_match = {
+            "score_mean_abs_rgb": 4.9,
+            "best_match": {
+                "simulator_window_rect_estimate": {
+                    "x": 28,
+                    "y": 64,
+                    "w": 401,
+                    "h": 872,
+                }
+            },
+        }
+        small_match = {
+            "score_mean_abs_rgb": 1.0,
+            "best_match": {
+                "simulator_window_rect_estimate": {
+                    "x": 32,
+                    "y": 154,
+                    "w": 350,
+                    "h": 760,
+                }
+            },
+        }
+        with mock.patch.object(
+            bridge_ios,
+            "_flutter_inspector_snapshot",
+            return_value=(snapshot, None),
+        ), mock.patch.object(
+            bridge.shutil, "which", return_value="/usr/bin/xcrun"
+        ), mock.patch.object(
+            bridge_ios, "_ios_first_simulator_window",
+            return_value=({"bounds": {"width": 456, "height": 972}}, None),
+        ), mock.patch.object(
+            bridge_ios,
+            "_ios_host_window_content_match_probe",
+            side_effect=[poor_match, small_match, good_match],
+        ) as content_match, mock.patch.object(
+            bridge.time, "sleep"
+        ) as sleep, mock.patch.object(
+            bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
+        ) as tap:
+            result = bridge._ios_tap_selector(
+                "key",
+                "new_task_fab",
+                vm_service_url="http://127.0.0.1:123/abc=/",
+                device_id="8F0F",
+                device_name="iPhone 17",
+            )
+
+        self.assertEqual(content_match.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+        sleep.assert_called_with(0.2)
+        x, y = tap.call_args.args[:2]
+        self.assertAlmostEqual(x, 376.1318407960199, places=3)
+        self.assertAlmostEqual(y, 847.2036613272311, places=3)
+        self.assertEqual(result["match_score_mean_abs_rgb"], 4.9)
+        self.assertEqual(result["method"], "flutter-inspector-rect-center")
+
+    def test_ios_tap_key_falls_back_to_full_window_for_implausible_match(self):
+        snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 402, "height": 874},
+            "elements": [
+                {
+                    "key": "new_task_fab",
+                    "type": "flutter_widget",
+                    "enabled": True,
+                    "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
+                }
+            ],
+        }
+        small_match = {
+            "score_mean_abs_rgb": 15.65,
+            "best_match": {
+                "simulator_window_rect_estimate": {
+                    "x": 32,
+                    "y": 154,
+                    "w": 350,
+                    "h": 760,
+                }
+            },
+        }
+        with mock.patch.object(
+            bridge_ios,
+            "_flutter_inspector_snapshot",
+            return_value=(snapshot, None),
+        ), mock.patch.object(
+            bridge.shutil, "which", return_value="/usr/bin/xcrun"
+        ), mock.patch.object(
+            bridge_ios, "_ios_first_simulator_window",
+            return_value=({"bounds": {"width": 456, "height": 972}}, None),
+        ), mock.patch.object(
+            bridge_ios,
+            "_ios_host_window_content_match_probe",
+            return_value=small_match,
+        ), mock.patch.object(
+            bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
+        ) as tap:
+            result = bridge._ios_tap_selector(
+                "key",
+                "new_task_fab",
+                vm_service_url="http://127.0.0.1:123/abc=/",
+                device_id="8F0F",
+                device_name="iPhone 17",
+            )
+
+        x, y = tap.call_args.args[:2]
+        self.assertAlmostEqual(x, 395.88059701492534, places=3)
+        self.assertAlmostEqual(y, 873.0205949656751, places=3)
+        self.assertEqual(
+            result["method"],
+            "flutter-inspector-rect-center-full-window-fallback",
+        )
+
+    def test_ios_tap_key_field_uses_widget_screenshot_match(self):
+        snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 50, "height": 100},
+            "isolate_id": "isolates/1",
+            "elements": [
+                {
+                    "key": "task_title_field",
+                    "type": "flutter_widget",
+                    "widget_type": "SynthTextField",
+                    "enabled": True,
+                    "value_id": "field-1",
+                    "rect": {"x": 2, "y": 8, "w": 4, "h": 2},
+                }
+            ],
+        }
+        native_pixels = bytearray([255] * 100 * 200 * 3)
+        for yy in range(20):
+            for xx in range(40):
+                i = ((120 + yy) * 100 + 30 + xx) * 3
+                native_pixels[i:i + 3] = bytes((12, 90, 180))
+        native = {
+            "width": 100,
+            "height": 200,
+            "pixels": bytes(native_pixels),
+        }
+        widget = {
+            "width": 40,
+            "height": 20,
+            "pixels": bytes((12, 90, 180) * 40 * 20),
+        }
+        content_match = {
+            "score_mean_abs_rgb": 1.2,
+            "best_match": {
+                "simulator_window_rect_estimate": {
+                    "x": 0,
+                    "y": 0,
+                    "w": 50,
+                    "h": 100,
+                }
+            },
+        }
+        with mock.patch.object(
+            bridge_ios,
+            "_flutter_inspector_snapshot",
+            return_value=(snapshot, None),
+        ), mock.patch.object(
+            bridge.shutil, "which", return_value="/usr/bin/xcrun"
+        ), mock.patch.object(
+            bridge_ios, "_ios_first_simulator_window",
+            return_value=({"bounds": {"width": 60, "height": 120}}, None),
+        ), mock.patch.object(
+            bridge_ios,
+            "_ios_host_window_content_match_probe",
+            return_value=content_match,
+        ), mock.patch.object(
+            bridge_ios, "_run_simctl_screenshot_image",
+            return_value=(native, None),
+        ), mock.patch.object(
+            bridge_ios, "_flutter_inspector_widget_screenshot",
+            return_value=(widget, None),
+        ), mock.patch.object(
+            bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
+        ) as tap:
+            result = bridge._ios_tap_selector(
+                "key",
+                "task_title_field",
                 vm_service_url="http://127.0.0.1:123/abc=/",
                 device_id="8F0F",
                 device_name="iPhone 17",
@@ -1765,14 +1992,172 @@ class MacosBackendDispatchTests(unittest.TestCase):
 
         tap.assert_called_once()
         x, y = tap.call_args.args[:2]
-        self.assertAlmostEqual(x, 175.0062236738442, places=3)
-        self.assertAlmostEqual(y, 221.62929061784897, places=3)
-        self.assertEqual(result["action"], "tap")
-        self.assertEqual(result["key"], "new_item_field")
+        self.assertGreaterEqual(x, 24)
+        self.assertLessEqual(x, 26)
+        self.assertGreaterEqual(y, 64)
+        self.assertLessEqual(y, 66)
         self.assertEqual(
-            result["method"], "flutter-inspector-sampled-image-match"
+            result["method"], "flutter-inspector-widget-screenshot-match"
         )
-        self.assertEqual(result["inspector_snapshot"], "live")
+        self.assertEqual(result["key"], "task_title_field")
+
+    def test_ios_tap_key_field_rejects_poor_widget_screenshot_match(self):
+        snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 402, "height": 874},
+            "isolate_id": "isolates/1",
+            "elements": [
+                {
+                    "key": "task_title_field",
+                    "type": "flutter_widget",
+                    "widget_type": "SynthTextField",
+                    "enabled": True,
+                    "value_id": "field-1",
+                    "rect": {"x": 22, "y": 89, "w": 358, "h": 56},
+                }
+            ],
+        }
+        content_match = {
+            "score_mean_abs_rgb": 4.9,
+            "best_match": {
+                "simulator_window_rect_estimate": {
+                    "x": 28,
+                    "y": 62,
+                    "w": 401,
+                    "h": 872,
+                }
+            },
+        }
+        poor_element_match = {
+            "x": 75,
+            "y": 2299,
+            "w": 1074,
+            "h": 168,
+            "score_mean_abs_rgb": 164.97,
+            "coordinate_space": "native-device-pixels",
+        }
+        with mock.patch.object(
+            bridge_ios,
+            "_flutter_inspector_snapshot",
+            return_value=(snapshot, None),
+        ), mock.patch.object(
+            bridge.shutil, "which", return_value="/usr/bin/xcrun"
+        ), mock.patch.object(
+            bridge_ios, "_ios_first_simulator_window",
+            return_value=({"bounds": {"width": 456, "height": 972}}, None),
+        ), mock.patch.object(
+            bridge_ios,
+            "_ios_host_window_content_match_probe",
+            return_value=content_match,
+        ), mock.patch.object(
+            bridge_ios, "_run_simctl_screenshot_image",
+            return_value=({"width": 1206, "height": 2622, "pixels": b""}, None),
+        ), mock.patch.object(
+            bridge_ios, "_flutter_inspector_widget_screenshot",
+            return_value=({"width": 1074, "height": 168, "pixels": b""}, None),
+        ), mock.patch.object(
+            bridge_ios,
+            "_image_template_match",
+            return_value=poor_element_match,
+        ), mock.patch.object(
+            bridge_ios, "_ios_tap_coordinates"
+        ) as tap:
+            result = bridge._ios_tap_selector(
+                "key",
+                "task_title_field",
+                vm_service_url="http://127.0.0.1:123/abc=/",
+                device_id="8F0F",
+                device_name="iPhone 17",
+            )
+
+        tap.assert_not_called()
+        self.assertEqual(result["code"], "BACKEND_ERROR")
+        self.assertIn("widget screenshot", result["error"])
+
+    def test_ios_tap_text_selector_can_use_widget_screenshot_match(self):
+        snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 50, "height": 100},
+            "isolate_id": "isolates/1",
+            "elements": [
+                {
+                    "text": "Task title",
+                    "type": "flutter_widget",
+                    "enabled": True,
+                    "value_id": "field-1",
+                    "rect": {"x": 2, "y": 8, "w": 4, "h": 2},
+                }
+            ],
+        }
+        native_pixels = bytearray([255] * 100 * 200 * 3)
+        for yy in range(20):
+            for xx in range(40):
+                i = ((120 + yy) * 100 + 30 + xx) * 3
+                native_pixels[i:i + 3] = bytes((12, 90, 180))
+        native = {
+            "width": 100,
+            "height": 200,
+            "pixels": bytes(native_pixels),
+        }
+        widget = {
+            "width": 40,
+            "height": 20,
+            "pixels": bytes((12, 90, 180) * 40 * 20),
+        }
+        content_match = {
+            "score_mean_abs_rgb": 1.2,
+            "best_match": {
+                "simulator_window_rect_estimate": {
+                    "x": 0,
+                    "y": 0,
+                    "w": 50,
+                    "h": 100,
+                }
+            },
+        }
+        with mock.patch.object(
+            bridge_ios,
+            "_flutter_inspector_snapshot",
+            return_value=(snapshot, None),
+        ), mock.patch.object(
+            bridge.shutil, "which", return_value="/usr/bin/xcrun"
+        ), mock.patch.object(
+            bridge_ios, "_ios_first_simulator_window",
+            return_value=({"bounds": {"width": 60, "height": 120}}, None),
+        ), mock.patch.object(
+            bridge_ios,
+            "_ios_host_window_content_match_probe",
+            return_value=content_match,
+        ), mock.patch.object(
+            bridge_ios, "_run_simctl_screenshot_image",
+            return_value=(native, None),
+        ), mock.patch.object(
+            bridge_ios, "_flutter_inspector_widget_screenshot",
+            return_value=(widget, None),
+        ), mock.patch.object(
+            bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
+        ) as tap:
+            result = bridge._ios_tap_selector(
+                "text",
+                "Task title",
+                vm_service_url="http://127.0.0.1:123/abc=/",
+                device_id="8F0F",
+                device_name="iPhone 17",
+            )
+
+        tap.assert_called_once()
+        x, y = tap.call_args.args[:2]
+        self.assertGreaterEqual(x, 24)
+        self.assertLessEqual(x, 26)
+        self.assertGreaterEqual(y, 64)
+        self.assertLessEqual(y, 66)
+        self.assertEqual(
+            result["method"], "flutter-inspector-widget-screenshot-match"
+        )
+        self.assertEqual(
+            result["element_image_match"]["coordinate_space"],
+            "native-device-pixels",
+        )
 
     def test_ios_tap_selector_uses_recent_cached_snapshot_after_timeout(self):
         cache_key = ("http://127.0.0.1:123/abc=/", "8F0F")

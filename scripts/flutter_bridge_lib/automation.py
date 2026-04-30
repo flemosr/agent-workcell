@@ -32,6 +32,7 @@ Endpoints:
 """
 
 import argparse
+import base64
 import ctypes
 import ctypes.util
 import json
@@ -51,7 +52,7 @@ import zlib
 from collections import deque
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
-from urllib.parse import urlencode, urlparse
+from urllib.parse import unquote, urlencode, urlparse
 from urllib.request import urlopen
 
 
@@ -722,6 +723,58 @@ def _flutter_inspector_layout_tree(
     return response.get("result"), None
 
 
+def _flutter_inspector_widget_screenshot(
+    vm_service_url, isolate_id, value_id, width, height, pixel_ratio
+):
+    params = {
+        "isolateId": isolate_id,
+        "id": value_id,
+        "width": str(max(1, int(math.ceil(width)))),
+        "height": str(max(1, int(math.ceil(height)))),
+        "margin": "0",
+        "maxPixelRatio": str(max(1, pixel_ratio)),
+    }
+    response, error = _vm_service_get(
+        vm_service_url,
+        "ext.flutter.inspector.screenshot",
+        params,
+        timeout=10,
+    )
+    if error:
+        return None, error
+    encoded = response.get("result") if isinstance(response, dict) else None
+    if not encoded:
+        return None, bridge_error(
+            "Flutter inspector did not return a widget screenshot",
+            "BACKEND_ERROR",
+        )
+    try:
+        data = base64.b64decode(encoded)
+    except (TypeError, ValueError) as e:
+        return None, bridge_error(
+            f"Flutter inspector returned invalid screenshot data: {e}",
+            "BACKEND_ERROR",
+        )
+    fd, path = tempfile.mkstemp(
+        suffix=".png", prefix="flutter_widget_screenshot_"
+    )
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        image, decode_error = _png_decode_rgb(path)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    if decode_error:
+        return None, bridge_error(
+            f"Failed to decode Flutter widget screenshot: {decode_error}",
+            "BACKEND_ERROR",
+        )
+    return image, None
+
+
 def _flutter_debug_dump_app(vm_service_url, isolate_id):
     params = {"isolateId": isolate_id}
     response, error = _vm_service_get(
@@ -1130,6 +1183,8 @@ def _flutter_inspector_snapshot(
     snapshot = {
         "elements": elements,
         "coordinate_space": coordinate_space,
+        "isolate_id": isolate_id,
+        "group_name": group_name,
     }
     if root_size:
         snapshot["root_size"] = {
@@ -1338,6 +1393,11 @@ def _ios_tap_selector(selector, value, vm_service_url=None, device_id=None,
             "BACKEND_ERROR",
             **{selector: value},
         )
+    prefer_image_match = (
+        selector != "key"
+        or _ios_key_selector_prefers_image_match(element, root_size)
+    )
+    require_image_match = selector == "key" and prefer_image_match
 
     xcrun = shutil.which("xcrun")
     if not xcrun:
@@ -1355,8 +1415,8 @@ def _ios_tap_selector(selector, value, vm_service_url=None, device_id=None,
             **{selector: value},
         )
 
-    content_match = _ios_host_window_content_match_probe(
-        xcrun, device_id=device_id, window=window
+    content_match = _ios_host_window_content_match_probe_best_effort(
+        xcrun, device_id=device_id, window=window, root_size=root_size
     )
     matched_rect = _matched_content_rect(content_match)
     if not matched_rect:
@@ -1368,27 +1428,137 @@ def _ios_tap_selector(selector, value, vm_service_url=None, device_id=None,
         )
 
     center = _rect_center(element["rect"])
-    scale_x = float(matched_rect["w"]) / root_size["width"]
-    scale_y = float(matched_rect["h"]) / root_size["height"]
-    x = float(matched_rect["x"]) + center["x"] * scale_x
-    y = float(matched_rect["y"]) + center["y"] * scale_y
+    tap_method = "flutter-inspector-rect-center"
+    element_match = None
+    element_match_error = None
+    if (
+        not prefer_image_match
+        and not _content_match_plausible_for_root(content_match, root_size)
+    ):
+        bounds = window.get("bounds") or {}
+        try:
+            scale_x = float(bounds["width"]) / root_size["width"]
+            scale_y = float(bounds["height"]) / root_size["height"]
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            scale_x = float(matched_rect["w"]) / root_size["width"]
+            scale_y = float(matched_rect["h"]) / root_size["height"]
+            x = float(matched_rect["x"]) + center["x"] * scale_x
+            y = float(matched_rect["y"]) + center["y"] * scale_y
+        else:
+            x = center["x"] * scale_x
+            y = center["y"] * scale_y
+            tap_method = "flutter-inspector-rect-center-full-window-fallback"
+    else:
+        scale_x = float(matched_rect["w"]) / root_size["width"]
+        scale_y = float(matched_rect["h"]) / root_size["height"]
+        x = float(matched_rect["x"]) + center["x"] * scale_x
+        y = float(matched_rect["y"]) + center["y"] * scale_y
+
+    if prefer_image_match:
+        native_image, native_error = _run_simctl_screenshot_image(
+            xcrun, device_id=device_id
+        )
+        if native_error:
+            element_match_error = native_error
+        else:
+            native_scale_x = native_image["width"] / float(root_size["width"])
+            native_scale_y = native_image["height"] / float(root_size["height"])
+            pixel_ratio = max(1, min(4, max(native_scale_x, native_scale_y)))
+            if not inspector_snapshot.get("isolate_id"):
+                element_match_error = bridge_error(
+                    "Flutter inspector isolate id is unavailable",
+                    "BACKEND_ERROR",
+                )
+            elif not element.get("value_id"):
+                element_match_error = bridge_error(
+                    "Flutter inspector element id is unavailable",
+                    "BACKEND_ERROR",
+                )
+            else:
+                widget_image, widget_error = _flutter_inspector_widget_screenshot(
+                    vm_service_url,
+                    inspector_snapshot.get("isolate_id"),
+                    element.get("value_id"),
+                    float(element["rect"]["w"]) * pixel_ratio,
+                    float(element["rect"]["h"]) * pixel_ratio,
+                    pixel_ratio,
+                )
+                if widget_error:
+                    element_match_error = widget_error
+                else:
+                    element_match = _image_template_match(
+                        native_image, widget_image, step=10
+                    )
+                    if element_match:
+                        match_score = _content_match_score(element_match)
+                        if match_score is not None and match_score > 35:
+                            element_match_error = bridge_error(
+                                "Widget screenshot match score is too high",
+                                "BACKEND_ERROR",
+                            )
+                            element_match = None
+                        else:
+                            native_center_x = (
+                                element_match["x"] + element_match["w"] / 2
+                            )
+                            native_center_y = (
+                                element_match["y"] + element_match["h"] / 2
+                            )
+                            x = (
+                                float(matched_rect["x"]) +
+                                native_center_x * float(matched_rect["w"]) /
+                                native_image["width"]
+                            )
+                            y = (
+                                float(matched_rect["y"]) +
+                                native_center_y * float(matched_rect["h"]) /
+                                native_image["height"]
+                            )
+                            tap_method = (
+                                "flutter-inspector-widget-screenshot-match"
+                            )
+                    else:
+                        element_match_error = bridge_error(
+                            "Failed to locate widget screenshot in native "
+                            "screenshot",
+                            "BACKEND_ERROR",
+                        )
+    if require_image_match and not element_match:
+        detail = {
+            "error": element_match_error.get("error"),
+            "code": element_match_error.get("code"),
+        } if element_match_error else None
+        return bridge_error(
+            "Failed to locate key selector with widget screenshot matching",
+            "BACKEND_ERROR",
+            key=value,
+            image_match_error=detail,
+        )
     tapped = _ios_tap_coordinates(x, y, device_name=device_name)
     if "error" in tapped:
         return tapped
 
-    return {
+    result = {
         "action": "tap",
         selector: value,
         "element_found": True,
         "x": _display_number(x),
         "y": _display_number(y),
         "coordinate_space": "simulator-window-points",
-        "method": "flutter-inspector-sampled-image-match",
+        "method": tap_method,
         "inspector_snapshot": snapshot_source,
         "match_score_mean_abs_rgb": content_match.get("score_mean_abs_rgb"),
         "content_rect": matched_rect,
         "element": element,
     }
+    if element_match:
+        result["element_image_match"] = element_match
+    elif element_match_error:
+        result["element_image_match_error"] = {
+            "error": element_match_error.get("error"),
+            "code": element_match_error.get("code"),
+        }
+    return result
 
 
 def _macos_wait(app_name, parsed, vm_service_url=None):
@@ -2459,7 +2629,10 @@ def _backend_action_capabilities(backend):
             "selectors": ["coordinates", "text", "key"],
             "coordinate_space": "simulator-window-points",
             "method": "coregraphics-simulator-window",
-            "selector_method": "flutter-inspector-sampled-image-match",
+            "selector_method": (
+                "key=flutter-inspector-rect-center,"
+                "text=flutter-inspector-widget-screenshot-match"
+            ),
         }
         actions["type"] = {
             "supported": True,
@@ -2747,6 +2920,97 @@ def _rgb_at(image, x, y):
     return pixels[i], pixels[i + 1], pixels[i + 2]
 
 
+def _sampled_template_score(needle, haystack, x, y, columns=12, rows=12):
+    if (
+        needle["width"] <= 0
+        or needle["height"] <= 0
+        or x < 0
+        or y < 0
+        or x + needle["width"] > haystack["width"]
+        or y + needle["height"] > haystack["height"]
+    ):
+        return math.inf
+    diff = 0
+    samples = 0
+    columns = max(1, min(columns, needle["width"]))
+    rows = max(1, min(rows, needle["height"]))
+    for row in range(rows):
+        v = (row + 0.5) / rows
+        needle_y = int(v * needle["height"])
+        haystack_y = y + needle_y
+        for column in range(columns):
+            u = (column + 0.5) / columns
+            needle_x = int(u * needle["width"])
+            haystack_x = x + needle_x
+            nr, ng, nb = _rgb_at(needle, needle_x, needle_y)
+            hr, hg, hb = _rgb_at(haystack, haystack_x, haystack_y)
+            diff += abs(nr - hr) + abs(ng - hg) + abs(nb - hb)
+            samples += 3
+    return diff / samples if samples else math.inf
+
+
+def _image_template_match(haystack, needle, region=None, step=8):
+    if needle["width"] > haystack["width"] or needle["height"] > haystack["height"]:
+        return None
+
+    if region is None:
+        region = {
+            "x": 0,
+            "y": 0,
+            "width": haystack["width"],
+            "height": haystack["height"],
+        }
+    region_x = max(0, int(round(region["x"])))
+    region_y = max(0, int(round(region["y"])))
+    region_w = min(
+        haystack["width"] - region_x, int(round(region["width"]))
+    )
+    region_h = min(
+        haystack["height"] - region_y, int(round(region["height"]))
+    )
+    max_x = region_x + region_w - needle["width"]
+    max_y = region_y + region_h - needle["height"]
+    if max_x < region_x or max_y < region_y:
+        return None
+
+    def scan(x_start, x_end, y_start, y_end, scan_step, samples):
+        best = None
+        for yy in range(y_start, y_end + 1, scan_step):
+            for xx in range(x_start, x_end + 1, scan_step):
+                score = _sampled_template_score(
+                    needle,
+                    haystack,
+                    xx,
+                    yy,
+                    columns=samples[0],
+                    rows=samples[1],
+                )
+                if not best or score < best["score"]:
+                    best = {"x": xx, "y": yy, "score": score}
+        return best
+
+    coarse = scan(region_x, max_x, region_y, max_y, max(1, step), (10, 10))
+    if not coarse:
+        return None
+    refine_radius = max(2, step * 2)
+    refined = scan(
+        max(region_x, coarse["x"] - refine_radius),
+        min(max_x, coarse["x"] + refine_radius),
+        max(region_y, coarse["y"] - refine_radius),
+        min(max_y, coarse["y"] + refine_radius),
+        1,
+        (16, 16),
+    ) or coarse
+    return {
+        "x": refined["x"],
+        "y": refined["y"],
+        "w": needle["width"],
+        "h": needle["height"],
+        "score_mean_abs_rgb": _display_number(refined["score"]),
+        "coordinate_space": "native-device-pixels",
+    }
+
+
 def _sampled_crop_score(native, host, crop, columns=12, rows=24):
     diff = 0
     samples = 0
@@ -2920,6 +3184,115 @@ def _matched_content_rect(content_match):
         return None
     rect = best.get("simulator_window_rect_estimate")
     return rect if isinstance(rect, dict) else None
+
+
+def _content_match_score(content_match):
+    try:
+        return float(content_match.get("score_mean_abs_rgb"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _content_match_plausible_for_root(content_match, root_size,
+                                      min_ratio=0.92, max_ratio=1.08):
+    rect = _matched_content_rect(content_match)
+    if not rect or not root_size:
+        return True
+    try:
+        width_ratio = float(rect["w"]) / float(root_size["width"])
+        height_ratio = float(rect["h"]) / float(root_size["height"])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return True
+    return (
+        min_ratio <= width_ratio <= max_ratio
+        and min_ratio <= height_ratio <= max_ratio
+    )
+
+
+def _content_match_rank(content_match, root_size):
+    score = _content_match_score(content_match)
+    score_rank = score if score is not None else math.inf
+    plausible = _content_match_plausible_for_root(content_match, root_size)
+    return (0 if plausible else 1, score_rank)
+
+
+def _ios_key_selector_prefers_image_match(element, root_size):
+    rect = element.get("rect") or {}
+    try:
+        rect_y = float(rect["y"])
+        root_h = float(root_size["height"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+    key = str(element.get("key") or "")
+    widget_type = str(
+        element.get("widget_type") or element.get("description") or ""
+    )
+    if "TextField" in widget_type or key.endswith("_field"):
+        return True
+    if "Button" in widget_type and rect_y < root_h * 0.5:
+        return True
+    return False
+
+
+def _ios_host_window_content_match_probe_best_effort(
+        xcrun, device_id, window, *, root_size=None, attempts=4,
+        acceptable_score=10):
+    best_match = None
+    best_rank = None
+    for attempt in range(max(1, attempts)):
+        content_match = _ios_host_window_content_match_probe(
+            xcrun, device_id=device_id, window=window
+        )
+        matched_rect = _matched_content_rect(content_match)
+        score = _content_match_score(content_match)
+        rank = _content_match_rank(content_match, root_size)
+        plausible = _content_match_plausible_for_root(content_match, root_size)
+        if matched_rect:
+            if best_match is None or best_rank is None or rank < best_rank:
+                best_match = content_match
+                best_rank = rank
+            if plausible and (score is None or score <= acceptable_score):
+                return content_match
+        elif best_match is None:
+            best_match = content_match
+
+        if attempt + 1 < attempts:
+            time.sleep(0.2)
+    return best_match or {}
+
+
+def _run_simctl_screenshot_image(xcrun, device_id=None):
+    fd, path = tempfile.mkstemp(
+        suffix=".png", prefix="simctl_element_match_"
+    )
+    os.close(fd)
+    try:
+        command = [xcrun, "simctl", "io"]
+        if device_id:
+            command.append(device_id)
+        else:
+            command.append("booted")
+        command.extend(["screenshot", path])
+        result = _run_probe_command(command, timeout=10)
+        if not result.get("ok"):
+            return None, bridge_error(
+                "simctl screenshot failed while matching widget screenshot",
+                "BACKEND_ERROR",
+                probe=result,
+            )
+        image, decode_error = _png_decode_rgb(path)
+        if decode_error:
+            return None, bridge_error(
+                f"Failed to decode simctl screenshot: {decode_error}",
+                "BACKEND_ERROR",
+            )
+        return image, None
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 def _ios_host_window_content_match_probe(xcrun, device_id, window):
@@ -3436,6 +3809,92 @@ def ui_action_unavailable_error(state, action, parsed, automation=None):
 
 # ---- Flutter Subprocess Management ----
 
+def _package_root_path(root_uri, package_config_dir):
+    if not isinstance(root_uri, str):
+        return None
+    parsed = urlparse(root_uri)
+    if parsed.scheme == "file":
+        return unquote(parsed.path)
+    if parsed.scheme:
+        return None
+    path = unquote(root_uri)
+    if os.path.isabs(path):
+        return path
+    return os.path.abspath(os.path.join(package_config_dir, path))
+
+
+def _package_config_invalid_roots(project_dir):
+    package_config = os.path.join(
+        project_dir, ".dart_tool", "package_config.json"
+    )
+    if not os.path.exists(package_config):
+        return ["missing package_config.json"]
+    try:
+        with open(package_config) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        return [f"unreadable package_config.json: {e}"]
+
+    package_config_dir = os.path.dirname(package_config)
+    invalid = []
+    for package in data.get("packages", []):
+        if not isinstance(package, dict):
+            continue
+        root = _package_root_path(package.get("rootUri"), package_config_dir)
+        if not root or not os.path.isabs(root):
+            continue
+        if not os.path.exists(root):
+            name = package.get("name") or "<unknown>"
+            invalid.append(f"{name}: {root}")
+            if len(invalid) >= 5:
+                break
+    return invalid
+
+
+def ensure_host_package_metadata(state, reason):
+    """Run host flutter pub get when package_config contains foreign paths."""
+    if not os.path.isfile(os.path.join(state.project_dir, "pubspec.yaml")):
+        return None
+
+    invalid = _package_config_invalid_roots(state.project_dir)
+    if not invalid:
+        return None
+
+    state.add_log(
+        "[BRIDGE] Regenerating host package metadata before "
+        f"{reason}; invalid roots: {'; '.join(invalid)}"
+    )
+    try:
+        result = subprocess.run(
+            [state.flutter_path, "pub", "get"],
+            cwd=state.project_dir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        state.add_log("[BRIDGE] flutter pub get timed out")
+        return {"error": "flutter pub get timed out while repairing package metadata"}
+    except OSError as e:
+        state.add_log(f"[BRIDGE] Failed to run flutter pub get: {e}")
+        return {"error": f"Failed to run flutter pub get: {e}"}
+
+    if result.stdout:
+        for line in result.stdout.splitlines():
+            state.add_log(f"[pub get] {line}")
+    if result.stderr:
+        for line in result.stderr.splitlines():
+            state.add_log(f"[pub get] {line}")
+    if result.returncode != 0:
+        return {
+            "error": (
+                "flutter pub get failed while repairing package metadata: "
+                f"{result.stderr.strip() or result.stdout.strip()}"
+            )
+        }
+    return None
+
+
 def _reader_thread(state, proc):
     """Read and buffer stdout from the Flutter subprocess."""
     vm_patterns = [
@@ -3523,6 +3982,14 @@ def start_subprocess(state, mode, device_id):
             return {
                 "error": f"Project directory not found: {state.project_dir}"
             }
+
+        metadata_error = ensure_host_package_metadata(state, mode)
+        if metadata_error:
+            state.status = "error"
+            state.subprocess_type = None
+            state.vm_service_url = None
+            state._status_message = metadata_error["error"]
+            return metadata_error
 
         cmd = [state.flutter_path, mode]
         if device_id:
@@ -3641,6 +4108,10 @@ def send_key_to_subprocess(state, key):
             return {"error": "No Flutter process running"}
 
         try:
+            reason = "hot reload" if key == "r" else "hot restart"
+            metadata_error = ensure_host_package_metadata(state, reason)
+            if metadata_error:
+                return metadata_error
             state.process.stdin.write(key + '\n')
             state.process.stdin.flush()
             state.add_log(f"[BRIDGE] Sent '{key}' to Flutter process")
