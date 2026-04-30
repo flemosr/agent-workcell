@@ -6,8 +6,8 @@ commits.
 
 Supports [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai/), and
 [Codex](https://github.com/openai/codex), selectable per launch. It is geared toward Rust,
-Python, TypeScript, and Flutter development. A global context file is injected so the agent is
-aware of the sandbox's capabilities and constraints.
+Python, TypeScript, and Flutter development. A global context file is symlinked into each agent
+config so the agent is aware of the sandbox's capabilities and constraints.
 
 ## Documentation
 
@@ -231,9 +231,9 @@ Volume commands affect the persisted user data described below.
 - Host services are reachable from the container through `host.docker.internal`.
 - Dev server ports can be exposed with `--port <port>` except in Flutter mode, where `--port`
   selects the host bridge port.
-- A global context file is injected as `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, and
-  `~/.codex/AGENTS.md`; focused tool-specific context docs are copied into the same directory as
-  the injected context file.
+- `/opt/agent-context.md` is symlinked as `~/.claude/CLAUDE.md`,
+  `~/.config/opencode/AGENTS.md`, and `~/.codex/AGENTS.md`; focused tool-specific context docs are
+  available at `/opt/agent-context-web.md` and `/opt/agent-context-flutter.md`.
 
 ## Persistence
 

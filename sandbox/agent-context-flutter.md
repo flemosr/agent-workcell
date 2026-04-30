@@ -5,7 +5,7 @@ SDK tooling (`flutter test`, `flutter analyze`, `dart format`, `flutter pub`),
 native/device targets, the host Flutter bridge, hot reload, screenshots, or UI
 automation.
 
-For Flutter web, read sibling `agent-context-web.md` and use the web development workflow instead.
+For Flutter web, read `/opt/agent-context-web.md` and use the web development workflow instead.
 
 ## Container Flutter SDK
 

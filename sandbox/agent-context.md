@@ -4,8 +4,10 @@ You are running inside an Agent Workcell Docker container. Treat this file as th
 
 ## Focused Context
 
-- For browser-based web development, visual UI checks, dev servers, or the `browser` CLI, read the sibling file `agent-context-web.md` next to this main context file.
-- For native/device Flutter work, host Flutter targets, hot reload, screenshots, or the `flutterctl` CLI, read the sibling file `agent-context-flutter.md` next to this main context file.
+- For browser-based web development, visual UI checks, dev servers, or the `browser` CLI, read
+  `/opt/agent-context-web.md`.
+- For native/device Flutter work, host Flutter targets, hot reload, screenshots, or the
+  `flutterctl` CLI, read `/opt/agent-context-flutter.md`.
 - For Flutter web, use the web development workflow, not the native Flutter bridge.
 
 ## Host And Sandbox Boundaries
@@ -90,8 +92,8 @@ When the firewall is active, external network access is limited to essential age
 | Languages | Node.js LTS through `nvm`, Python 3.11, Rust stable |
 | Node.js | `nvm`, `npm`, `npx` |
 | Python | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
-| Browser | `browser` CLI for Chrome automation; read sibling `agent-context-web.md` before use |
-| Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); read sibling `agent-context-flutter.md` before use |
+| Browser | `browser` CLI for Chrome automation; read `/opt/agent-context-web.md` before use |
+| Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); read `/opt/agent-context-flutter.md` before use |
 | Database | `psql`; connect to host databases through `host.docker.internal` |
 | Utilities | `git`, `curl`, `wget`, `jq`, `yq`, `ripgrep`, `fd` |
 
