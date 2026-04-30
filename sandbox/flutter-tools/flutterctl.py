@@ -288,7 +288,9 @@ def main():
         "--y", type=float, help="Y coordinate in the active coordinate space"
     )
     tap_parser.add_argument("--text", help="Text selector")
-    tap_parser.add_argument("--key", help="Key selector")
+    tap_parser.add_argument(
+        "--key", help="Automation id / Semantics.identifier selector"
+    )
 
     type_parser = subparsers.add_parser(
         "type", help="Type text into the currently focused input"
@@ -315,13 +317,17 @@ def main():
         "inspect", help="Inspect the current UI automation tree or selector"
     )
     inspect_parser.add_argument("--text", help="Text selector")
-    inspect_parser.add_argument("--key", help="Key selector")
+    inspect_parser.add_argument(
+        "--key", help="Automation id / Semantics.identifier selector"
+    )
 
     wait_parser = subparsers.add_parser(
         "wait", help="Wait for an element matching text/key"
     )
     wait_parser.add_argument("--text", help="Text selector")
-    wait_parser.add_argument("--key", help="Key selector")
+    wait_parser.add_argument(
+        "--key", help="Automation id / Semantics.identifier selector"
+    )
     wait_parser.add_argument(
         "--timeout", type=int, default=5000,
         help="Timeout in milliseconds",

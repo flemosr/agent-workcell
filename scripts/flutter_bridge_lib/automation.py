@@ -990,6 +990,50 @@ def _flutter_semantics_snapshot(vm_service_url):
     return snapshot, None
 
 
+def _window_height(window):
+    bounds = (window or {}).get("bounds")
+    if isinstance(bounds, dict):
+        return _number_from_string(bounds.get("height"))
+    if isinstance(bounds, (list, tuple)) and len(bounds) >= 4:
+        return _number_from_string(bounds[3])
+    return None
+
+
+def _semantics_content_y_offset(window, root_size):
+    if not isinstance(root_size, dict):
+        return 0
+    root_height = _number_from_string(root_size.get("height"))
+    window_height = _window_height(window)
+    if root_height is None or window_height is None:
+        return 0
+    offset = window_height - root_height
+    if 0 <= offset <= 120:
+        return offset
+    return 0
+
+
+def _offset_semantics_snapshot(snapshot, *, offset_y, coordinate_space):
+    adjusted = {
+        **snapshot,
+        "coordinate_space": coordinate_space,
+    }
+    elements = []
+    for element in snapshot.get("elements", []):
+        adjusted_element = {
+            **element,
+            "coordinate_space": coordinate_space,
+        }
+        rect = element.get("rect")
+        if rect:
+            adjusted_element["rect"] = {
+                **rect,
+                "y": _display_number(float(rect["y"]) + offset_y),
+            }
+        elements.append(adjusted_element)
+    adjusted["elements"] = elements
+    return adjusted
+
+
 def _flutter_offset_from_render_properties(node):
     render_object = node.get("renderObject")
     if not isinstance(render_object, dict):
@@ -1420,12 +1464,36 @@ def _macos_inspect(app_name, parsed, vm_service_url=None):
             f"Failed to get app window: {window_error}", "BACKEND_ERROR"
         )
 
+    diagnostics = []
+    if "key" in parsed:
+        semantics_snapshot, semantics_error = _flutter_semantics_snapshot(
+            vm_service_url
+        )
+        if semantics_error:
+            return semantics_error
+        offset_y = _semantics_content_y_offset(
+            window, semantics_snapshot.get("root_size")
+        )
+        semantics_snapshot = _offset_semantics_snapshot(
+            semantics_snapshot,
+            offset_y=offset_y,
+            coordinate_space="app-window-points",
+        )
+        elements = _filter_elements_by_selector(
+            semantics_snapshot["elements"], parsed
+        )
+        return {
+            "elements": elements,
+            "match_count": len(elements),
+            "coordinate_space": "app-window-points",
+            "method": "flutter-semantics",
+        }
+
     stdout, error = _run_osascript_capture(_macos_inspect_script(app_name))
     if error:
         return error
 
     elements = _parse_macos_inspect_output(stdout, window)
-    diagnostics = []
     if vm_service_url:
         flutter_elements, flutter_error = _flutter_inspector_elements(
             vm_service_url, window
@@ -1452,31 +1520,21 @@ def _macos_inspect(app_name, parsed, vm_service_url=None):
 
 
 def _ios_inspect(parsed, vm_service_url=None):
-    diagnostics = []
     if "key" in parsed:
         semantics_snapshot, semantics_error = _flutter_semantics_snapshot(
             vm_service_url
         )
         if semantics_error:
-            diagnostics.append({
-                "source": "flutter-semantics",
-                "code": semantics_error.get("code"),
-                "error": semantics_error.get("error"),
-            })
-        else:
-            elements = _filter_elements_by_selector(
-                semantics_snapshot["elements"], parsed
-            )
-            if elements:
-                result = {
-                    "elements": elements,
-                    "match_count": len(elements),
-                    "coordinate_space": "flutter-logical-points",
-                    "method": "flutter-semantics",
-                }
-                if diagnostics:
-                    result["diagnostics"] = diagnostics
-                return result
+            return semantics_error
+        elements = _filter_elements_by_selector(
+            semantics_snapshot["elements"], parsed
+        )
+        return {
+            "elements": elements,
+            "match_count": len(elements),
+            "coordinate_space": "flutter-logical-points",
+            "method": "flutter-semantics",
+        }
 
     elements, error = _flutter_inspector_elements(
         vm_service_url, coordinate_space="flutter-logical-points"
@@ -1491,8 +1549,6 @@ def _ios_inspect(parsed, vm_service_url=None):
         "coordinate_space": "flutter-logical-points",
         "method": "flutter-inspector",
     }
-    if diagnostics:
-        result["diagnostics"] = diagnostics
     return result
 
 
@@ -1674,7 +1730,6 @@ def _ios_tap_semantics_identifier(
 
 def _ios_tap_selector(selector, value, vm_service_url=None, device_id=None,
                       device_name=None):
-    semantics_error = None
     if selector == "key":
         semantics_result, semantics_error = _ios_tap_semantics_identifier(
             value,
@@ -1684,6 +1739,11 @@ def _ios_tap_selector(selector, value, vm_service_url=None, device_id=None,
         )
         if semantics_result:
             return semantics_result
+        if semantics_error:
+            return semantics_error
+        return bridge_error(
+            "Element not found", "ELEMENT_NOT_FOUND", key=value
+        )
 
     inspector_snapshot, inspector_error = _flutter_inspector_snapshot(
         vm_service_url, coordinate_space="flutter-logical-points"
@@ -1897,11 +1957,6 @@ def _ios_tap_selector(selector, value, vm_service_url=None, device_id=None,
         "content_rect": matched_rect,
         "element": element,
     }
-    if semantics_error:
-        result["semantics_fallback_error"] = {
-            "error": semantics_error.get("error"),
-            "code": semantics_error.get("code"),
-        }
     if element_match:
         result["element_image_match"] = element_match
     elif element_match_error:
@@ -2900,6 +2955,10 @@ def _macos_desktop_action_capabilities():
             "supported": True,
             "selectors": ["coordinates", "text", "key"],
             "coordinate_space": "app-window-points",
+            "selector_method": (
+                "key=flutter-semantics-identifier-rect-center,"
+                "text=host-accessibility-or-flutter-inspector"
+            ),
         },
         "type": {"supported": True, "selectors": []},
         "press": {"supported": True, "selectors": []},
@@ -2911,10 +2970,12 @@ def _macos_desktop_action_capabilities():
         "inspect": {
             "supported": True,
             "selectors": ["text", "key"],
+            "method": "key=flutter-semantics,text=host-accessibility-or-flutter-inspector",
         },
         "wait": {
             "supported": True,
             "selectors": ["text", "key"],
+            "method": "key=flutter-semantics,text=host-accessibility-or-flutter-inspector",
         },
     }
 
@@ -2981,7 +3042,7 @@ def _backend_action_capabilities(backend):
             "coordinate_space": "simulator-window-points",
             "method": "coregraphics-simulator-window",
             "selector_method": (
-                "key=flutter-inspector-rect-center,"
+                "key=flutter-semantics-identifier-rect-center,"
                 "text=flutter-inspector-widget-screenshot-match"
             ),
         }
@@ -3007,12 +3068,12 @@ def _backend_action_capabilities(backend):
             "supported": True,
             "selectors": ["text", "key"],
             "coordinate_space": "flutter-logical-points",
-            "method": "flutter-inspector",
+            "method": "key=flutter-semantics,text=flutter-inspector",
         }
         actions["wait"] = {
             "supported": True,
             "selectors": ["text", "key"],
-            "method": "flutter-inspector",
+            "method": "key=flutter-semantics,text=flutter-inspector",
         }
         return actions
     return unsupported_actions("No verified backend")

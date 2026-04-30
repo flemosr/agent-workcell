@@ -1431,55 +1431,48 @@ SemanticsNode#0
         self.assertEqual(result["match_count"], 1)
         self.assertEqual(result["elements"][0]["text"], "Ready")
 
-    def test_inspect_filters_by_key(self):
+    def test_inspect_filters_by_semantics_identifier(self):
         window = {"window_id": 4, "bounds": (100, 200, 300, 400)}
-        flutter_elements = [
-            {
-                "type": "flutter_widget",
+        semantics_snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 300, "height": 360},
+            "elements": [{
+                "type": "flutter_semantics",
                 "text": "",
                 "key": "add_item_button",
                 "label": "",
-                "description": "ElevatedButton-[<'add_item_button'>]",
+                "description": "SemanticsNode#4",
                 "value": "",
                 "role": "",
                 "subrole": "",
                 "enabled": None,
                 "rect": {"x": 1, "y": 2, "w": 3, "h": 4},
-                "coordinate_space": "app-window-points",
-                "source": "flutter-inspector",
-            },
-            {
-                "type": "flutter_widget",
-                "text": "",
-                "key": "other_button",
-                "label": "",
-                "description": "ElevatedButton-[<'other_button'>]",
-                "value": "",
-                "role": "",
-                "subrole": "",
-                "enabled": None,
-                "rect": {"x": 5, "y": 6, "w": 7, "h": 8},
-                "coordinate_space": "app-window-points",
-                "source": "flutter-inspector",
-            },
-        ]
+                "coordinate_space": "flutter-logical-points",
+                "source": "flutter-semantics",
+            }],
+        }
         with mock.patch.object(
             bridge_macos, "_macos_get_app_window_info", return_value=(window, None)
         ), mock.patch.object(
-            bridge_macos, "_run_osascript_capture", return_value=("", None)
-        ), mock.patch.object(
             bridge_macos,
-            "_flutter_inspector_elements",
-            return_value=(flutter_elements, None),
-        ):
+            "_flutter_semantics_snapshot",
+            return_value=(semantics_snapshot, None),
+        ) as semantics, mock.patch.object(
+            bridge_macos, "_run_osascript_capture"
+        ) as osascript:
             result = bridge._macos_inspect(
                 "demo_app",
                 {"key": "add_item_button"},
                 vm_service_url="http://127.0.0.1:123/abc=/",
             )
 
+        semantics.assert_called_once_with("http://127.0.0.1:123/abc=/")
+        osascript.assert_not_called()
         self.assertEqual(result["match_count"], 1)
         self.assertEqual(result["elements"][0]["key"], "add_item_button")
+        self.assertEqual(result["elements"][0]["source"], "flutter-semantics")
+        self.assertEqual(result["elements"][0]["coordinate_space"], "app-window-points")
+        self.assertEqual(result["elements"][0]["rect"]["y"], 42)
 
     def test_inspect_merges_flutter_inspector_text_fallback(self):
         window = {"window_id": 4, "bounds": (100, 200, 300, 400)}
@@ -1541,10 +1534,11 @@ SemanticsNode#0
         self.assertEqual(result["text"], "Increment")
         self.assertTrue(result["element_found"])
 
-    def test_tap_key_uses_matching_element_center(self):
+    def test_tap_key_uses_matching_semantics_identifier_center(self):
         element = {
-            "type": "flutter_widget",
+            "type": "flutter_semantics",
             "key": "add_item_button",
+            "source": "flutter-semantics",
             "enabled": True,
             "rect": {"x": 10, "y": 20, "w": 80, "h": 40},
         }
@@ -1805,7 +1799,56 @@ SemanticsNode#0
         )
         self.assertEqual(result["element"]["source"], "flutter-semantics")
 
-    def test_ios_tap_selector_uses_matched_content_rect(self):
+    def test_ios_inspect_key_does_not_fall_back_to_inspector_value_key(self):
+        semantics_snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 402, "height": 874},
+            "elements": [],
+        }
+
+        with mock.patch.object(
+            bridge_ios,
+            "_flutter_semantics_snapshot",
+            return_value=(semantics_snapshot, None),
+        ), mock.patch.object(
+            bridge_ios, "_flutter_inspector_elements"
+        ) as inspector:
+            result = bridge._ios_inspect(
+                {"key": "legacy_value_key"},
+                vm_service_url="http://127.0.0.1:123/abc=/",
+            )
+
+        inspector.assert_not_called()
+        self.assertEqual(result["match_count"], 0)
+        self.assertEqual(result["method"], "flutter-semantics")
+
+    def test_ios_tap_key_does_not_fall_back_to_inspector_value_key(self):
+        semantics_snapshot = {
+            "coordinate_space": "flutter-logical-points",
+            "root_size": {"width": 402, "height": 874},
+            "elements": [],
+        }
+
+        with mock.patch.object(
+            bridge_ios,
+            "_flutter_semantics_snapshot",
+            return_value=(semantics_snapshot, None),
+        ), mock.patch.object(
+            bridge_ios, "_flutter_inspector_snapshot"
+        ) as inspector:
+            result = bridge._ios_tap_selector(
+                "key",
+                "legacy_value_key",
+                vm_service_url="http://127.0.0.1:123/abc=/",
+                device_id="8F0F",
+                device_name="iPhone 17",
+            )
+
+        inspector.assert_not_called()
+        self.assertEqual(result["code"], "ELEMENT_NOT_FOUND")
+        self.assertEqual(result["key"], "legacy_value_key")
+
+    def test_ios_tap_text_uses_matched_content_rect_when_image_unavailable(self):
         window = {
             "window_id": 42,
             "pid": 123,
@@ -1818,7 +1861,7 @@ SemanticsNode#0
             "root_size": {"width": 402, "height": 874},
             "elements": [
                 {
-                    "key": "new_item_button",
+                    "text": "New item",
                     "type": "flutter_widget",
                     "enabled": True,
                     "rect": {
@@ -1854,7 +1897,12 @@ SemanticsNode#0
             "_ios_host_window_content_match_probe",
             return_value=content_match,
         ), mock.patch.object(
-            bridge_ios, "_run_simctl_screenshot_image"
+            bridge_ios,
+            "_run_simctl_screenshot_image",
+            return_value=(
+                None,
+                {"error": "screenshot failed", "code": "BACKEND_ERROR"},
+            ),
         ) as screenshot_image, mock.patch.object(
             bridge_ios, "_flutter_inspector_widget_screenshot"
         ) as widget_screenshot, mock.patch.object(
@@ -1863,14 +1911,14 @@ SemanticsNode#0
             bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
         ) as tap:
             result = bridge._ios_tap_selector(
-                "key",
-                "new_item_button",
+                "text",
+                "New item",
                 vm_service_url="http://127.0.0.1:123/abc=/",
                 device_id="8F0F",
                 device_name="iPhone 17",
             )
 
-        screenshot_image.assert_not_called()
+        screenshot_image.assert_called_once()
         widget_screenshot.assert_not_called()
         template_match.assert_not_called()
         tap.assert_called_once()
@@ -1878,7 +1926,7 @@ SemanticsNode#0
         self.assertAlmostEqual(x, 175.0062236738442, places=3)
         self.assertAlmostEqual(y, 221.62929061784897, places=3)
         self.assertEqual(result["action"], "tap")
-        self.assertEqual(result["key"], "new_item_button")
+        self.assertEqual(result["text"], "New item")
         self.assertEqual(result["method"], "flutter-inspector-rect-center")
         self.assertEqual(result["inspector_snapshot"], "live")
 
@@ -1889,9 +1937,10 @@ SemanticsNode#0
             "elements": [
                 {
                     "key": "new_task_fab",
-                    "type": "flutter_widget",
+                    "type": "flutter_semantics",
                     "enabled": True,
                     "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
+                    "source": "flutter-semantics",
                 }
             ],
         }
@@ -1930,7 +1979,7 @@ SemanticsNode#0
         }
         with mock.patch.object(
             bridge_ios,
-            "_flutter_inspector_snapshot",
+            "_flutter_semantics_snapshot",
             return_value=(snapshot, None),
         ), mock.patch.object(
             bridge.shutil, "which", return_value="/usr/bin/xcrun"
@@ -1961,7 +2010,9 @@ SemanticsNode#0
         self.assertAlmostEqual(x, 376.1318407960199, places=3)
         self.assertAlmostEqual(y, 847.2036613272311, places=3)
         self.assertEqual(result["match_score_mean_abs_rgb"], 4.9)
-        self.assertEqual(result["method"], "flutter-inspector-rect-center")
+        self.assertEqual(
+            result["method"], "flutter-semantics-identifier-rect-center"
+        )
 
     def test_ios_tap_key_falls_back_to_full_window_for_implausible_match(self):
         snapshot = {
@@ -1970,9 +2021,10 @@ SemanticsNode#0
             "elements": [
                 {
                     "key": "new_task_fab",
-                    "type": "flutter_widget",
+                    "type": "flutter_semantics",
                     "enabled": True,
                     "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
+                    "source": "flutter-semantics",
                 }
             ],
         }
@@ -1989,7 +2041,7 @@ SemanticsNode#0
         }
         with mock.patch.object(
             bridge_ios,
-            "_flutter_inspector_snapshot",
+            "_flutter_semantics_snapshot",
             return_value=(snapshot, None),
         ), mock.patch.object(
             bridge.shutil, "which", return_value="/usr/bin/xcrun"
@@ -2016,17 +2068,17 @@ SemanticsNode#0
         self.assertAlmostEqual(y, 873.0205949656751, places=3)
         self.assertEqual(
             result["method"],
-            "flutter-inspector-rect-center-full-window-fallback",
+            "flutter-semantics-identifier-rect-center-full-window-fallback",
         )
 
-    def test_ios_tap_key_field_uses_widget_screenshot_match(self):
+    def test_ios_tap_text_field_uses_widget_screenshot_match(self):
         snapshot = {
             "coordinate_space": "flutter-logical-points",
             "root_size": {"width": 50, "height": 100},
             "isolate_id": "isolates/1",
             "elements": [
                 {
-                    "key": "task_title_field",
+                    "text": "Task title",
                     "type": "flutter_widget",
                     "widget_type": "SynthTextField",
                     "enabled": True,
@@ -2084,8 +2136,8 @@ SemanticsNode#0
             bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
         ) as tap:
             result = bridge._ios_tap_selector(
-                "key",
-                "task_title_field",
+                "text",
+                "Task title",
                 vm_service_url="http://127.0.0.1:123/abc=/",
                 device_id="8F0F",
                 device_name="iPhone 17",
@@ -2100,16 +2152,16 @@ SemanticsNode#0
         self.assertEqual(
             result["method"], "flutter-inspector-widget-screenshot-match"
         )
-        self.assertEqual(result["key"], "task_title_field")
+        self.assertEqual(result["text"], "Task title")
 
-    def test_ios_tap_key_field_rejects_poor_widget_screenshot_match(self):
+    def test_ios_tap_text_field_falls_back_when_widget_match_is_poor(self):
         snapshot = {
             "coordinate_space": "flutter-logical-points",
             "root_size": {"width": 402, "height": 874},
             "isolate_id": "isolates/1",
             "elements": [
                 {
-                    "key": "task_title_field",
+                    "text": "Task title",
                     "type": "flutter_widget",
                     "widget_type": "SynthTextField",
                     "enabled": True,
@@ -2164,16 +2216,19 @@ SemanticsNode#0
             bridge_ios, "_ios_tap_coordinates"
         ) as tap:
             result = bridge._ios_tap_selector(
-                "key",
-                "task_title_field",
+                "text",
+                "Task title",
                 vm_service_url="http://127.0.0.1:123/abc=/",
                 device_id="8F0F",
                 device_name="iPhone 17",
             )
 
-        tap.assert_not_called()
-        self.assertEqual(result["code"], "BACKEND_ERROR")
-        self.assertIn("widget screenshot", result["error"])
+        tap.assert_called_once()
+        self.assertEqual(result["action"], "tap")
+        self.assertEqual(result["text"], "Task title")
+        self.assertEqual(
+            result["element_image_match_error"]["code"], "BACKEND_ERROR"
+        )
 
     def test_ios_tap_text_selector_can_use_widget_screenshot_match(self):
         snapshot = {
@@ -2267,7 +2322,7 @@ SemanticsNode#0
             "root_size": {"width": 402, "height": 874},
             "elements": [
                 {
-                    "key": "add_item_button",
+                    "text": "Add item",
                     "type": "button",
                     "enabled": True,
                     "rect": {"x": 310.8, "y": 138, "w": 75.2, "h": 48},
@@ -2308,11 +2363,18 @@ SemanticsNode#0
                 "_ios_host_window_content_match_probe",
                 return_value=content_match,
             ), mock.patch.object(
+                bridge_ios,
+                "_run_simctl_screenshot_image",
+                return_value=(
+                    None,
+                    {"error": "screenshot failed", "code": "BACKEND_ERROR"},
+                ),
+            ), mock.patch.object(
                 bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
             ):
                 result = bridge._ios_tap_selector(
-                    "key",
-                    "add_item_button",
+                    "text",
+                    "Add item",
                     vm_service_url=cache_key[0],
                     device_id=cache_key[1],
                     device_name="iPhone 17",
