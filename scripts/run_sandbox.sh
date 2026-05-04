@@ -11,12 +11,20 @@ WORKCELL_IMAGE_NAME="local/agent-workcell"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# First positional arg selects the agent CLI. Defaults to `claude` for backwards compatibility.
-agent_cli="claude"
-if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-  agent_cli="$1"
-  shift
+# First positional arg selects the agent CLI. Agent selection is required so
+# launches cannot accidentally inherit an implicit tool choice.
+if [[ $# -eq 0 ]]; then
+  echo "Error: agent is required (expected 'claude', 'opencode', or 'codex')" >&2
+  echo "Usage: workcell run <agent> [options] [-- agent-args]" >&2
+  exit 1
 fi
+if [[ "$1" == -* ]]; then
+  echo "Error: agent is required before options (expected 'claude', 'opencode', or 'codex')" >&2
+  echo "Usage: workcell run <agent> [options] [-- agent-args]" >&2
+  exit 1
+fi
+agent_cli="$1"
+shift
 case "$agent_cli" in
   claude|opencode|codex) ;;
   *)

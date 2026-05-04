@@ -3,8 +3,8 @@
 #
 # Usage:
 #   workcell build [options]         Build/rebuild the sandbox image
-#   workcell run [agent] [options]   Run the sandbox in current directory
-#                                          (agent: claude [default] | opencode | codex)
+#   workcell run <agent> [options]   Run the sandbox in current directory
+#                                          (agent: claude | opencode | codex)
 #   workcell start-chrome [options]  Start Chrome with remote debugging
 #   workcell start-flutter-bridge     Start Flutter host bridge
 #   workcell gpg-new                  Generate a new sandbox GPG key
@@ -49,7 +49,7 @@ Usage:
 
 Commands:
   build           Build/rebuild the sandbox image
-  run [agent]     Run the sandbox in current directory (default: claude)
+  run <agent>     Run the sandbox in current directory
                   agent: claude | opencode | codex
   start-chrome    Start Chrome with remote debugging (run on host)
   start-flutter-bridge  Start Flutter host bridge (run on host)
@@ -71,7 +71,6 @@ Commands:
 
 Examples:
   workcell build
-  workcell run
   workcell run claude --yolo --with-chrome --port 3000
   workcell run opencode --yolo
   workcell run codex --yolo
@@ -102,10 +101,10 @@ show_run_help() {
 Run the Agent Workcell in the current directory
 
 Usage:
-  workcell run [agent] [options] [-- agent-args]
+  workcell run <agent> [options] [-- agent-args]
 
 Agents:
-  claude     (default) Launch Claude Code
+  claude     Launch Claude Code
   opencode   Launch opencode
   codex      Launch Codex
 
@@ -123,7 +122,6 @@ Options:
                     when used with --with-flutter (repeatable except with Flutter)
 
 Examples:
-  workcell run
   workcell run claude --yolo
   workcell run opencode --yolo
   workcell run codex --yolo
@@ -253,6 +251,13 @@ EOF
 command="${1:-}"
 
 case "$command" in
+    "")
+        show_help
+        echo ""
+        echo "Error: command is required. To launch an agent, use: workcell run <agent>"
+        exit 1
+        ;;
+
     build)
         shift
 
@@ -266,14 +271,32 @@ case "$command" in
         exec docker compose build "$@"
         ;;
 
-    run|"")
-        # Default command: run sandbox
-        shift 2>/dev/null || true
+    run)
+        shift
 
         if [[ "$1" == "--help" || "$1" == "-h" ]]; then
             show_run_help
             exit 0
         fi
+
+        if [ -z "${1:-}" ]; then
+            echo "Error: agent is required (expected 'claude', 'opencode', or 'codex')"
+            echo "Usage: workcell run <agent> [options] [-- agent-args]"
+            exit 1
+        fi
+
+        case "$1" in
+            claude|opencode|codex) ;;
+            -*)
+                echo "Error: agent is required before options (expected 'claude', 'opencode', or 'codex')"
+                echo "Usage: workcell run <agent> [options] [-- agent-args]"
+                exit 1
+                ;;
+            *)
+                echo "Error: unknown agent '$1' (expected 'claude', 'opencode', or 'codex')"
+                exit 1
+                ;;
+        esac
 
         ensure_docker_running
         exec "$SCRIPT_DIR/scripts/run_sandbox.sh" "$@"
