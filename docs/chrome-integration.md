@@ -54,13 +54,13 @@ CHROME_LOG_FILE="/tmp/chrome-debug.log"
 Start a workcell with Chrome support:
 
 ```bash
-workcell --with-chrome
+workcell run claude --with-chrome
 ```
 
 For web development, also expose the dev-server port:
 
 ```bash
-workcell --with-chrome --port 3000
+workcell run codex --with-chrome --port 3000
 ```
 
 This automatically:
@@ -113,7 +113,7 @@ internal CDP       bridge             container access
 Dev servers in the container are published to the host with `--port`:
 
 ```bash
-workcell --with-chrome --port 3000
+workcell run opencode --with-chrome --port 3000
 ```
 
 ```text

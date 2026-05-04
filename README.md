@@ -90,32 +90,29 @@ when you invoke `workcell` from another directory.
 Navigate to any project directory and run:
 
 ```bash
-# Normal mode (defaults to claude)
-workcell run
-
-# Explicit agent selection
+# Normal mode
 workcell run claude
 workcell run opencode
 workcell run codex
 
 # YOLO mode (no permission prompts)
-workcell run --yolo
+workcell run claude --yolo
 workcell run opencode --yolo
 workcell run codex --yolo
 
 # Firewalled mode (restricted network access)
-workcell run --firewalled
+workcell run codex --firewalled
 
 # With a prompt
-workcell run --yolo -p "fix the tests"
+workcell run claude --yolo -p "fix the tests"
 
 # Pass agent-specific arguments
-workcell run --resume
+workcell run claude --resume
 workcell run opencode run "summarize the repo"
 workcell run codex "fix the tests"
 ```
 
-The first positional arg after `run` selects the agent: `claude` (default), `opencode`, or
+The first positional arg after `run` selects the agent and is required: `claude`, `opencode`, or
 `codex`. All agents use the same sandbox image, persistent Docker volume, and core flags.
 
 `--with-chrome` and `--with-flutter` are mutually exclusive. In Chrome mode, `--port` exposes
@@ -127,10 +124,11 @@ container dev servers to the host. In Flutter mode, `--port` selects the host Fl
 - **opencode**: `{"permission":"allow"}` injected through `OPENCODE_CONFIG_CONTENT`
 - **codex**: `--dangerously-bypass-approvals-and-sandbox`
 
-Running `workcell` without a command defaults to `run` with claude:
+Running `workcell` or `workcell run` without an agent exits with a usage error instead of choosing
+an agent implicitly.
 
 ```bash
-workcell --yolo
+workcell run codex --yolo
 ```
 
 See [Integrations](#integrations) for Chrome, Flutter, and port examples.
@@ -139,12 +137,12 @@ See [Integrations](#integrations) for Chrome, Flutter, and port examples.
 
 ```bash
 # Chrome enabled for web development
-workcell run --with-chrome
-workcell run --yolo --with-chrome --port 3000
+workcell run claude --with-chrome
+workcell run codex --yolo --with-chrome --port 3000
 
 # Expose container dev-server ports to the host
-workcell run --port 3000
-workcell run --port 3000 --port 5173
+workcell run opencode --port 3000
+workcell run codex --port 3000 --port 5173
 
 # Start Chrome independently on the host
 workcell start-chrome
@@ -152,7 +150,7 @@ workcell start-chrome --restart
 workcell start-chrome --port 9333 --profile "Profile 1"
 
 # Flutter native/device bridge
-workcell run --with-flutter
+workcell run claude --with-flutter
 workcell run codex --with-flutter --port 8765
 
 # Start the Flutter bridge independently on the host

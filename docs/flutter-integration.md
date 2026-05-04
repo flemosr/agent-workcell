@@ -75,7 +75,7 @@ The bridge updates the same file with runtime `token` and `port` values when it 
 Run from the host Flutter project directory:
 
 ```bash
-workcell --with-flutter
+workcell run claude --with-flutter
 ```
 
 This automatically:
@@ -89,7 +89,7 @@ This automatically:
 Use `--port` to select the bridge port for one run:
 
 ```bash
-workcell --with-flutter --port 8765
+workcell run claude --with-flutter --port 8765
 workcell run opencode --yolo --with-flutter --port 8766
 ```
 
@@ -267,7 +267,7 @@ cat /tmp/flutter-bridge.log
 Common issues:
 
 - Cannot reach Flutter bridge: start it with `workcell start-flutter-bridge` or
-  `workcell --with-flutter`.
+  `workcell run <agent> --with-flutter`.
 - Bridge is reachable but stale after code changes: run `flutterctl restart-bridge`.
 - Missing bridge token: when using `--with-flutter`, the token is auto-generated. For a separate
   bridge, start it from the workspace so `.workcell/flutter-config.json` is available.
