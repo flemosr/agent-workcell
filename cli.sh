@@ -118,15 +118,17 @@ Options:
   --with-chrome     Start Chrome with remote debugging
   --with-flutter    Start Flutter host bridge
                     Mutually exclusive with --with-chrome
-  --port <port>     Expose a dev-server port, or select Flutter bridge port
-                    when used with --with-flutter (repeatable except with Flutter)
+  --bridge-port <port>
+                    Select Flutter bridge port when used with --with-flutter
+  --port <port>     Expose a dev-server port to the host (repeatable)
 
 Examples:
   workcell run claude --yolo
   workcell run opencode --yolo
   workcell run codex --yolo
   workcell run claude --yolo --with-chrome --port 3000
-  workcell run codex --with-flutter --port 8765
+  workcell run codex --with-flutter --bridge-port 8765
+  workcell run codex --with-flutter --bridge-port 8766 --port 3000
   workcell run opencode --port 3000 --port 5173
   workcell run codex --yolo --port 3000
 EOF

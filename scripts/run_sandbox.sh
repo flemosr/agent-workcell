@@ -37,11 +37,17 @@ yolo=false
 firewalled=false
 chrome_enabled=false
 flutter_enabled=false
+bridge_port=""
 ports=()
 args=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --)
+      shift
+      args+=("$@")
+      break
+      ;;
     --yolo)
       yolo=true
       shift
@@ -58,7 +64,19 @@ while [[ $# -gt 0 ]]; do
       flutter_enabled=true
       shift
       ;;
+    --bridge-port)
+      if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+        echo "Error: --bridge-port requires a port value." >&2
+        exit 1
+      fi
+      bridge_port="$2"
+      shift 2
+      ;;
     --port)
+      if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+        echo "Error: --port requires a port value." >&2
+        exit 1
+      fi
       ports+=("$2")
       shift 2
       ;;
@@ -75,8 +93,8 @@ if $chrome_enabled && $flutter_enabled; then
   exit 1
 fi
 
-if $flutter_enabled && [ ${#ports[@]} -gt 1 ]; then
-  echo "Error: --with-flutter accepts at most one --port value for the bridge."
+if [ -n "$bridge_port" ] && ! $flutter_enabled; then
+  echo "Error: --bridge-port requires --with-flutter."
   exit 1
 fi
 
@@ -268,13 +286,21 @@ if port:
     print(port)
 PY
 )
-  if [ ${#ports[@]} -gt 0 ]; then
-    FLUTTER_BRIDGE_PORT="${ports[0]}"
+  if [ -n "$bridge_port" ]; then
+    FLUTTER_BRIDGE_PORT="$bridge_port"
   elif [ -n "$flutter_config_port" ]; then
     FLUTTER_BRIDGE_PORT="$flutter_config_port"
   else
     FLUTTER_BRIDGE_PORT="${FLUTTER_DEFAULT_BRIDGE_PORT:-${FLUTTER_BRIDGE_PORT:-8765}}"
   fi
+
+  for port in "${ports[@]}"; do
+    if [ "$port" = "$FLUTTER_BRIDGE_PORT" ]; then
+      echo "Error: --port $port conflicts with the Flutter bridge port."
+      echo "Use --bridge-port to move the bridge or choose a different container port."
+      exit 1
+    fi
+  done
   flutter_target=$(python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" <<'PY'
 import json
 import sys
@@ -459,14 +485,11 @@ if $flutter_enabled; then
   )
 fi
 
-# Add port mappings if specified. In Flutter mode, --port selects the host
-# bridge port and must not also bind a container port on the host.
-if ! $flutter_enabled; then
-  for port in "${ports[@]}"; do
-    docker_args+=(-p "$port:$port")
-  done
-fi
-if [ ${#ports[@]} -gt 0 ] && ! $flutter_enabled; then
+# Add port mappings if specified.
+for port in "${ports[@]}"; do
+  docker_args+=(-p "$port:$port")
+done
+if [ ${#ports[@]} -gt 0 ]; then
   port_list=$(IFS=,; echo "${ports[*]}")
   docker_args+=(-e "EXPOSED_PORTS=$port_list")
 fi
