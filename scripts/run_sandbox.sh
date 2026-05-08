@@ -38,6 +38,7 @@ firewalled=false
 chrome_enabled=false
 flutter_enabled=false
 bridge_port=""
+flutter_project_dir_arg=""
 ports=()
 args=()
 
@@ -72,6 +73,14 @@ while [[ $# -gt 0 ]]; do
       bridge_port="$2"
       shift 2
       ;;
+    --flutter-project-dir)
+      if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+        echo "Error: --flutter-project-dir requires a directory value." >&2
+        exit 1
+      fi
+      flutter_project_dir_arg="$2"
+      shift 2
+      ;;
     --port)
       if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
         echo "Error: --port requires a port value." >&2
@@ -95,6 +104,11 @@ fi
 
 if [ -n "$bridge_port" ] && ! $flutter_enabled; then
   echo "Error: --bridge-port requires --with-flutter."
+  exit 1
+fi
+
+if [ -n "$flutter_project_dir_arg" ] && ! $flutter_enabled; then
+  echo "Error: --flutter-project-dir requires --with-flutter."
   exit 1
 fi
 
@@ -284,8 +298,48 @@ if $flutter_enabled; then
     exit 1
   fi
 
-  flutter_project_dir="$PWD"
   FLUTTER_BRIDGE_CONFIG_FILE="${workspace_workcell_dir}/flutter-config.json"
+  flutter_config_project_dir=$(python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+    project_dir = config.get("flutter_project_dir") if isinstance(config, dict) else None
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    project_dir = None
+if isinstance(project_dir, str) and project_dir:
+    print(project_dir)
+PY
+)
+  if [ -n "$flutter_project_dir_arg" ]; then
+    flutter_project_dir_relative="$flutter_project_dir_arg"
+  elif [ -n "$flutter_config_project_dir" ]; then
+    flutter_project_dir_relative="$flutter_config_project_dir"
+  else
+    flutter_project_dir_relative="."
+  fi
+  flutter_project_dir=$(python3 - "$workspace_root" "$flutter_project_dir_relative" <<'PY'
+import os
+import sys
+
+workspace_root, relative_dir = sys.argv[1], sys.argv[2]
+if os.path.isabs(relative_dir):
+    print("Error: --flutter-project-dir must be relative to the workspace directory.", file=sys.stderr)
+    sys.exit(2)
+workspace_real = os.path.realpath(workspace_root)
+project_real = os.path.realpath(os.path.join(workspace_real, relative_dir))
+if project_real != workspace_real and not project_real.startswith(workspace_real + os.sep):
+    print("Error: --flutter-project-dir must resolve inside the workspace directory.", file=sys.stderr)
+    sys.exit(2)
+if not os.path.isdir(project_real):
+    print(f"Error: Flutter project directory not found: {project_real}", file=sys.stderr)
+    sys.exit(2)
+print(project_real)
+PY
+)
   flutter_config_port=$(python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" <<'PY'
 import json
 import sys
@@ -416,11 +470,11 @@ PY
   # without requiring the user to manually copy tokens/URLs. Writing on the
   # host side means it is immediately visible inside the mounted workspace.
   mkdir -p "${workspace_workcell_dir}"
-  python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" "$FLUTTER_BRIDGE_TOKEN" "$FLUTTER_BRIDGE_PORT" <<'PY'
+  python3 - "$FLUTTER_BRIDGE_CONFIG_FILE" "$FLUTTER_BRIDGE_TOKEN" "$FLUTTER_BRIDGE_PORT" "$flutter_project_dir_relative" <<'PY'
 import json
 import sys
 
-path, token, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+path, token, port, project_dir = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
 try:
     with open(path) as f:
         config = json.load(f)
@@ -430,6 +484,7 @@ except (FileNotFoundError, json.JSONDecodeError, OSError):
     config = {}
 config["token"] = token
 config["port"] = port
+config["flutter_project_dir"] = project_dir
 with open(path, "w") as f:
     json.dump(config, f, indent=4)
     f.write("\n")

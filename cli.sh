@@ -120,6 +120,9 @@ Options:
                     Mutually exclusive with --with-chrome
   --bridge-port <port>
                     Select Flutter bridge port when used with --with-flutter
+  --flutter-project-dir <dir>
+                    Flutter project directory relative to the workspace
+                    when used with --with-flutter
   --port <port>     Expose a dev-server port to the host (repeatable)
 
 Examples:
@@ -128,6 +131,7 @@ Examples:
   workcell run codex --yolo
   workcell run claude --yolo --with-chrome --port 3000
   workcell run codex --with-flutter --bridge-port 8765
+  workcell run codex --with-flutter --flutter-project-dir ./gui
   workcell run codex --with-flutter --bridge-port 8766 --port 3000
   workcell run opencode --port 3000 --port 5173
   workcell run codex --yolo --port 3000
@@ -235,12 +239,15 @@ Usage:
 Options:
   --port <port>         Override bridge port from config
   --project <dir>       Override Flutter project directory
+  --flutter-project-dir <dir>
+                       Flutter project directory relative to the workspace
   --target <file>       Override Flutter target file
   --token <token>       Specify bridge bearer token
 
 Examples:
   workcell start-flutter-bridge
   workcell start-flutter-bridge --port 8766 --project ~/my-flutter-app
+  workcell start-flutter-bridge --flutter-project-dir ./gui
 
 The bridge exposes an HTTP API on the configured port. The sandbox
 connects via host.docker.internal using the bearer token for auth. Agents

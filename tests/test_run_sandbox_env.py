@@ -47,6 +47,51 @@ class RunSandboxEnvTests(unittest.TestCase):
         )
         return docker_log.read_text(encoding="utf-8")
 
+    def test_flutter_project_dir_requires_flutter_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = subprocess.run(
+                [str(RUN_SANDBOX), "codex", "--flutter-project-dir", "./gui"],
+                cwd=workspace,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--flutter-project-dir requires --with-flutter", result.stdout)
+
+    def test_flutter_project_dir_must_exist_under_workspace(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = subprocess.run(
+                [str(RUN_SANDBOX), "codex", "--with-flutter", "--flutter-project-dir", "./gui"],
+                cwd=workspace,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Flutter project directory not found", result.stdout)
+
+    def test_flutter_project_dir_must_be_relative(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = subprocess.run(
+                [str(RUN_SANDBOX), "codex", "--with-flutter", "--flutter-project-dir", "/tmp"],
+                cwd=workspace,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must be relative to the workspace directory", result.stdout)
+
     def test_env_file_is_passed_to_docker_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)

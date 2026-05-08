@@ -11,6 +11,7 @@
 #   ./start-flutter-bridge.sh                        # Use current directory
 #   ./start-flutter-bridge.sh --port 8766            # Override port
 #   ./start-flutter-bridge.sh --project /path/to/app # Override project dir
+#   ./start-flutter-bridge.sh --flutter-project-dir ./gui
 
 set -e
 
@@ -37,7 +38,10 @@ source "$CONFIG_FILE"
 
 # Apply defaults for optional config
 FLUTTER_BRIDGE_PORT="${FLUTTER_BRIDGE_PORT:-${FLUTTER_DEFAULT_BRIDGE_PORT:-8765}}"
+workspace_root="$PWD"
 flutter_project_dir="$PWD"
+flutter_config_root="$PWD"
+flutter_project_dir_relative="."
 flutter_target_override=""
 flutter_run_args_override=""
 FLUTTER_PATH="${FLUTTER_PATH:-flutter}"
@@ -55,28 +59,78 @@ FLUTTER_BRIDGE_LOG_FILE="${FLUTTER_BRIDGE_LOG_FILE:-/tmp/flutter-bridge.log}"
 while [[ $# -gt 0 ]]; do
     case $1 in
         --port|-p)
+            if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+                echo "Error: --port requires a port value."
+                exit 1
+            fi
             FLUTTER_BRIDGE_PORT="$2"
             shift 2
             ;;
         --project)
+            if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+                echo "Error: --project requires a directory value."
+                exit 1
+            fi
             flutter_project_dir="$2"
+            flutter_config_root="$flutter_project_dir"
+            flutter_project_dir_relative="."
+            shift 2
+            ;;
+        --flutter-project-dir)
+            if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+                echo "Error: --flutter-project-dir requires a directory value."
+                exit 1
+            fi
+            flutter_project_dir_relative="$2"
+            flutter_config_root="$workspace_root"
+            flutter_project_dir=$(python3 - "$workspace_root" "$flutter_project_dir_relative" <<'PY'
+import os
+import sys
+
+workspace_root, relative_dir = sys.argv[1], sys.argv[2]
+if os.path.isabs(relative_dir):
+    print("Error: --flutter-project-dir must be relative to the workspace directory.", file=sys.stderr)
+    sys.exit(2)
+workspace_real = os.path.realpath(workspace_root)
+project_real = os.path.realpath(os.path.join(workspace_real, relative_dir))
+if project_real != workspace_real and not project_real.startswith(workspace_real + os.sep):
+    print("Error: --flutter-project-dir must resolve inside the workspace directory.", file=sys.stderr)
+    sys.exit(2)
+if not os.path.isdir(project_real):
+    print(f"Error: Flutter project directory not found: {project_real}", file=sys.stderr)
+    sys.exit(2)
+print(project_real)
+PY
+)
             shift 2
             ;;
         --target)
+            if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+                echo "Error: --target requires a file value."
+                exit 1
+            fi
             flutter_target_override="$2"
             shift 2
             ;;
         --token)
+            if [ -z "${2:-}" ] || [[ "$2" == --* ]]; then
+                echo "Error: --token requires a token value."
+                exit 1
+            fi
             FLUTTER_BRIDGE_TOKEN="$2"
             shift 2
             ;;
         --run-args)
+            if [ -z "${2:-}" ]; then
+                echo "Error: --run-args requires a value."
+                exit 1
+            fi
             flutter_run_args_override="$2"
             shift 2
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--port PORT] [--project DIR] [--target FILE] [--run-args ARGS] [--token TOKEN]"
+            echo "Usage: $0 [--port PORT] [--project DIR] [--flutter-project-dir DIR] [--target FILE] [--run-args ARGS] [--token TOKEN]"
             exit 1
             ;;
     esac
@@ -88,7 +142,7 @@ if [ ! -d "$flutter_project_dir" ]; then
     exit 1
 fi
 
-flutter_config_file="${flutter_project_dir}/.workcell/flutter-config.json"
+flutter_config_file="${flutter_config_root}/.workcell/flutter-config.json"
 flutter_target=$(python3 - "$flutter_config_file" <<'PY'
 import json
 import sys
@@ -161,20 +215,20 @@ if [ -z "$FLUTTER_BRIDGE_TOKEN" ]; then
                            openssl rand -hex 16 2>/dev/null || \
                            od -vAn -N16 -tx1 /dev/urandom | tr -d ' \n')
     echo "  Generated token: $FLUTTER_BRIDGE_TOKEN" >&2
-    echo "  Token written to: ${flutter_project_dir}/.workcell/flutter-config.json" >&2
+    echo "  Token written to: ${flutter_config_root}/.workcell/flutter-config.json" >&2
 else
     echo "  Using provided bridge token." >&2
 fi
 
-# Write bridge config to project .workcell/ so agents inside a container
-# mounted with this project directory can discover the bridge automatically.
-mkdir -p "${flutter_project_dir}/.workcell"
-python3 - "$flutter_config_file" "$FLUTTER_BRIDGE_TOKEN" "$FLUTTER_BRIDGE_PORT" "$flutter_target_override" "$flutter_run_args_override" <<'PY'
+# Write bridge config to .workcell/ where the matching workspace-mounted
+# container can discover it automatically.
+mkdir -p "${flutter_config_root}/.workcell"
+python3 - "$flutter_config_file" "$FLUTTER_BRIDGE_TOKEN" "$FLUTTER_BRIDGE_PORT" "$flutter_target_override" "$flutter_run_args_override" "$flutter_project_dir_relative" <<'PY'
 import json
 import sys
 
-path, token, port, target_override, run_args_override = (
-    sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
+path, token, port, target_override, run_args_override, project_dir = (
+    sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5], sys.argv[6]
 )
 try:
     with open(path) as f:
@@ -185,6 +239,7 @@ except (FileNotFoundError, json.JSONDecodeError, OSError):
     config = {}
 config["token"] = token
 config["port"] = port
+config["flutter_project_dir"] = project_dir
 if target_override:
     config["target"] = target_override
 if run_args_override:
