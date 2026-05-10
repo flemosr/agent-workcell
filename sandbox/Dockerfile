@@ -43,7 +43,9 @@ RUN useradd -m -s /bin/bash agent \
     && mkdir -p /home/agent/.local/bin \
     && chown -R agent:agent /home/agent
 
-# Download Flutter SDK to /opt/flutter-sdk-template/ for volume seeding (nvm/Rust pattern).
+# Download Flutter SDK into an image-owned SDK root.
+# The late /opt/flutter-sdk alias gives runtime code a stable path without
+# invalidating this expensive layer when the persistence wiring changes.
 # amd64: official tarball; arm64: git clone (no prebuilt arm64 Linux tarball available).
 # First in the file so only a FLUTTER_VERSION bump invalidates this layer.
 ARG FLUTTER_VERSION=3.41.9
@@ -132,27 +134,13 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 # repair package metadata before delegating to the real SDK binaries.
 ENV PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
 ENV VIRTUAL_ENV="/home/agent/.local/python-venv"
-# Flutter SDK is volume-backed; add to PATH for runtime use after wrappers.
+# Temporary build-time Flutter path; a final runtime PATH is declared after the
+# stable /opt aliases are created.
 ENV PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/home/agent/persist/.flutter-sdk/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
 
 # Install Python linters, data science libs, and Playwright.
 RUN python3 -m venv ~/.local/python-venv && \
     ~/.local/python-venv/bin/pip install playwright pyright ruff matplotlib numpy
-
-# Copy browser tools
-COPY --chown=agent:agent browser-tools/ /home/agent/.local/browser-tools/
-RUN chmod +x /home/agent/.local/browser-tools/browser.sh && \
-    ln -sf /home/agent/.local/browser-tools/browser.sh /home/agent/.local/bin/browser
-
-# Copy flutter tools
-COPY --chown=agent:agent flutter-tools/ /home/agent/.local/flutter-tools/
-RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh \
-             /home/agent/.local/flutter-tools/flutter.sh \
-             /home/agent/.local/flutter-tools/dart.sh \
-             /home/agent/.local/flutter-tools/package_config_guard.py && \
-    ln -sf /home/agent/.local/flutter-tools/flutterctl.sh /home/agent/.local/bin/flutterctl && \
-    ln -sf /home/agent/.local/flutter-tools/flutter.sh /home/agent/.local/bin/flutter && \
-    ln -sf /home/agent/.local/flutter-tools/dart.sh /home/agent/.local/bin/dart
 
 # Set up home→/opt/ symlink for opencode before running the installer.
 RUN ln -sf /opt/opencode-template /home/agent/.opencode
@@ -192,9 +180,39 @@ RUN mkdir -p /home/agent/persist/.local/share/opencode \
     && ln -sf /home/agent/persist/.local/state/opencode /home/agent/.local/state/opencode \
     && ln -sf /home/agent/persist/.config/opencode /home/agent/.config/opencode
 
+# Copy local wrapper tools after network-installed agents so wrapper edits do
+# not invalidate the OpenCode or Codex install layers.
+COPY --chown=agent:agent browser-tools/ /home/agent/.local/browser-tools/
+RUN chmod +x /home/agent/.local/browser-tools/browser.sh && \
+    ln -sf /home/agent/.local/browser-tools/browser.sh /home/agent/.local/bin/browser
+
+COPY --chown=agent:agent flutter-tools/ /home/agent/.local/flutter-tools/
+RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh \
+             /home/agent/.local/flutter-tools/flutter.sh \
+             /home/agent/.local/flutter-tools/dart.sh \
+             /home/agent/.local/flutter-tools/package_config_guard.py && \
+    ln -sf /home/agent/.local/flutter-tools/flutterctl.sh /home/agent/.local/bin/flutterctl && \
+    ln -sf /home/agent/.local/flutter-tools/flutter.sh /home/agent/.local/bin/flutter && \
+    ln -sf /home/agent/.local/flutter-tools/dart.sh /home/agent/.local/bin/dart
+
 # Copy scripts (after tool installs to preserve cache)
 USER root
 RUN mkdir -p /workspaces && chown agent:agent /workspaces
+
+# Stable image-owned runtime paths. The underlying template directories remain
+# as the build cache anchors for expensive installer layers.
+RUN ln -sfn /opt/flutter-sdk-template /opt/flutter-sdk \
+    && ln -sfn /opt/opencode-template /opt/opencode \
+    && ln -sfn /opt/claude-versions-template /opt/claude-code \
+    && ln -sfn /opt/opencode/bin/opencode /home/agent/.local/bin/opencode \
+    && ln -sfn /opt/pub-cache-template/bin/protoc-gen-dart /home/agent/.local/bin/protoc-gen-dart \
+    && chown -h agent:agent /opt/flutter-sdk /opt/opencode /opt/claude-code \
+                       /home/agent/.local/bin/opencode \
+                       /home/agent/.local/bin/protoc-gen-dart
+
+# Final runtime PATH: wrappers first, image-owned Flutter SDK next, persisted
+# nvm/cargo toolchains after that.
+ENV PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/opt/flutter-sdk/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Install release-binary protobuf CLIs late so version bumps do not invalidate
 # expensive Flutter, Rust, Node, Python, or agent install layers.
