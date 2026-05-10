@@ -42,6 +42,27 @@ elif [ -d /opt/nvm-template/versions/node ]; then
   done
 fi
 
+# Refresh image-baked nvm scripts in existing volumes while leaving installed
+# Node versions and user aliases untouched.
+if [ -d /home/agent/persist/.nvm ] && [ -d /opt/nvm-template ]; then
+  for nvm_file in nvm.sh nvm-exec bash_completion install.sh package.json; do
+    if [ -e "/opt/nvm-template/$nvm_file" ]; then
+      cp -a "/opt/nvm-template/$nvm_file" "/home/agent/persist/.nvm/$nvm_file"
+    fi
+  done
+  chown agent:agent /home/agent/persist/.nvm/nvm.sh \
+                    /home/agent/persist/.nvm/nvm-exec \
+                    /home/agent/persist/.nvm/bash_completion \
+                    /home/agent/persist/.nvm/install.sh \
+                    /home/agent/persist/.nvm/package.json 2>/dev/null || true
+  if [ -d /opt/nvm-template/alias/lts ]; then
+    mkdir -p /home/agent/persist/.nvm/alias
+    rm -rf /home/agent/persist/.nvm/alias/lts
+    cp -a /opt/nvm-template/alias/lts /home/agent/persist/.nvm/alias/lts
+    chown -R agent:agent /home/agent/persist/.nvm/alias/lts
+  fi
+fi
+
 # Ensure the nvm symlink exists.
 if [ -d /home/agent/.nvm ] && [ ! -L /home/agent/.nvm ]; then
   rm -rf /home/agent/.nvm
@@ -76,41 +97,29 @@ if [ -d /home/agent/.cargo ] && [ ! -L /home/agent/.cargo ]; then
 fi
 ln -sfn /home/agent/persist/.cargo /home/agent/.cargo
 
-# Seed Claude Code versions on first run.
-if [ ! -d /home/agent/persist/.claude-versions/versions ]; then
-  echo "Initializing Claude Code versions in persistent volume..."
-  cp -a --no-target-directory /opt/claude-versions-template /home/agent/persist/.claude-versions
-  chown -R agent:agent /home/agent/persist/.claude-versions
+# Use image-baked Claude Code versions. Existing persisted .claude-versions
+# directories are left untouched, but no longer drive the active binary.
+claude_versions_root="/opt/claude-code"
+if [ ! -d "$claude_versions_root/versions" ] && [ -d /opt/claude-versions-template/versions ]; then
+  claude_versions_root="/opt/claude-versions-template"
 fi
-
-# Ensure the Claude versions symlink exists.
-mkdir -p /home/agent/.local/share
+mkdir -p /home/agent/.local/share /home/agent/.local/bin
 if [ -d /home/agent/.local/share/claude ] && [ ! -L /home/agent/.local/share/claude ]; then
   rm -rf /home/agent/.local/share/claude
 fi
-ln -sfn /home/agent/persist/.claude-versions /home/agent/.local/share/claude
-
-# Point the Claude binary at the persisted version.
-if [ -d /home/agent/.local/share/claude/versions ]; then
-  latest_claude=$(ls -1 /home/agent/.local/share/claude/versions | sort -V | tail -1)
+if [ -d "$claude_versions_root/versions" ]; then
+  ln -sfn "$claude_versions_root" /home/agent/.local/share/claude
+  latest_claude=$(ls -1 "$claude_versions_root/versions" | sort -V | tail -1)
   if [ -n "$latest_claude" ]; then
-    ln -sfn "/home/agent/.local/share/claude/versions/$latest_claude" /home/agent/.local/bin/claude
+    ln -sfn "$claude_versions_root/versions/$latest_claude" /home/agent/.local/bin/claude
   fi
 fi
 
-# Seed the opencode install on first run.
-if [ ! -d /home/agent/persist/.opencode ]; then
-  echo "Initializing opencode install in persistent volume..."
-  cp -a --no-target-directory /opt/opencode-template /home/agent/persist/.opencode
-  chown -R agent:agent /home/agent/persist/.opencode
-else
-  # Restore the baked install if the persisted binary tree is missing.
-  if [ -d /opt/opencode-template/bin ]; then
-    if [ ! -d /home/agent/persist/.opencode/bin ]; then
-        cp -a --no-target-directory /opt/opencode-template /home/agent/persist/.opencode
-        chown -R agent:agent /home/agent/persist/.opencode
-    fi
-  fi
+# Use the image-baked opencode install. Existing persisted .opencode
+# directories are left untouched, but no longer drive the active binary.
+opencode_root="/opt/opencode"
+if [ ! -x "$opencode_root/bin/opencode" ] && [ -x /opt/opencode-template/bin/opencode ]; then
+  opencode_root="/opt/opencode-template"
 fi
 
 # Create opencode state directories if missing.
@@ -124,11 +133,14 @@ for opencode_dir in \
   fi
 done
 
-# Ensure opencode symlinks exist.
+# Ensure opencode binary and state symlinks exist.
 if [ -d /home/agent/.opencode ] && [ ! -L /home/agent/.opencode ]; then
   rm -rf /home/agent/.opencode
 fi
-ln -sfn /home/agent/persist/.opencode /home/agent/.opencode
+if [ -x "$opencode_root/bin/opencode" ]; then
+  ln -sfn "$opencode_root" /home/agent/.opencode
+  ln -sfn "$opencode_root/bin/opencode" /home/agent/.local/bin/opencode
+fi
 
 mkdir -p /home/agent/.local/share /home/agent/.local/state /home/agent/.config
 if [ -d /home/agent/.local/share/opencode ] && [ ! -L /home/agent/.local/share/opencode ]; then
@@ -163,20 +175,36 @@ if [ -d /home/agent/.codex ] && [ ! -L /home/agent/.codex ]; then
 fi
 ln -sfn /home/agent/persist/.codex /home/agent/.codex
 
-# Seed Flutter SDK on first run.
-if [ ! -d /home/agent/persist/.flutter-sdk/bin ]; then
-  echo "Initializing Flutter SDK in persistent volume..."
-  cp -a --no-target-directory /opt/flutter-sdk-template /home/agent/persist/.flutter-sdk
-  chown -R agent:agent /home/agent/persist/.flutter-sdk
+# Use the image-baked Flutter SDK. Existing persisted SDK copies are left in
+# place for non-destructive migration, but the active runtime uses /opt.
+flutter_sdk_root="/opt/flutter-sdk"
+if [ ! -x "$flutter_sdk_root/bin/flutter" ] && [ -x /opt/flutter-sdk-template/bin/flutter ]; then
+  flutter_sdk_root="/opt/flutter-sdk-template"
+fi
+if [ -d /home/agent/.flutter-sdk ] && [ ! -L /home/agent/.flutter-sdk ]; then
+  rm -rf /home/agent/.flutter-sdk
+fi
+if [ -x "$flutter_sdk_root/bin/flutter" ]; then
+  ln -sfn "$flutter_sdk_root" /home/agent/.flutter-sdk
+  export WORKCELL_REAL_FLUTTER="$flutter_sdk_root/bin/flutter"
+  export WORKCELL_REAL_DART="$flutter_sdk_root/bin/dart"
 fi
 
 # Ensure ~/.pub-cache symlink exists (persists packages downloaded by flutter/dart pub).
 mkdir -p /home/agent/persist/.pub-cache
+if [ -d /opt/pub-cache-template ]; then
+  cp -an /opt/pub-cache-template/. /home/agent/persist/.pub-cache/ 2>/dev/null || true
+fi
 chown agent:agent /home/agent/persist/.pub-cache 2>/dev/null || true
 if [ -d /home/agent/.pub-cache ] && [ ! -L /home/agent/.pub-cache ]; then
   rm -rf /home/agent/.pub-cache
 fi
 ln -sfn /home/agent/persist/.pub-cache /home/agent/.pub-cache
+if [ -x /opt/pub-cache-template/bin/protoc-gen-dart ]; then
+  ln -sfn /opt/pub-cache-template/bin/protoc-gen-dart /home/agent/.local/bin/protoc-gen-dart
+elif [ -x /home/agent/.pub-cache/bin/protoc-gen-dart ]; then
+  ln -sfn /home/agent/.pub-cache/bin/protoc-gen-dart /home/agent/.local/bin/protoc-gen-dart
+fi
 
 # Ensure ~/.flutter symlink exists (persists Flutter CLI config and version state).
 mkdir -p /home/agent/persist/.flutter-config
@@ -189,7 +217,7 @@ ln -sfn /home/agent/persist/.flutter-config /home/agent/.flutter
 # The Dockerfile declares these paths, but some launch paths provide a sanitized
 # runtime PATH. Re-assert the expected tool locations before dispatching the
 # agent so child shells can find flutter, dart, node, cargo, and local wrappers.
-export PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:/home/agent/persist/.flutter-sdk/bin:${PATH}"
+export PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:$flutter_sdk_root/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
 
 # Initialize .gnupg on first run.
 if [ ! -d /home/agent/persist/.gnupg ]; then
