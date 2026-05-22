@@ -21,6 +21,7 @@ import urllib.error
 from pathlib import Path
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
+from urllib.parse import urlparse
 
 # Activate the virtual environment
 venv_path = Path.home() / ".local/python-venv"
@@ -60,6 +61,11 @@ class Browser:
             raise RuntimeError("Not connected to browser. Call connect() first.")
         return self._browser
 
+    def _cdp_headers(self) -> dict[str, str]:
+        """Headers required by recent Chrome CDP host checks."""
+        host_header = os.environ.get("CHROME_CDP_HOST_HEADER", "localhost")
+        return {"Host": host_header}
+
     async def __aenter__(self):
         await self.connect()
         return self
@@ -70,7 +76,7 @@ class Browser:
     def _get_ws_url(self) -> str | None:
         """Fetch WebSocket URL from Chrome, using localhost Host header to bypass security check."""
         url = f"{self.cdp_url}/json/version"
-        req = urllib.request.Request(url, headers={"Host": "localhost"})
+        req = urllib.request.Request(url, headers=self._cdp_headers())
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
@@ -78,7 +84,6 @@ class Browser:
                 if ws_url:
                     # Replace localhost/127.0.0.1 with actual host address
                     # Chrome returns ws://localhost:PORT/... but we need ws://host.docker.internal:PORT/...
-                    from urllib.parse import urlparse
                     cdp_parsed = urlparse(self.cdp_url)
                     ws_url = ws_url.replace("ws://localhost", f"ws://{cdp_parsed.hostname}")
                     ws_url = ws_url.replace("ws://127.0.0.1", f"ws://{cdp_parsed.hostname}")
@@ -101,7 +106,10 @@ class Browser:
         if not ws_url:
             raise ConnectionError("Could not get WebSocket URL from Chrome")
 
-        self._browser = await self._playwright.chromium.connect_over_cdp(ws_url)
+        self._browser = await self._playwright.chromium.connect_over_cdp(
+            ws_url,
+            headers=self._cdp_headers(),
+        )
 
         # Get the first context or create one
         browser = self._require_browser()
