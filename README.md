@@ -3,10 +3,11 @@
 An opinionated, containerized environment for running TUI coding agents in YOLO mode, with
 Chrome and Flutter integrations, selective persistence, and isolated GPG-signed commits.
 
-Supports [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai/), and
-[Codex](https://github.com/openai/codex), selectable per launch. It is geared toward Rust,
-Python, TypeScript, and Dart/Flutter development. A global context file is symlinked into each
-agent config so the agent is aware of the sandbox's capabilities and constraints.
+Supports [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai/),
+[Codex](https://github.com/openai/codex), and [Pi](https://pi.dev/), selectable per launch. It is
+geared toward Rust, Python, TypeScript, and Dart/Flutter development. A global context file is
+symlinked into each agent config so the agent is aware of the sandbox's capabilities and
+constraints.
 
 ## Documentation
 
@@ -99,6 +100,7 @@ workcell run codex
 workcell run claude --yolo
 workcell run opencode --yolo
 workcell run codex --yolo
+workcell run pi
 
 # Firewalled mode (restricted network access)
 workcell run codex --firewalled
@@ -110,21 +112,24 @@ workcell run claude --yolo -p "fix the tests"
 workcell run claude --resume
 workcell run opencode run "summarize the repo"
 workcell run codex "fix the tests"
+workcell run pi -p "summarize the repo"
 ```
 
-The first positional arg after `run` selects the agent and is required: `claude`, `opencode`, or
-`codex`. All agents use the same sandbox image, persistent Docker volume, and core flags.
+The first positional arg after `run` selects the agent and is required: `claude`, `opencode`,
+`codex`, or `pi`. All agents use the same sandbox image, persistent Docker volume, and core flags.
 
 `--with-chrome` and `--with-flutter` are mutually exclusive. `--port` exposes container dev
 servers to the host in all modes. In Flutter mode, use `--bridge-port` to select the host Flutter
 bridge port. If the Flutter project is in a workspace subdirectory, pass
 `--flutter-project-dir ./gui`.
 
-`--yolo` maps to each agent's native bypass:
+`--yolo` maps to each agent's native bypass where one exists:
 
 - **claude**: `--dangerously-skip-permissions`
 - **opencode**: `{"permission":"allow"}` injected through `OPENCODE_CONFIG_CONTENT`
 - **codex**: `--dangerously-bypass-approvals-and-sandbox`
+- **pi**: ignored because Pi does not ask for permissions by default; the container is the
+  permission boundary
 
 Running `workcell` or `workcell run` without an agent exits with a usage error instead of choosing
 an agent implicitly.
@@ -172,6 +177,7 @@ See [Chrome integration](docs/chrome-integration.md) and
 workcell settings claude
 workcell settings opencode
 workcell settings codex
+workcell settings pi
 ```
 
 These commands open an agent's config file in `vi` inside the workcell Docker volume. The agent
@@ -226,6 +232,7 @@ Volume commands affect the persisted user data described below.
   `~/.local/share/opencode/`.
 - Codex auth, config, history, logs, and session data persist under `~/.codex/`, with project
   conversation files bind-mounted into `.workcell/codex-sessions/`.
+- Pi auth, settings, packages, and sessions persist in the Docker volume under `~/.pi/agent/`.
 - Agent settings, credentials, GPG keys, Rust toolchains, Node versions, and global npm packages
   persist in the `agent-workcell` Docker volume.
 - The container runs as a non-root `agent` user.
@@ -233,8 +240,9 @@ Volume commands affect the persisted user data described below.
 - Host services are reachable from the container through `host.docker.internal`.
 - Dev server ports can be exposed with `--port <port>`.
 - `/opt/agent-context.md` is symlinked as `~/.claude/CLAUDE.md`,
-  `~/.config/opencode/AGENTS.md`, and `~/.codex/AGENTS.md`; focused tool-specific context docs are
-  available at `/opt/agent-context-web.md` and `/opt/agent-context-flutter.md`.
+  `~/.config/opencode/AGENTS.md`, `~/.codex/AGENTS.md`, and `~/.pi/agent/AGENTS.md`; focused
+  tool-specific context docs are available at `/opt/agent-context-web.md` and
+  `/opt/agent-context-flutter.md`.
 
 ## Persistence
 
@@ -248,6 +256,7 @@ Important persisted paths include:
 - `~/.local/state/opencode/` - OpenCode local UI state.
 - `~/.local/share/opencode/` - OpenCode auth, logs, database, and storage.
 - `~/.codex/` - Codex auth, config, history, logs, and global context.
+- `~/.pi/agent/` - Pi settings, auth, sessions, packages, and global context.
 - `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
 - `~/.gnupg/` - GPG keys for commit signing when enabled.
 - `~/.nvm/` - Node.js versions and global npm packages.
@@ -255,9 +264,10 @@ Important persisted paths include:
 - `~/.pub-cache/` - Dart pub package cache shared across projects.
 
 Image-owned tool binaries and SDKs, including Flutter under `/opt/flutter-sdk`, Claude Code
-version payloads, OpenCode, and protobuf CLIs, update with the sandbox image. The entrypoint sets
-up symlinks so each tool still sees its expected home directory paths without using stale persisted
-binary copies.
+version payloads, OpenCode, Pi under `/opt/pi`, and protobuf CLIs, update with the sandbox image.
+The entrypoint sets up symlinks so each tool still sees its expected home directory paths without
+using stale persisted binary copies. Pi runs on the active nvm Node at runtime, but the Pi package
+itself is not installed into the persisted nvm global tree.
 
 > **Security note.** Agent credentials are stored as plaintext inside the Docker volume. Treat the
 > `agent-workcell` volume and its backups as sensitive.
@@ -324,6 +334,7 @@ JSON files before removing the volume. See [OpenCode sessions](#opencode-session
 |----------|-------|
 | **Languages** | Node.js LTS through nvm, Python 3.11, Rust stable |
 | **Node.js** | `nvm`, `npm`, `npx` |
+| **Agents** | `claude`, `opencode`, `codex`, `pi` |
 | **Python** | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
 | **Browser** | Chrome automation support |
 | **Flutter SDK** | `flutter`, `dart` — tests, analysis, formatting, pub (in-container, no host setup) |
@@ -339,6 +350,7 @@ Use `--firewalled` to restrict network access to essential agent and tooling dom
 - Anthropic API
 - OpenAI / Codex
 - OpenCode, including Zen and Go
+- Pi
 - JavaScript and TypeScript package registries
 - Dart and Flutter package registry
 - Rust package registries and docs
