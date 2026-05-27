@@ -232,7 +232,8 @@ Volume commands affect the persisted user data described below.
   `~/.local/share/opencode/`.
 - Codex auth, config, history, logs, and session data persist under `~/.codex/`, with project
   conversation files bind-mounted into `.workcell/codex-sessions/`.
-- Pi auth, settings, packages, and sessions persist in the Docker volume under `~/.pi/agent/`.
+- Pi auth, settings, and packages persist in the Docker volume under `~/.pi/agent/`, with
+  project sessions bind-mounted into `.workcell/pi-sessions/`.
 - Agent settings, credentials, GPG keys, Rust toolchains, Node versions, and global npm packages
   persist in the `agent-workcell` Docker volume.
 - The container runs as a non-root `agent` user.
@@ -256,7 +257,8 @@ Important persisted paths include:
 - `~/.local/state/opencode/` - OpenCode local UI state.
 - `~/.local/share/opencode/` - OpenCode auth, logs, database, and storage.
 - `~/.codex/` - Codex auth, config, history, logs, and global context.
-- `~/.pi/agent/` - Pi settings, auth, sessions, packages, and global context.
+- `~/.pi/agent/` - Pi settings, auth, packages, and global context. Current-project Pi sessions
+  are bind-mounted from `.workcell/pi-sessions/`.
 - `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
 - `~/.gnupg/` - GPG keys for commit signing when enabled.
 - `~/.nvm/` - Node.js versions and global npm packages.
@@ -283,6 +285,7 @@ Each project gets a `.workcell/` directory for project-scoped agent state:
 - `.workcell/claude-sessions/` - bind-mounted Claude project sessions.
 - `.workcell/opencode-sessions/` - exported OpenCode session backups.
 - `.workcell/codex-sessions/` - workspace-local Codex conversation files.
+- `.workcell/pi-sessions/` - bind-mounted Pi project sessions.
 - `.workcell/.env` - optional workspace-local environment variables to define for sandboxed agents.
 - `.workcell/tasks/` - multi-agent task files and scratch notes.
 - `.workcell/flutter-config.json` - project-local Flutter bridge launch and connection settings
@@ -301,6 +304,7 @@ Example `.workcell/` layout:
 ├── claude-sessions/
 ├── codex-sessions/
 ├── opencode-sessions/
+├── pi-sessions/
 ├── tasks/
 └── flutter-config.json
 ```

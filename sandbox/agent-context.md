@@ -29,6 +29,7 @@ Project-specific workcell data lives under `.workcell/`:
 
 - `.workcell/artifacts/` - temporary artifacts from agent work, such as screenshots, logs, traces, and generated previews. Agents may create optional subdirectories such as `screenshots/`, `logs/`, and `mockups/` when that helps organize related files. Put throwaway files here instead of the repo root.
 - `.workcell/.env` - optional workspace-local environment variables loaded into sandboxed agent sessions. Treat it as secret-bearing and leave it ignored by Git.
+- `.workcell/pi-sessions/` - bind-mounted Pi sessions for this project.
 - `.workcell/tasks/` - shared task notes for multi-step work and handoffs.
 - `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
 
@@ -50,7 +51,7 @@ Important persisted user paths:
 - `~/.codex/` - Codex config, auth, sessions, history, and global context.
 - `~/.claude/` - Claude Code credentials, settings, and global context.
 - `~/.config/opencode/` and `~/.local/share/opencode/` - OpenCode config, auth, sessions, logs, and storage.
-- `~/.pi/agent/` - Pi settings, auth, sessions, packages, and global context.
+- `~/.pi/agent/` - Pi settings, auth, packages, and global context. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 
 Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts. Image-owned SDKs and agent binaries update with the sandbox image.
 
