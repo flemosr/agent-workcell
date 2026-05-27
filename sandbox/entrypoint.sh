@@ -16,6 +16,13 @@ rm -f /home/agent/persist/.config/opencode/agent-context-web.md \
 chown agent:agent /home/agent/persist/.config/opencode 2>/dev/null || true
 chown -h agent:agent /home/agent/persist/.config/opencode/AGENTS.md 2>/dev/null || true
 
+mkdir -p /home/agent/persist/.pi/agent
+ln -sfn /opt/agent-context.md /home/agent/persist/.pi/agent/AGENTS.md
+rm -f /home/agent/persist/.pi/agent/agent-context-web.md \
+      /home/agent/persist/.pi/agent/agent-context-flutter.md
+chown -R agent:agent /home/agent/persist/.pi 2>/dev/null || true
+chown -h agent:agent /home/agent/persist/.pi/agent/AGENTS.md 2>/dev/null || true
+
 # Seed nvm on first run.
 if [ ! -d /home/agent/persist/.nvm/versions ]; then
   echo "Initializing nvm in persistent volume..."
@@ -157,6 +164,22 @@ if [ -d /home/agent/.config/opencode ] && [ ! -L /home/agent/.config/opencode ];
   rm -rf /home/agent/.config/opencode
 fi
 ln -sfn /home/agent/persist/.config/opencode /home/agent/.config/opencode
+
+# Use the image-baked Pi package. Pi itself is installed under /opt/pi; runtime
+# state is persisted under ~/.pi/agent.
+pi_root="/opt/pi"
+if [ ! -x "$pi_root/bin/pi" ] && [ -x /opt/pi-template/bin/pi ]; then
+  pi_root="/opt/pi-template"
+fi
+mkdir -p /home/agent/persist/.pi/agent
+chown -R agent:agent /home/agent/persist/.pi 2>/dev/null || true
+if [ -d /home/agent/.pi ] && [ ! -L /home/agent/.pi ]; then
+  rm -rf /home/agent/.pi
+fi
+ln -sfn /home/agent/persist/.pi /home/agent/.pi
+if [ -x "$pi_root/bin/pi" ]; then
+  ln -sfn "$pi_root/bin/pi" /home/agent/.local/bin/pi
+fi
 
 # Codex stores everything (config, auth, sessions, history, logs) under
 # ~/.codex, which we persist via a symlink into ~/persist/.codex. Nothing is
@@ -331,14 +354,14 @@ echo
 # AGENT_CLI is set by the host runner (run_sandbox.sh). It is required so
 # launches cannot accidentally inherit an implicit tool choice.
 if [ -z "${AGENT_CLI:-}" ]; then
-  echo "Error: AGENT_CLI is required (expected 'claude', 'opencode', or 'codex')" >&2
+  echo "Error: AGENT_CLI is required (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
   exit 1
 fi
 agent_cli="$AGENT_CLI"
 case "$agent_cli" in
-  claude|opencode|codex) ;;
+  claude|opencode|codex|pi) ;;
   *)
-    echo "Error: unknown AGENT_CLI '$agent_cli' (expected 'claude', 'opencode', or 'codex')" >&2
+    echo "Error: unknown AGENT_CLI '$agent_cli' (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
     exit 1
     ;;
 esac

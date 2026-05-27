@@ -69,10 +69,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # there via home symlinks — eliminating the end-of-build cp -a that doubled storage.
 RUN mkdir -p /opt/nvm-template /opt/rustup-template /opt/cargo-template \
              /opt/pub-cache-template \
-             /opt/claude-versions-template /opt/opencode-template \
+             /opt/claude-versions-template /opt/opencode-template /opt/pi-template \
     && chown agent:agent /opt/nvm-template /opt/rustup-template /opt/cargo-template \
                           /opt/pub-cache-template \
-                          /opt/claude-versions-template /opt/opencode-template
+                          /opt/claude-versions-template /opt/opencode-template /opt/pi-template
 
 # Switch to agent user; /opt/ template dirs are already chown'd to agent.
 USER agent
@@ -147,6 +147,14 @@ RUN ARCH=$(dpkg --print-architecture) && \
     ln -sf /home/agent/.opencode/bin/opencode /home/agent/.local/bin/opencode && \
     rm -f /tmp/opencode.tar.gz /tmp/opencode
 
+# Install Pi into an image-owned npm prefix instead of the persisted nvm global
+# tree. The CLI still runs on the active nvm Node at runtime via /usr/bin/env node.
+RUN npm install -g --ignore-scripts --min-release-age=0 \
+        --prefix /opt/pi-template \
+        --no-fund --no-audit --loglevel=error --progress=false \
+        @earendil-works/pi-coding-agent && \
+    ln -sf /opt/pi-template/bin/pi /home/agent/.local/bin/pi
+
 # Install Codex. Keep this as a normal curl download because BuildKit remote ADD
 # to the GitHub API can fail with unauthenticated 403 responses.
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -166,6 +174,11 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # so it points to the volume before the entrypoint runs.
 RUN mkdir -p /home/agent/persist/.codex \
     && ln -sf /home/agent/persist/.codex /home/agent/.codex
+
+# Persist Pi user state. The package install is image-owned under /opt/pi; auth,
+# settings, sessions, and Pi packages live under ~/.pi/agent at runtime.
+RUN mkdir -p /home/agent/persist/.pi \
+    && ln -sf /home/agent/persist/.pi /home/agent/.pi
 
 # Persist opencode data directories so config/state written at runtime lands on the volume.
 RUN mkdir -p /home/agent/persist/.local/share/opencode \
@@ -199,11 +212,14 @@ RUN mkdir -p /workspaces && chown agent:agent /workspaces
 # as the build cache anchors for expensive installer layers.
 RUN ln -sfn /opt/flutter-sdk-template /opt/flutter-sdk \
     && ln -sfn /opt/opencode-template /opt/opencode \
+    && ln -sfn /opt/pi-template /opt/pi \
     && ln -sfn /opt/claude-versions-template /opt/claude-code \
     && ln -sfn /opt/opencode/bin/opencode /home/agent/.local/bin/opencode \
+    && ln -sfn /opt/pi/bin/pi /home/agent/.local/bin/pi \
     && ln -sfn /opt/pub-cache-template/bin/protoc-gen-dart /home/agent/.local/bin/protoc-gen-dart \
-    && chown -h agent:agent /opt/flutter-sdk /opt/opencode /opt/claude-code \
+    && chown -h agent:agent /opt/flutter-sdk /opt/opencode /opt/pi /opt/claude-code \
                        /home/agent/.local/bin/opencode \
+                       /home/agent/.local/bin/pi \
                        /home/agent/.local/bin/protoc-gen-dart
 
 # Install release-binary protobuf CLIs and generators late so version bumps do

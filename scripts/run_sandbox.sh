@@ -14,21 +14,21 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # First positional arg selects the agent CLI. Agent selection is required so
 # launches cannot accidentally inherit an implicit tool choice.
 if [[ $# -eq 0 ]]; then
-  echo "Error: agent is required (expected 'claude', 'opencode', or 'codex')" >&2
+  echo "Error: agent is required (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
   echo "Usage: workcell run <agent> [options] [-- agent-args]" >&2
   exit 1
 fi
 if [[ "$1" == -* ]]; then
-  echo "Error: agent is required before options (expected 'claude', 'opencode', or 'codex')" >&2
+  echo "Error: agent is required before options (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
   echo "Usage: workcell run <agent> [options] [-- agent-args]" >&2
   exit 1
 fi
 agent_cli="$1"
 shift
 case "$agent_cli" in
-  claude|opencode|codex) ;;
+  claude|opencode|codex|pi) ;;
   *)
-    echo "Error: unknown agent '$agent_cli' (expected 'claude', 'opencode', or 'codex')" >&2
+    echo "Error: unknown agent '$agent_cli' (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
     exit 1
     ;;
 esac
@@ -117,6 +117,8 @@ fi
 # inject `{"permission": "allow"}` via OPENCODE_CONFIG_CONTENT (precedence slot #6 in
 # opencode's config chain — won't clobber the user's project or global config).
 # codex exposes --dangerously-bypass-approvals-and-sandbox for YOLO mode.
+# pi intentionally has no built-in permission prompts; the workcell container is
+# the permission boundary, so --yolo does not need a Pi-specific flag.
 yolo_flag=""
 yolo_env=()
 if $yolo; then
@@ -124,6 +126,7 @@ if $yolo; then
     claude)   yolo_flag="--dangerously-skip-permissions" ;;
     opencode) yolo_env+=(-e 'OPENCODE_CONFIG_CONTENT={"permission":"allow"}') ;;
     codex)    yolo_flag="--dangerously-bypass-approvals-and-sandbox" ;;
+    pi)       ;;
   esac
 fi
 

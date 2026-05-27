@@ -50,6 +50,7 @@ Important persisted user paths:
 - `~/.codex/` - Codex config, auth, sessions, history, and global context.
 - `~/.claude/` - Claude Code credentials, settings, and global context.
 - `~/.config/opencode/` and `~/.local/share/opencode/` - OpenCode config, auth, sessions, logs, and storage.
+- `~/.pi/agent/` - Pi settings, auth, sessions, packages, and global context.
 
 Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts. Image-owned SDKs and agent binaries update with the sandbox image.
 
@@ -82,6 +83,7 @@ When the firewall is active, external network access is limited to essential age
 - Anthropic: `api.anthropic.com`, `claude.ai`, `statsig.anthropic.com`, `sentry.io`
 - OpenAI / Codex: `api.openai.com`, `chatgpt.com`, `auth.openai.com`
 - OpenCode: `opencode.ai`
+- Pi: `pi.dev`
 - JavaScript / TypeScript: `registry.npmjs.org`, `npmjs.com`, `yarnpkg.com`, `registry.yarnpkg.com`, `nodejs.org`
 - Dart / Flutter: `pub.dev`
 - Rust: `crates.io`, `static.crates.io`, `index.crates.io`, `doc.rust-lang.org`, `docs.rs`, `static.rust-lang.org`
@@ -94,6 +96,7 @@ When the firewall is active, external network access is limited to essential age
 |----------|-------|
 | Languages | Node.js LTS through `nvm`, Python 3.11, Rust stable |
 | Node.js | `nvm`, `npm`, `npx` |
+| Agents | `claude`, `opencode`, `codex`, `pi` |
 | Python | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
 | Browser | `browser` CLI for Chrome automation; read `/opt/agent-context-web.md` before use |
 | Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); read `/opt/agent-context-flutter.md` before use |

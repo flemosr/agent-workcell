@@ -19,6 +19,9 @@ ALLOWED_DOMAINS=(
     # OpenCode, including Zen and Go
     "opencode.ai"
 
+    # Pi
+    "pi.dev"
+
     # JavaScript/TypeScript
     "registry.npmjs.org"
     "npmjs.com"
