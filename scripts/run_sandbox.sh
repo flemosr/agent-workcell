@@ -185,6 +185,22 @@ case "$agent_cli" in
       -v "${codex_session_dir}/archived_sessions:/home/agent/persist/.codex/archived_sessions"
     )
     ;;
+  pi)
+    pi_session_dir="${workspace_workcell_dir}/pi-sessions"
+    mkdir -p "$pi_session_dir"
+    pi_session_key=$(python3 - "/workspaces/${project_name}" <<'PY'
+import re
+import sys
+
+cwd = sys.argv[1]
+trimmed = cwd.lstrip("/\\")
+print("--" + re.sub(r"[/\\:]", "-", trimmed) + "--")
+PY
+)
+    session_mount_args=(
+      -v "${pi_session_dir}:/home/agent/persist/.pi/agent/sessions/${pi_session_key}"
+    )
+    ;;
 esac
 
 container_name="agent-workcell-$$"
