@@ -4,7 +4,7 @@
 # Usage:
 #   workcell build [options]         Build/rebuild the sandbox image
 #   workcell run <agent> [options]   Run the sandbox in current directory
-#                                          (agent: claude | opencode | codex)
+#                                          (agent: claude | opencode | codex | pi)
 #   workcell start-chrome [options]  Start Chrome with remote debugging
 #   workcell start-flutter-bridge     Start Flutter host bridge
 #   workcell gpg-new                  Generate a new sandbox GPG key
@@ -50,7 +50,7 @@ Usage:
 Commands:
   build           Build/rebuild the sandbox image
   run <agent>     Run the sandbox in current directory
-                  agent: claude | opencode | codex
+                  agent: claude | opencode | codex | pi
   start-chrome    Start Chrome with remote debugging (run on host)
   start-flutter-bridge  Start Flutter host bridge (run on host)
   gpg-new         Generate a new sandbox GPG key
@@ -74,6 +74,7 @@ Examples:
   workcell run claude --yolo --with-chrome --port 3000
   workcell run opencode --yolo
   workcell run codex --yolo
+  workcell run pi
   workcell start-chrome
   workcell start-chrome --restart
   workcell start-flutter-bridge
@@ -89,6 +90,7 @@ Examples:
   workcell settings claude
   workcell settings opencode
   workcell settings codex
+  workcell settings pi
   workcell opencode-sessions-export
   workcell opencode-sessions-import
 
@@ -107,6 +109,7 @@ Agents:
   claude     Launch Claude Code
   opencode   Launch opencode
   codex      Launch Codex
+  pi         Launch Pi
 
 Options:
   --yolo            Enable YOLO mode (no permission prompts)
@@ -114,6 +117,7 @@ Options:
                     opencode: injects {"permission":"allow"} via
                               OPENCODE_CONFIG_CONTENT
                     codex:    passes --dangerously-bypass-approvals-and-sandbox
+                    pi:       no extra flag; container is the permission boundary
   --firewalled      Restrict network to essential domains only
   --with-chrome     Start Chrome with remote debugging
   --with-flutter    Start Flutter host bridge
@@ -129,6 +133,7 @@ Examples:
   workcell run claude --yolo
   workcell run opencode --yolo
   workcell run codex --yolo
+  workcell run pi
   workcell run claude --yolo --with-chrome --port 3000
   workcell run codex --with-flutter --bridge-port 8765
   workcell run codex --with-flutter --flutter-project-dir ./gui
@@ -289,20 +294,20 @@ case "$command" in
         fi
 
         if [ -z "${1:-}" ]; then
-            echo "Error: agent is required (expected 'claude', 'opencode', or 'codex')"
+            echo "Error: agent is required (expected 'claude', 'opencode', 'codex', or 'pi')"
             echo "Usage: workcell run <agent> [options] [-- agent-args]"
             exit 1
         fi
 
         case "$1" in
-            claude|opencode|codex) ;;
+            claude|opencode|codex|pi) ;;
             -*)
-                echo "Error: agent is required before options (expected 'claude', 'opencode', or 'codex')"
+                echo "Error: agent is required before options (expected 'claude', 'opencode', 'codex', or 'pi')"
                 echo "Usage: workcell run <agent> [options] [-- agent-args]"
                 exit 1
                 ;;
             *)
-                echo "Error: unknown agent '$1' (expected 'claude', 'opencode', or 'codex')"
+                echo "Error: unknown agent '$1' (expected 'claude', 'opencode', 'codex', or 'pi')"
                 exit 1
                 ;;
         esac
@@ -714,11 +719,12 @@ GPGEOF
             echo "  opencode  ~/.config/opencode/opencode.jsonc (preferred if it exists)"
             echo "            ~/.config/opencode/opencode.json"
             echo "  codex     ~/.codex/config.toml"
+            echo "  pi        ~/.pi/agent/settings.json"
             exit 0
         fi
 
         if [ -z "${1:-}" ]; then
-            echo "Error: agent is required (expected 'claude', 'opencode', or 'codex')"
+            echo "Error: agent is required (expected 'claude', 'opencode', 'codex', or 'pi')"
             echo "Usage: workcell settings <agent>"
             exit 1
         fi
@@ -767,8 +773,20 @@ EOF
                     exec runuser -u agent -- vi "$settings_path"
                 '
                 ;;
+            pi)
+                docker run --rm -it --entrypoint sh -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" -lc '
+                    mkdir -p /data/.pi/agent
+                    chown -R agent:agent /data/.pi
+                    settings_path=/data/.pi/agent/settings.json
+                    if [ ! -f "$settings_path" ]; then
+                        printf "{}\n" > "$settings_path"
+                    fi
+                    chown agent:agent "$settings_path"
+                    exec runuser -u agent -- vi "$settings_path"
+                '
+                ;;
             *)
-                echo "Error: unknown agent '$settings_agent' (expected 'claude', 'opencode', or 'codex')"
+                echo "Error: unknown agent '$settings_agent' (expected 'claude', 'opencode', 'codex', or 'pi')"
                 exit 1
                 ;;
         esac

@@ -10,7 +10,12 @@ RUN_SANDBOX = REPO_ROOT / "scripts" / "run_sandbox.sh"
 
 
 class RunSandboxLauncherTests(unittest.TestCase):
-    def run_with_fake_docker(self, workspace: Path, env_file: str | None = None) -> str:
+    def run_with_fake_docker(
+        self,
+        workspace: Path,
+        env_file: str | None = None,
+        agent: str = "codex",
+    ) -> str:
         fake_bin = workspace / "bin"
         fake_bin.mkdir()
         docker_log = workspace / "docker.log"
@@ -37,7 +42,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
         env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
 
         subprocess.run(
-            [str(RUN_SANDBOX), "codex", "--", "status"],
+            [str(RUN_SANDBOX), agent, "--", "status"],
             cwd=workspace,
             env=env,
             check=True,
@@ -46,6 +51,29 @@ class RunSandboxLauncherTests(unittest.TestCase):
             text=True,
         )
         return docker_log.read_text(encoding="utf-8")
+
+    def test_pi_agent_is_passed_to_docker_run(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            docker_log = self.run_with_fake_docker(workspace, agent="pi")
+
+            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
+            self.assertIn("\t-e\tAGENT_CLI=pi\t", f"{run_line}\t")
+
+    def test_unknown_agent_error_mentions_pi(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = subprocess.run(
+                [str(RUN_SANDBOX), "unknown"],
+                cwd=workspace,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("'claude', 'opencode', 'codex', or 'pi'", result.stdout)
 
     def test_flutter_project_dir_requires_flutter_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
