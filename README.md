@@ -232,8 +232,8 @@ Volume commands affect the persisted user data described below.
   `~/.local/share/opencode/`.
 - Codex auth, config, history, logs, and session data persist under `~/.codex/`, with project
   conversation files bind-mounted into `.workcell/codex-sessions/`.
-- Pi auth, settings, and packages persist in the Docker volume under `~/.pi/agent/`, with
-  project sessions bind-mounted into `.workcell/pi-sessions/`.
+- Pi auth, settings, packages/extensions, and the persisted Pi install prefix live in the Docker
+  volume under `~/.pi/agent/`, with project sessions bind-mounted into `.workcell/pi-sessions/`.
 - Agent settings, credentials, GPG keys, Rust toolchains, Node versions, and global npm packages
   persist in the `agent-workcell` Docker volume.
 - The container runs as a non-root `agent` user.
@@ -257,8 +257,8 @@ Important persisted paths include:
 - `~/.local/state/opencode/` - OpenCode local UI state.
 - `~/.local/share/opencode/` - OpenCode auth, logs, database, and storage.
 - `~/.codex/` - Codex auth, config, history, logs, and global context.
-- `~/.pi/agent/` - Pi settings, auth, packages, and global context. Current-project Pi sessions
-  are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global
+  context. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 - `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
 - `~/.gnupg/` - GPG keys for commit signing when enabled.
 - `~/.nvm/` - Node.js versions and global npm packages.
@@ -266,10 +266,14 @@ Important persisted paths include:
 - `~/.pub-cache/` - Dart pub package cache shared across projects.
 
 Image-owned tool binaries and SDKs, including Flutter under `/opt/flutter-sdk`, Claude Code
-version payloads, OpenCode, Pi under `/opt/pi`, and protobuf CLIs, update with the sandbox image.
-The entrypoint sets up symlinks so each tool still sees its expected home directory paths without
-using stale persisted binary copies. Pi runs on the active nvm Node at runtime, but the Pi package
-itself is not installed into the persisted nvm global tree.
+version payloads, OpenCode, the default Pi install under `/opt/pi`, and protobuf CLIs, update with
+the sandbox image. The entrypoint sets up symlinks so each tool still sees its expected home
+directory paths without using stale persisted binary copies. Pi runs on the active nvm Node at
+runtime. Pi package/extension updates persist under `~/.pi/agent/`; the entrypoint seeds Pi's
+own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update`
+self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi
+copy exists, the sandbox keeps using it and leaves further version upgrades to explicit user-run
+`pi update` commands.
 
 > **Security note.** Agent credentials are stored as plaintext inside the Docker volume. Treat the
 > `agent-workcell` volume and its backups as sensitive.
