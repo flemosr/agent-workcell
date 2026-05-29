@@ -1,27 +1,29 @@
 #!/bin/bash
-# Entrypoint script for Agent Workcell
+# Common entrypoint script for Agent Workcell images.
+set -e
 
-# Link each agent's global context path to the canonical image-baked file.
-mkdir -p /home/agent/persist/.claude
-ln -sfn /opt/agent-context.md /home/agent/persist/.claude/CLAUDE.md
-rm -f /home/agent/persist/.claude/agent-context-web.md \
-      /home/agent/persist/.claude/agent-context-flutter.md
-chown agent:agent /home/agent/persist/.claude 2>/dev/null || true
-chown -h agent:agent /home/agent/persist/.claude/CLAUDE.md 2>/dev/null || true
+expected_agents="claude, opencode, codex, or pi"
 
-mkdir -p /home/agent/persist/.config/opencode
-ln -sfn /opt/agent-context.md /home/agent/persist/.config/opencode/AGENTS.md
-rm -f /home/agent/persist/.config/opencode/agent-context-web.md \
-      /home/agent/persist/.config/opencode/agent-context-flutter.md
-chown agent:agent /home/agent/persist/.config/opencode 2>/dev/null || true
-chown -h agent:agent /home/agent/persist/.config/opencode/AGENTS.md 2>/dev/null || true
+if [ -z "${AGENT_CLI:-}" ]; then
+  echo "Error: AGENT_CLI is required (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
+  exit 1
+fi
+case "$AGENT_CLI" in
+  claude|opencode|codex|pi) ;;
+  *)
+    echo "Error: unknown AGENT_CLI '$AGENT_CLI' (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
+    exit 1
+    ;;
+esac
 
-mkdir -p /home/agent/persist/.pi/agent
-ln -sfn /opt/agent-context.md /home/agent/persist/.pi/agent/AGENTS.md
-rm -f /home/agent/persist/.pi/agent/agent-context-web.md \
-      /home/agent/persist/.pi/agent/agent-context-flutter.md
-chown -R agent:agent /home/agent/persist/.pi 2>/dev/null || true
-chown -h agent:agent /home/agent/persist/.pi/agent/AGENTS.md 2>/dev/null || true
+if [ -z "${WORKCELL_IMAGE_AGENT:-}" ]; then
+  echo "Error: WORKCELL_IMAGE_AGENT is not set in this image" >&2
+  exit 1
+fi
+if [ "$WORKCELL_IMAGE_AGENT" != "$AGENT_CLI" ]; then
+  echo "Error: image/agent mismatch: image is '$WORKCELL_IMAGE_AGENT' but AGENT_CLI is '$AGENT_CLI'" >&2
+  exit 1
+fi
 
 # Seed nvm on first run.
 if [ ! -d /home/agent/persist/.nvm/versions ]; then
@@ -29,15 +31,8 @@ if [ ! -d /home/agent/persist/.nvm/versions ]; then
   cp -a --no-target-directory /opt/nvm-template /home/agent/persist/.nvm
   chown -R agent:agent /home/agent/persist/.nvm
 elif [ -d /opt/nvm-template/versions/node ]; then
-  # Copy any image-baked Node versions that the persisted tree is missing.
-  # We deliberately do not touch versions that already exist: overwriting a
-  # running `node` or globally-installed binary (e.g. codex) with `cp -a`
-  # fails with "Text file busy" when another container is using the same
-  # volume concurrently. Users who want to pick up a newer bundled global
-  # package on an existing volume can run `npm i -g <pkg>` in the sandbox,
-  # or delete the affected `~/.nvm/versions/node/<ver>` directory so this
-  # block re-seeds it on the next boot.
   for version_path in /opt/nvm-template/versions/node/*; do
+    [ -e "$version_path" ] || continue
     version=$(basename "$version_path")
     dest_path="/home/agent/persist/.nvm/versions/node/$version"
     if [ ! -d "$dest_path" ]; then
@@ -48,20 +43,10 @@ elif [ -d /opt/nvm-template/versions/node ]; then
     fi
   done
 fi
-
-# Refresh image-baked nvm scripts in existing volumes while leaving installed
-# Node versions and user aliases untouched.
 if [ -d /home/agent/persist/.nvm ] && [ -d /opt/nvm-template ]; then
   for nvm_file in nvm.sh nvm-exec bash_completion install.sh package.json; do
-    if [ -e "/opt/nvm-template/$nvm_file" ]; then
-      cp -a "/opt/nvm-template/$nvm_file" "/home/agent/persist/.nvm/$nvm_file"
-    fi
+    [ -e "/opt/nvm-template/$nvm_file" ] && cp -a "/opt/nvm-template/$nvm_file" "/home/agent/persist/.nvm/$nvm_file"
   done
-  chown agent:agent /home/agent/persist/.nvm/nvm.sh \
-                    /home/agent/persist/.nvm/nvm-exec \
-                    /home/agent/persist/.nvm/bash_completion \
-                    /home/agent/persist/.nvm/install.sh \
-                    /home/agent/persist/.nvm/package.json 2>/dev/null || true
   if [ -d /opt/nvm-template/alias/lts ]; then
     mkdir -p /home/agent/persist/.nvm/alias
     rm -rf /home/agent/persist/.nvm/alias/lts
@@ -69,19 +54,11 @@ if [ -d /home/agent/persist/.nvm ] && [ -d /opt/nvm-template ]; then
     chown -R agent:agent /home/agent/persist/.nvm/alias/lts
   fi
 fi
-
-# Ensure the nvm symlink exists.
-if [ -d /home/agent/.nvm ] && [ ! -L /home/agent/.nvm ]; then
-  rm -rf /home/agent/.nvm
-fi
+[ -d /home/agent/.nvm ] && [ ! -L /home/agent/.nvm ] && rm -rf /home/agent/.nvm
 ln -sfn /home/agent/persist/.nvm /home/agent/.nvm
-
-# Point `current` at the latest installed Node version.
 if [ -d /home/agent/.nvm/versions/node ]; then
   latest_node=$(ls -1 /home/agent/.nvm/versions/node | sort -V | tail -1)
-  if [ -n "$latest_node" ]; then
-    ln -sfn "/home/agent/.nvm/versions/node/$latest_node" /home/agent/.nvm/current
-  fi
+  [ -n "$latest_node" ] && ln -sfn "/home/agent/.nvm/versions/node/$latest_node" /home/agent/.nvm/current
 fi
 
 # Seed Rust toolchains on first run.
@@ -91,147 +68,29 @@ if [ ! -d /home/agent/persist/.rustup/toolchains ]; then
   cp -a --no-target-directory /opt/cargo-template /home/agent/persist/.cargo
   chown -R agent:agent /home/agent/persist/.rustup /home/agent/persist/.cargo
 fi
-
-# Ensure the rustup symlink exists.
-if [ -d /home/agent/.rustup ] && [ ! -L /home/agent/.rustup ]; then
-  rm -rf /home/agent/.rustup
-fi
-ln -sfn /home/agent/persist/.rustup /home/agent/.rustup
-
-# Ensure the cargo symlink exists.
-if [ -d /home/agent/.cargo ] && [ ! -L /home/agent/.cargo ]; then
-  rm -rf /home/agent/.cargo
-fi
-ln -sfn /home/agent/persist/.cargo /home/agent/.cargo
-
-# Use image-baked Claude Code versions. Existing persisted .claude-versions
-# directories are left untouched, but no longer drive the active binary.
-claude_versions_root="/opt/claude-code"
-if [ ! -d "$claude_versions_root/versions" ] && [ -d /opt/claude-versions-template/versions ]; then
-  claude_versions_root="/opt/claude-versions-template"
-fi
-mkdir -p /home/agent/.local/share /home/agent/.local/bin
-if [ -d /home/agent/.local/share/claude ] && [ ! -L /home/agent/.local/share/claude ]; then
-  rm -rf /home/agent/.local/share/claude
-fi
-if [ -d "$claude_versions_root/versions" ]; then
-  ln -sfn "$claude_versions_root" /home/agent/.local/share/claude
-  latest_claude=$(ls -1 "$claude_versions_root/versions" | sort -V | tail -1)
-  if [ -n "$latest_claude" ]; then
-    ln -sfn "$claude_versions_root/versions/$latest_claude" /home/agent/.local/bin/claude
-  fi
-fi
-
-# Use the image-baked opencode install. Existing persisted .opencode
-# directories are left untouched, but no longer drive the active binary.
-opencode_root="/opt/opencode"
-if [ ! -x "$opencode_root/bin/opencode" ] && [ -x /opt/opencode-template/bin/opencode ]; then
-  opencode_root="/opt/opencode-template"
-fi
-
-# Create opencode state directories if missing.
-for opencode_dir in \
-    /home/agent/persist/.local/share/opencode \
-    /home/agent/persist/.local/state/opencode \
-    /home/agent/persist/.config/opencode; do
-  if [ ! -d "$opencode_dir" ]; then
-    mkdir -p "$opencode_dir"
-    chown agent:agent "$opencode_dir"
-  fi
+for d in .rustup .cargo; do
+  [ -d "/home/agent/$d" ] && [ ! -L "/home/agent/$d" ] && rm -rf "/home/agent/$d"
+  ln -sfn "/home/agent/persist/$d" "/home/agent/$d"
 done
 
-# Ensure opencode binary and state symlinks exist.
-if [ -d /home/agent/.opencode ] && [ ! -L /home/agent/.opencode ]; then
-  rm -rf /home/agent/.opencode
-fi
-if [ -x "$opencode_root/bin/opencode" ]; then
-  ln -sfn "$opencode_root" /home/agent/.opencode
-  ln -sfn "$opencode_root/bin/opencode" /home/agent/.local/bin/opencode
-fi
-
-mkdir -p /home/agent/.local/share /home/agent/.local/state /home/agent/.config
-if [ -d /home/agent/.local/share/opencode ] && [ ! -L /home/agent/.local/share/opencode ]; then
-  rm -rf /home/agent/.local/share/opencode
-fi
-ln -sfn /home/agent/persist/.local/share/opencode /home/agent/.local/share/opencode
-
-if [ -d /home/agent/.local/state/opencode ] && [ ! -L /home/agent/.local/state/opencode ]; then
-  rm -rf /home/agent/.local/state/opencode
-fi
-ln -sfn /home/agent/persist/.local/state/opencode /home/agent/.local/state/opencode
-
-if [ -d /home/agent/.config/opencode ] && [ ! -L /home/agent/.config/opencode ]; then
-  rm -rf /home/agent/.config/opencode
-fi
-ln -sfn /home/agent/persist/.config/opencode /home/agent/.config/opencode
-
-# Pi runtime state, packages/extensions, and self-updates persist under
-# ~/.pi/agent. Seed Pi's own npm-style prefix from the image only on first run
-# so native `pi update` writes to the volume instead of the ephemeral
-# image-owned /opt/pi tree. Once a persisted Pi exists, keep using it and leave
-# version upgrades to explicit user-run `pi update` commands; auto-reseeding a
-# newer image version could run against an incompatible persisted file layout.
-mkdir -p /home/agent/persist/.pi/agent
-chown -R agent:agent /home/agent/persist/.pi 2>/dev/null || true
-if [ -d /home/agent/.pi ] && [ ! -L /home/agent/.pi ]; then
-  rm -rf /home/agent/.pi
-fi
-ln -sfn /home/agent/persist/.pi /home/agent/.pi
-export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-/home/agent/persist/.pi/agent}"
-
-pi_self_prefix="/home/agent/persist/.pi/agent/self"
-pi_image_prefix="/opt/pi"
-if [ ! -x "$pi_self_prefix/bin/pi" ] && [ -d "$pi_image_prefix" ]; then
-  rm -rf "$pi_self_prefix"
-  mkdir -p "$pi_self_prefix"
-  cp -a "$pi_image_prefix"/. "$pi_self_prefix"/
-  chown -R agent:agent "$pi_self_prefix" 2>/dev/null || true
-fi
-if [ -x "$pi_self_prefix/bin/pi" ]; then
-  ln -sfn "$pi_self_prefix/bin/pi" /home/agent/.local/bin/pi
-fi
-
-# Codex stores everything (config, auth, sessions, history, logs) under
-# ~/.codex, which we persist via a symlink into ~/persist/.codex. Nothing is
-# baked into the image — Codex creates its own files on first use. The
-# sessions/ and archived_sessions/ subdirectories are bind-mounted from the
-# workspace by the host runner, so we deliberately do not recurse when
-# chown'ing to avoid rewriting host-file ownership.
-mkdir -p /home/agent/persist/.codex
-chown agent:agent /home/agent/persist/.codex 2>/dev/null || true
-ln -sfn /opt/agent-context.md /home/agent/persist/.codex/AGENTS.md
-rm -f /home/agent/persist/.codex/agent-context-web.md \
-      /home/agent/persist/.codex/agent-context-flutter.md
-chown -h agent:agent /home/agent/persist/.codex/AGENTS.md 2>/dev/null || true
-if [ -d /home/agent/.codex ] && [ ! -L /home/agent/.codex ]; then
-  rm -rf /home/agent/.codex
-fi
-ln -sfn /home/agent/persist/.codex /home/agent/.codex
-
-# Use the image-baked Flutter SDK. Existing persisted SDK copies are left in
-# place for non-destructive migration, but the active runtime uses /opt.
+# Use image-baked Flutter SDK.
 flutter_sdk_root="/opt/flutter-sdk"
 if [ ! -x "$flutter_sdk_root/bin/flutter" ] && [ -x /opt/flutter-sdk-template/bin/flutter ]; then
   flutter_sdk_root="/opt/flutter-sdk-template"
 fi
-if [ -d /home/agent/.flutter-sdk ] && [ ! -L /home/agent/.flutter-sdk ]; then
-  rm -rf /home/agent/.flutter-sdk
-fi
+[ -d /home/agent/.flutter-sdk ] && [ ! -L /home/agent/.flutter-sdk ] && rm -rf /home/agent/.flutter-sdk
 if [ -x "$flutter_sdk_root/bin/flutter" ]; then
   ln -sfn "$flutter_sdk_root" /home/agent/.flutter-sdk
   export WORKCELL_REAL_FLUTTER="$flutter_sdk_root/bin/flutter"
   export WORKCELL_REAL_DART="$flutter_sdk_root/bin/dart"
 fi
 
-# Ensure ~/.pub-cache symlink exists (persists packages downloaded by flutter/dart pub).
 mkdir -p /home/agent/persist/.pub-cache
 if [ -d /opt/pub-cache-template ]; then
   cp -an /opt/pub-cache-template/. /home/agent/persist/.pub-cache/ 2>/dev/null || true
 fi
 chown agent:agent /home/agent/persist/.pub-cache 2>/dev/null || true
-if [ -d /home/agent/.pub-cache ] && [ ! -L /home/agent/.pub-cache ]; then
-  rm -rf /home/agent/.pub-cache
-fi
+[ -d /home/agent/.pub-cache ] && [ ! -L /home/agent/.pub-cache ] && rm -rf /home/agent/.pub-cache
 ln -sfn /home/agent/persist/.pub-cache /home/agent/.pub-cache
 if [ -x /opt/pub-cache-template/bin/protoc-gen-dart ]; then
   ln -sfn /opt/pub-cache-template/bin/protoc-gen-dart /home/agent/.local/bin/protoc-gen-dart
@@ -239,107 +98,42 @@ elif [ -x /home/agent/.pub-cache/bin/protoc-gen-dart ]; then
   ln -sfn /home/agent/.pub-cache/bin/protoc-gen-dart /home/agent/.local/bin/protoc-gen-dart
 fi
 
-# Ensure ~/.flutter symlink exists (persists Flutter CLI config and version state).
 mkdir -p /home/agent/persist/.flutter-config
 chown agent:agent /home/agent/persist/.flutter-config 2>/dev/null || true
-if [ -d /home/agent/.flutter ] && [ ! -L /home/agent/.flutter ]; then
-  rm -rf /home/agent/.flutter
-fi
+[ -d /home/agent/.flutter ] && [ ! -L /home/agent/.flutter ] && rm -rf /home/agent/.flutter
 ln -sfn /home/agent/persist/.flutter-config /home/agent/.flutter
 
-# The Dockerfile declares these paths, but some launch paths provide a sanitized
-# runtime PATH. Re-assert the expected tool locations before dispatching the
-# agent so child shells can find flutter, dart, node, cargo, and local wrappers.
-export PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:$flutter_sdk_root/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
-
-# Initialize .gnupg on first run.
-if [ ! -d /home/agent/persist/.gnupg ]; then
-  mkdir -p /home/agent/persist/.gnupg
-  chmod 700 /home/agent/persist/.gnupg
-  chown agent:agent /home/agent/persist/.gnupg
-fi
-
-# Ensure the gnupg symlink exists.
-if [ -d /home/agent/.gnupg ] && [ ! -L /home/agent/.gnupg ]; then
-  rm -rf /home/agent/.gnupg
-fi
+# Shared GPG volume is mounted at /home/agent/persist/.gnupg by the host runner.
+mkdir -p /home/agent/persist/.gnupg
+chmod 700 /home/agent/persist/.gnupg 2>/dev/null || true
+chown agent:agent /home/agent/persist/.gnupg 2>/dev/null || true
+[ -d /home/agent/.gnupg ] && [ ! -L /home/agent/.gnupg ] && rm -rf /home/agent/.gnupg
 ln -sfn /home/agent/persist/.gnupg /home/agent/.gnupg
 
-# GPG commit signing setup
+export PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:$flutter_sdk_root/bin:/home/agent/.nvm/current/bin:/home/agent/.cargo/bin:${PATH}"
+
+# Run agent-specific persistence and binary setup.
+if [ ! -x /opt/workcell-agent-init.sh ]; then
+  echo "Error: missing agent init script for '$WORKCELL_IMAGE_AGENT'" >&2
+  exit 1
+fi
+. /opt/workcell-agent-init.sh
+
+# GPG commit signing setup.
 if [ "$GPG_SIGNING" = "true" ] && [ -n "$GIT_AUTHOR_NAME" ] && [ -n "$GIT_AUTHOR_EMAIL" ]; then
-  # Check if a key already exists
-  existing_email=$(runuser -u agent -- gpg --list-keys --with-colons 2>/dev/null | grep '^uid' | head -1 | cut -d: -f10 | grep -oP '<\K[^>]+')
-
+  existing_email=$(runuser -u agent -- gpg --list-keys --with-colons 2>/dev/null | grep '^uid' | head -1 | cut -d: -f10 | grep -oP '<\K[^>]+' || true)
   if [ -n "$existing_email" ] && [ "$existing_email" != "$GIT_AUTHOR_EMAIL" ]; then
-    # Identity mismatch — stop and let user decide
-    echo ""
-    echo "ERROR: GPG key identity mismatch!"
-    echo "  Existing key: $existing_email"
-    echo "  Config email:  $GIT_AUTHOR_EMAIL"
-    echo ""
-    echo "The existing GPG key does not match your configured identity."
-    echo "To back up your current key, run on the host:"
-    echo "  workcell gpg-export --file gpg-key-backup.asc"
-    echo ""
-    echo "This creates the specified file in your current directory."
-    echo "WARNING: This file contains your PRIVATE key. Do not commit or share it."
-    echo ""
-    echo "Options:"
-    echo "  [r] Regenerate key (deletes existing key)"
-    echo "  [a] Abort"
-    echo ""
-    read -r -p "Choice [r/a]: " choice
-    case "$choice" in
-      r|R)
-        echo "Deleting existing GPG keys..."
-        rm -rf /home/agent/persist/.gnupg/*
-        ;;
-      *)
-        echo "Aborting."
-        exit 1
-        ;;
-    esac
+    echo "ERROR: GPG key identity mismatch!" >&2
+    echo "  Existing key: $existing_email" >&2
+    echo "  Config email:  $GIT_AUTHOR_EMAIL" >&2
+    exit 1
   fi
-
-  # Generate key if none exists
   if ! runuser -u agent -- gpg --list-keys "$GIT_AUTHOR_EMAIL" &>/dev/null; then
-    echo ""
-    echo "GPG_SIGNING is enabled but no key was found for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>."
-    echo "A new ed25519 signing key will be generated (passphrase-less)."
-    echo ""
-    echo "Options:"
-    echo "  [g] Generate new key"
-    echo "  [a] Abort"
-    echo ""
-    read -r -p "Choice [g/a]: " choice
-    case "$choice" in
-      g|G) ;;
-      *)
-        echo "Aborting."
-        exit 1
-        ;;
-    esac
-
-    echo "Generating GPG signing key..."
-    runuser -u agent -- gpg --batch --gen-key <<GPGEOF
-%no-protection
-Key-Type: eddsa
-Key-Curve: ed25519
-Name-Real: $GIT_AUTHOR_NAME
-Name-Email: $GIT_AUTHOR_EMAIL
-Expire-Date: 0
-%commit
-GPGEOF
-    # Print public key for GitHub registration
-    echo ""
-    echo "=== GPG Public Key (add to GitHub → Settings → SSH and GPG keys) ==="
-    runuser -u agent -- gpg --armor --export "$GIT_AUTHOR_EMAIL"
-    echo "==================================================================="
-    echo ""
+    echo "GPG_SIGNING is enabled but no key was found for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>." >&2
+    echo "Run 'workcell gpg-new' on the host to create one." >&2
+    exit 1
   fi
-
-  # Configure git to sign commits
-  key_id=$(runuser -u agent -- gpg --list-keys --keyid-format long "$GIT_AUTHOR_EMAIL" 2>/dev/null | grep -oP '(?<=ed25519/)[A-F0-9]+' | head -1)
+  key_id=$(runuser -u agent -- gpg --list-keys --keyid-format long "$GIT_AUTHOR_EMAIL" 2>/dev/null | grep -oP '(?<=ed25519/)[A-F0-9]+' | head -1 || true)
   if [ -n "$key_id" ]; then
     runuser -u agent -- git config --global user.signingKey "$key_id"
     runuser -u agent -- git config --global commit.gpgSign true
@@ -347,7 +141,6 @@ GPGEOF
   fi
 fi
 
-# If ENABLE_FIREWALL is set, configure network restrictions (requires root)
 if [[ "$ENABLE_FIREWALL" == "1" ]]; then
   if [[ "$(id -u)" != "0" ]]; then
     echo "Error: Firewall requested but not running as root. Container must run as root to configure iptables." >&2
@@ -357,34 +150,11 @@ if [[ "$ENABLE_FIREWALL" == "1" ]]; then
   /opt/init-firewall.sh
 fi
 
-# Blank line to separate init logs from the agent TUI
 echo
 
-# Dispatch to the selected agent CLI.
-# AGENT_CLI is set by the host runner (run_sandbox.sh). It is required so
-# launches cannot accidentally inherit an implicit tool choice.
-if [ -z "${AGENT_CLI:-}" ]; then
-  echo "Error: AGENT_CLI is required (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
-  exit 1
-fi
-agent_cli="$AGENT_CLI"
-case "$agent_cli" in
-  claude|opencode|codex|pi) ;;
-  *)
-    echo "Error: unknown AGENT_CLI '$agent_cli' (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
-    exit 1
-    ;;
-esac
-
-# Run the agent as the agent user in the current working directory.
-# `runuser -m` preserves the environment so vars like OPENCODE_CONFIG_CONTENT
-# (used to inject opencode's "permission: allow" for --yolo) cross the boundary.
-# `env …` re-sets HOME/USER/LOGNAME because -m also preserves those from root,
-# which would make the agent look up config under the wrong user.
-# cwd is inherited naturally (runuser doesn't chdir unless --login is passed).
 if [[ "$(id -u)" == "0" ]]; then
   exec runuser -m -u agent -- \
-    env HOME=/home/agent USER=agent LOGNAME=agent PATH="$PATH" "$agent_cli" "$@"
+    env HOME=/home/agent USER=agent LOGNAME=agent PATH="$PATH" "$AGENT_CLI" "$@"
 else
-  exec "$agent_cli" "$@"
+  exec "$AGENT_CLI" "$@"
 fi
