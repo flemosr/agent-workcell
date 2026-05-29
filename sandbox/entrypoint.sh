@@ -165,20 +165,30 @@ if [ -d /home/agent/.config/opencode ] && [ ! -L /home/agent/.config/opencode ];
 fi
 ln -sfn /home/agent/persist/.config/opencode /home/agent/.config/opencode
 
-# Use the image-baked Pi package. Pi itself is installed under /opt/pi; runtime
-# state is persisted under ~/.pi/agent.
-pi_root="/opt/pi"
-if [ ! -x "$pi_root/bin/pi" ] && [ -x /opt/pi-template/bin/pi ]; then
-  pi_root="/opt/pi-template"
-fi
+# Pi runtime state, packages/extensions, and self-updates persist under
+# ~/.pi/agent. Seed Pi's own npm-style prefix from the image only on first run
+# so native `pi update` writes to the volume instead of the ephemeral
+# image-owned /opt/pi tree. Once a persisted Pi exists, keep using it and leave
+# version upgrades to explicit user-run `pi update` commands; auto-reseeding a
+# newer image version could run against an incompatible persisted file layout.
 mkdir -p /home/agent/persist/.pi/agent
 chown -R agent:agent /home/agent/persist/.pi 2>/dev/null || true
 if [ -d /home/agent/.pi ] && [ ! -L /home/agent/.pi ]; then
   rm -rf /home/agent/.pi
 fi
 ln -sfn /home/agent/persist/.pi /home/agent/.pi
-if [ -x "$pi_root/bin/pi" ]; then
-  ln -sfn "$pi_root/bin/pi" /home/agent/.local/bin/pi
+export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-/home/agent/persist/.pi/agent}"
+
+pi_self_prefix="/home/agent/persist/.pi/agent/self"
+pi_image_prefix="/opt/pi"
+if [ ! -x "$pi_self_prefix/bin/pi" ] && [ -d "$pi_image_prefix" ]; then
+  rm -rf "$pi_self_prefix"
+  mkdir -p "$pi_self_prefix"
+  cp -a "$pi_image_prefix"/. "$pi_self_prefix"/
+  chown -R agent:agent "$pi_self_prefix" 2>/dev/null || true
+fi
+if [ -x "$pi_self_prefix/bin/pi" ]; then
+  ln -sfn "$pi_self_prefix/bin/pi" /home/agent/.local/bin/pi
 fi
 
 # Codex stores everything (config, auth, sessions, history, logs) under

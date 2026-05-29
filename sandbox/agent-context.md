@@ -51,9 +51,9 @@ Important persisted user paths:
 - `~/.codex/` - Codex config, auth, sessions, history, and global context.
 - `~/.claude/` - Claude Code credentials, settings, and global context.
 - `~/.config/opencode/` and `~/.local/share/opencode/` - OpenCode config, auth, sessions, logs, and storage.
-- `~/.pi/agent/` - Pi settings, auth, packages, and global context. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 
-Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts. Image-owned SDKs and agent binaries update with the sandbox image.
+Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts. Image-owned SDKs and agent binaries update with the sandbox image. Pi package/extension updates persist under `~/.pi/agent/`; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
 
 ## Ports And Integrations
 
