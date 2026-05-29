@@ -43,22 +43,18 @@ Replace `/path/to/agent-workcell` with the actual path to this repository, then 
 source ~/.zshrc
 ```
 
-### 2. Build the image
+### 2. Run an agent
 
-Build the image before first use. Rebuilding also refreshes the bundled agent TUIs in the image to
-their latest releases.
+Run the workcell with a selected agent to build its sandbox image on demand:
 
 ```bash
-# Build the image
-workcell build
+workcell run opencode
 ```
 
-### 3. Authenticate
+See [Run Agents](#run-agents) below for the other agent commands. Each harness has its own native
+authentication flow when credentials are needed.
 
-Run the workcell with a selected agent once to authenticate with the corresponding account. See
-[Run Agents](#run-agents) below for the commands.
-
-### 4. Configure optional integrations
+### 3. Configure optional integrations
 
 Copy the config template before enabling optional integrations:
 
@@ -79,12 +75,16 @@ Then follow the focused setup guide you need:
 ### Build
 
 ```bash
-# Build the image
+# Build all agent images
 workcell build
+
+# Or build one agent image plus the shared base
+workcell build pi
 ```
 
 `workcell build` runs `docker compose build` from the workcell repository root, so it works even
-when you invoke `workcell` from another directory.
+when you invoke `workcell` from another directory. `workcell build all` builds all four agent
+images; targeted builds accept `claude`, `opencode`, `codex`, or `pi`.
 
 ### Run Agents
 
@@ -95,12 +95,12 @@ Navigate to any project directory and run:
 workcell run claude
 workcell run opencode
 workcell run codex
+workcell run pi  # Pi does not use permission prompts by default
 
 # YOLO mode (no permission prompts)
 workcell run claude --yolo
 workcell run opencode --yolo
 workcell run codex --yolo
-workcell run pi
 
 # Firewalled mode (restricted network access)
 workcell run codex --firewalled
@@ -116,7 +116,9 @@ workcell run pi -p "summarize the repo"
 ```
 
 The first positional arg after `run` selects the agent and is required: `claude`, `opencode`,
-`codex`, or `pi`. All agents use the same sandbox image, persistent Docker volume, and core flags.
+`codex`, or `pi`. Each agent uses its own sandbox image and persistent Docker volume, plus a
+shared GPG volume. If the selected image is missing, `workcell run <agent>` builds that agent image
+and the shared base automatically.
 
 `--with-chrome` and `--with-flutter` are mutually exclusive. `--port` exposes container dev
 servers to the host in all modes. In Flutter mode, use `--bridge-port` to select the host Flutter
@@ -208,17 +210,19 @@ These commands export and import OpenCode sessions between the Docker volume and
 ### Volume Management
 
 ```bash
-# Open a shell in the volume
-workcell volume-shell
+# Open a shell in a specific volume
+workcell volume-shell codex
+workcell volume-shell gpg
 
-# Backup the volume
+# Backup all workcell volumes
 workcell volume-backup --file agent-workcell-bkp.tgz
 
-# Restore from backup
+# Restore all workcell volumes from backup
 workcell volume-restore --file agent-workcell-bkp.tgz
 
-# Remove the volume
-workcell volume-rm
+# Remove a specific volume scope, or all scopes
+workcell volume-rm codex
+workcell volume-rm all
 ```
 
 Volume commands affect the persisted user data described below.
@@ -234,8 +238,10 @@ Volume commands affect the persisted user data described below.
   conversation files bind-mounted into `.workcell/codex-sessions/`.
 - Pi auth, settings, packages/extensions, and the persisted Pi install prefix live in the Docker
   volume under `~/.pi/agent/`, with project sessions bind-mounted into `.workcell/pi-sessions/`.
-- Agent settings, credentials, GPG keys, Rust toolchains, Node versions, and global npm packages
-  persist in the `agent-workcell` Docker volume.
+- Agent settings, credentials, Rust toolchains, Node versions, and language caches persist in the
+  selected agent's Docker volume (`agent-workcell-claude`, `agent-workcell-opencode`,
+  `agent-workcell-codex`, or `agent-workcell-pi`).
+- GPG keys persist in the shared `agent-workcell-gpg` Docker volume.
 - The container runs as a non-root `agent` user.
 - Filesystem access is isolated to the mounted project directory.
 - Host services are reachable from the container through `host.docker.internal`.
@@ -247,8 +253,17 @@ Volume commands affect the persisted user data described below.
 
 ## Persistence
 
-User-level data is stored in a Docker volume named `agent-workcell`, mounted at
-`/home/agent/persist` inside the container.
+User-level data is split across per-agent Docker volumes. The selected agent volume is mounted at
+`/home/agent/persist` inside the container, and the shared GPG volume is mounted at
+`/home/agent/persist/.gnupg`.
+
+Volumes:
+
+- `agent-workcell-claude`
+- `agent-workcell-opencode`
+- `agent-workcell-codex`
+- `agent-workcell-pi`
+- `agent-workcell-gpg` (shared signing keys only)
 
 Important persisted paths include:
 
@@ -260,7 +275,7 @@ Important persisted paths include:
 - `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global
   context. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 - `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
-- `~/.gnupg/` - GPG keys for commit signing when enabled.
+- `~/.gnupg/` - GPG keys for commit signing when enabled; stored in `agent-workcell-gpg`.
 - `~/.nvm/` - Node.js versions and global npm packages.
 - `~/.flutter/` - Flutter CLI config and version state.
 - `~/.pub-cache/` - Dart pub package cache shared across projects.
@@ -275,8 +290,8 @@ self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once 
 copy exists, the sandbox keeps using it and leaves further version upgrades to explicit user-run
 `pi update` commands.
 
-> **Security note.** Agent credentials are stored as plaintext inside the Docker volume. Treat the
-> `agent-workcell` volume and its backups as sensitive.
+> **Security note.** Agent credentials are stored as plaintext inside Docker volumes. Treat
+> `agent-workcell-*` volumes and their backups as sensitive.
 
 ### Workspace-local data
 
@@ -389,7 +404,17 @@ agent-workcell/
     ├── agent-context.md
     ├── agent-context-web.md
     ├── agent-context-flutter.md
-    ├── Dockerfile
+    ├── agent-init/
+    │   ├── claude.sh
+    │   ├── codex.sh
+    │   ├── opencode.sh
+    │   └── pi.sh
+    ├── dockerfiles/
+    │   ├── base.Dockerfile
+    │   ├── claude.Dockerfile
+    │   ├── codex.Dockerfile
+    │   ├── opencode.Dockerfile
+    │   └── pi.Dockerfile
     ├── entrypoint.sh
     ├── init-firewall.sh
     ├── browser-tools/
