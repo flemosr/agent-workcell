@@ -2,7 +2,7 @@
 # Agent Workcell CLI
 #
 # Usage:
-#   workcell build [options]         Build/rebuild the sandbox image
+#   workcell build [target] [options] Build/rebuild sandbox images
 #   workcell run <agent> [options]   Run the sandbox in current directory
 #                                          (agent: claude | opencode | codex | pi)
 #   workcell start-chrome [options]  Start Chrome with remote debugging
@@ -12,10 +12,10 @@
 #   workcell gpg-import --file <f>   Import a GPG key into the sandbox
 #   workcell gpg-revoke --file <f>   Generate a revocation certificate
 #   workcell gpg-erase               Erase the sandbox GPG key
-#   workcell volume-shell             Open a shell in the sandbox volume
-#   workcell volume-backup --file <f> Backup the sandbox volume
-#   workcell volume-restore --file <f> Restore the sandbox volume from backup
-#   workcell volume-rm               Remove the sandbox volume
+#   workcell volume-shell <scope>     Open a shell in a workcell volume
+#   workcell volume-backup --file <f> Backup all workcell volumes
+#   workcell volume-restore --file <f> Restore all workcell volumes from backup
+#   workcell volume-rm <scope>        Remove a workcell volume scope
 #   workcell settings <agent>        Open an agent's settings/config in vi
 #   workcell opencode-sessions-export Export opencode sessions for current workspace
 #   workcell opencode-sessions-import Import opencode sessions from workspace backup
@@ -28,8 +28,12 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKCELL_VOLUME_NAME="agent-workcell"
-WORKCELL_IMAGE_NAME="local/agent-workcell"
+WORKCELL_IMAGE_PREFIX="local/agent-workcell"
+WORKCELL_BASE_IMAGE_NAME="local/agent-workcell-base"
+WORKCELL_SHARED_GPG_VOLUME_NAME="agent-workcell-gpg"
+agent_volume_name() { echo "agent-workcell-$1"; }
+agent_image_name() { echo "${WORKCELL_IMAGE_PREFIX}-$1"; }
+valid_agent() { case "$1" in claude|opencode|codex|pi) return 0 ;; *) return 1 ;; esac; }
 
 # Ensure common Docker CLI locations are on PATH.
 # IDE task runners (e.g. Zed, VS Code) may launch with a minimal environment
@@ -58,10 +62,10 @@ Commands:
   gpg-import      Import a GPG key into the sandbox
   gpg-revoke      Generate a revocation certificate
   gpg-erase       Erase the sandbox GPG key
-  volume-shell    Open a shell in the sandbox volume
-  volume-backup   Backup the sandbox volume to a file
-  volume-restore  Restore the sandbox volume from a backup
-  volume-rm       Remove the sandbox volume
+  volume-shell    Open a shell in a workcell volume scope
+  volume-backup   Backup all workcell volumes to a file
+  volume-restore  Restore all workcell volumes from a backup
+  volume-rm       Remove a workcell volume scope
   settings <agent>   Open an agent's settings/config in vi
   opencode-sessions-export  Export opencode sessions for current workspace
                             to .workcell/opencode-sessions/
@@ -83,10 +87,10 @@ Examples:
   workcell gpg-import --file my-key.asc
   workcell gpg-revoke --file revoke.asc
   workcell gpg-erase
-  workcell volume-shell
+  workcell volume-shell codex
   workcell volume-backup --file backup.tgz
   workcell volume-restore --file backup.tgz
-  workcell volume-rm
+  workcell volume-rm codex
   workcell settings claude
   workcell settings opencode
   workcell settings codex
@@ -145,18 +149,19 @@ EOF
 
 show_build_help() {
     cat << 'EOF'
-Build or rebuild the Agent Workcell Docker image
+Build or rebuild Agent Workcell Docker images
 
 Usage:
-  workcell build [docker-compose-build-args]
+  workcell build [all|claude|opencode|codex|pi] [docker-compose-build-args]
 
 Examples:
   workcell build
-  workcell build --no-cache
+  workcell build all
+  workcell build codex --no-cache
 
 Notes:
-  Runs `docker compose build` from the workcell repository root, so it works
-  even if you invoke `workcell` from another directory.
+  Runs `docker compose build` from the workcell repository root. The shared
+  base image is built before targeted agent images.
 EOF
 }
 
@@ -280,9 +285,21 @@ case "$command" in
             exit 0
         fi
 
+        target="${1:-all}"
+        if [[ "$target" == "all" || "$target" == "claude" || "$target" == "opencode" || "$target" == "codex" || "$target" == "pi" ]]; then
+            shift || true
+        else
+            target="all"
+        fi
+
         ensure_docker_running
         cd "$SCRIPT_DIR"
-        exec docker compose build "$@"
+        docker compose build "$@" agent-workcell-base
+        if [[ "$target" == "all" ]]; then
+            exec docker compose build "$@" agent-workcell-claude agent-workcell-opencode agent-workcell-codex agent-workcell-pi
+        else
+            exec docker compose build "$@" "agent-workcell-$target"
+        fi
         ;;
 
     run)
@@ -364,7 +381,7 @@ case "$command" in
         ensure_docker_running
 
         # Check for existing key
-        existing=$(docker run --rm --entrypoint bash -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" \
+        existing=$(docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
             -c 'gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^uid" | head -1 | cut -d: -f10')
 
         if [ -n "$existing" ]; then
@@ -379,15 +396,15 @@ case "$command" in
                     exit 0
                     ;;
             esac
-            docker run --rm --entrypoint bash -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" \
+            docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
                 -c 'rm -rf /data/.gnupg/*'
         fi
 
         echo "Generating GPG signing key for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>..."
-        docker run --rm --entrypoint bash -v "${WORKCELL_VOLUME_NAME}:/data" \
+        docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
             -e "GIT_AUTHOR_NAME=$GIT_AUTHOR_NAME" \
             -e "GIT_AUTHOR_EMAIL=$GIT_AUTHOR_EMAIL" \
-            "$WORKCELL_IMAGE_NAME" \
+            "$WORKCELL_BASE_IMAGE_NAME" \
             -c '
                 gpg --homedir /data/.gnupg --no-permission-warning --batch --gen-key <<GPGEOF
 %no-protection
@@ -433,7 +450,7 @@ GPGEOF
         fi
 
         ensure_docker_running
-        docker run --rm --entrypoint bash -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" \
+        docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
             -c 'gpg --homedir /data/.gnupg --no-permission-warning --export-secret-keys --armor 2>/dev/null' > "$outfile"
 
         if [ ! -s "$outfile" ]; then
@@ -478,7 +495,7 @@ GPGEOF
         fi
 
         ensure_docker_running
-        docker run --rm -i --entrypoint bash -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" \
+        docker run --rm -i --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
             -c '
                 gpg --homedir /data/.gnupg --no-permission-warning --import && \
                 fpr=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^fpr" | head -1 | cut -d: -f10) && \
@@ -525,10 +542,10 @@ GPGEOF
         outname="$(basename "$outfile")"
 
         docker run --rm -it --entrypoint bash \
-            -v "${WORKCELL_VOLUME_NAME}:/data" \
+            -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
             -v "$outdir:/output" \
             -e "OUTNAME=$outname" \
-            "$WORKCELL_IMAGE_NAME" \
+            "$WORKCELL_BASE_IMAGE_NAME" \
             -c '
                 key_id=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --keyid-format long 2>/dev/null | grep -oP "(?<=ed25519/)[A-F0-9]+" | head -1)
                 if [ -z "$key_id" ]; then
@@ -565,7 +582,7 @@ GPGEOF
         case "$confirm" in
             y|Y)
                 ensure_docker_running
-                docker run --rm --entrypoint bash -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" \
+                docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
                     -c 'rm -rf /data/.gnupg/* && echo "GPG keys erased."'
                 ;;
             *)
@@ -577,18 +594,20 @@ GPGEOF
     volume-shell)
         shift
         if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Open a shell in the sandbox volume"
+            echo "Open a shell in a workcell Docker volume"
             echo ""
             echo "Usage:"
-            echo "  workcell volume-shell"
-            echo ""
-            echo "Opens an interactive shell in the sandbox Docker volume"
-            echo "for inspecting or modifying its contents."
+            echo "  workcell volume-shell <claude|opencode|codex|pi|gpg>"
             exit 0
         fi
-
+        scope="${1:-}"
+        case "$scope" in
+            claude|opencode|codex|pi) volume="$(agent_volume_name "$scope")" ;;
+            gpg) volume="$WORKCELL_SHARED_GPG_VOLUME_NAME" ;;
+            *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', or 'gpg')"; exit 1 ;;
+        esac
         ensure_docker_running
-        docker run --rm -it -v "${WORKCELL_VOLUME_NAME}:/data" -w /data alpine sh
+        docker run --rm -it -v "${volume}:/data" -w /data alpine sh
         ;;
 
     volume-backup)
@@ -598,33 +617,19 @@ GPGEOF
             case "$1" in
                 --file) outfile="$2"; shift 2 ;;
                 --help|-h)
-                    echo "Backup the sandbox volume to a file"
-                    echo ""
-                    echo "Usage:"
-                    echo "  workcell volume-backup --file <path>"
-                    echo ""
-                    echo "Options:"
-                    echo "  --file <path>   Output file (required, .tgz)"
-                    exit 0
-                    ;;
+                    echo "Backup all workcell volumes to a file"
+                    echo "Usage: workcell volume-backup --file <path.tgz>"
+                    echo "Includes claude, opencode, codex, pi, and shared gpg volumes."
+                    exit 0 ;;
                 *) echo "Unknown option: $1"; exit 1 ;;
             esac
         done
-
-        if [ -z "$outfile" ]; then
-            echo "Error: --file is required"
-            echo "Usage: workcell volume-backup --file <path>"
-            exit 1
-        fi
-
+        [ -n "$outfile" ] || { echo "Error: --file is required"; exit 1; }
         ensure_docker_running
         outdir="$(cd "$(dirname "$outfile")" && pwd)"
         outname="$(basename "$outfile")"
-
-        docker run --rm -v "${WORKCELL_VOLUME_NAME}:/data" -v "$outdir:/backup" alpine \
-            tar -czf "/backup/$outname" -C /data .
-
-        echo "Volume backed up to: $outfile"
+        docker run --rm             -v "$(agent_volume_name claude):/volumes/claude:ro"             -v "$(agent_volume_name opencode):/volumes/opencode:ro"             -v "$(agent_volume_name codex):/volumes/codex:ro"             -v "$(agent_volume_name pi):/volumes/pi:ro"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg:ro"             -v "$outdir:/backup" alpine             tar -czf "/backup/$outname" -C /volumes .
+        echo "Volumes backed up to: $outfile"
         ;;
 
     volume-restore)
@@ -634,76 +639,43 @@ GPGEOF
             case "$1" in
                 --file) infile="$2"; shift 2 ;;
                 --help|-h)
-                    echo "Restore the sandbox volume from a backup"
-                    echo ""
-                    echo "Usage:"
-                    echo "  workcell volume-restore --file <path>"
-                    echo ""
-                    echo "Options:"
-                    echo "  --file <path>   Backup file to restore (required, .tgz)"
-                    echo ""
-                    echo "WARNING: This replaces all current volume contents."
-                    exit 0
-                    ;;
+                    echo "Restore all workcell volumes from a backup"
+                    echo "Usage: workcell volume-restore --file <path.tgz>"
+                    echo "WARNING: This replaces claude, opencode, codex, pi, and shared gpg volume contents."
+                    exit 0 ;;
                 *) echo "Unknown option: $1"; exit 1 ;;
             esac
         done
-
-        if [ -z "$infile" ]; then
-            echo "Error: --file is required"
-            echo "Usage: workcell volume-restore --file <path>"
-            exit 1
-        fi
-
-        if [ ! -f "$infile" ]; then
-            echo "Error: File not found: $infile"
-            exit 1
-        fi
-
-        read -r -p "This will replace all contents of the sandbox volume. Continue? [y/N] " confirm
-        case "$confirm" in
-            y|Y) ;;
-            *)
-                echo "Aborted."
-                exit 0
-                ;;
-        esac
-
+        [ -n "$infile" ] || { echo "Error: --file is required"; exit 1; }
+        [ -f "$infile" ] || { echo "Error: File not found: $infile"; exit 1; }
+        read -r -p "This will replace all workcell volume contents. Type 'all' to continue: " confirm
+        [ "$confirm" = "all" ] || { echo "Aborted."; exit 0; }
         ensure_docker_running
         indir="$(cd "$(dirname "$infile")" && pwd)"
         inname="$(basename "$infile")"
-
-        docker run --rm -v "${WORKCELL_VOLUME_NAME}:/data" -v "$indir:/backup" alpine \
-            sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; tar -xzf /backup/$inname -C /data"
-
-        echo "Volume restored from: $infile"
+        docker run --rm             -v "$(agent_volume_name claude):/volumes/claude"             -v "$(agent_volume_name opencode):/volumes/opencode"             -v "$(agent_volume_name codex):/volumes/codex"             -v "$(agent_volume_name pi):/volumes/pi"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg"             -v "$indir:/backup:ro" alpine             sh -c 'for d in /volumes/*; do rm -rf "$d"/* "$d"/.[!.]* "$d"/..?* 2>/dev/null || true; done; tar -xzf "/backup/$0" -C /volumes' "$inname"
+        echo "Volumes restored from: $infile"
         ;;
 
     volume-rm)
         shift
         if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Remove the sandbox volume"
-            echo ""
-            echo "Usage:"
-            echo "  workcell volume-rm"
-            echo ""
-            echo "Permanently deletes the sandbox Docker volume and all its data"
-            echo "(credentials, settings, GPG keys, installed tools, etc.)."
-            echo "A fresh volume will be created on the next launch."
+            echo "Remove workcell Docker volumes"
+            echo "Usage: workcell volume-rm <claude|opencode|codex|pi|gpg|all>"
             exit 0
         fi
-
-        read -r -p "This will permanently delete all sandbox data (credentials, settings, GPG keys, etc.). Continue? [y/N] " confirm
-        case "$confirm" in
-            y|Y)
-                ensure_docker_running
-                docker volume rm "$WORKCELL_VOLUME_NAME"
-                echo "Volume '$WORKCELL_VOLUME_NAME' removed."
-                ;;
-            *)
-                echo "Aborted."
-                ;;
+        scope="${1:-}"
+        case "$scope" in
+            claude|opencode|codex|pi) volumes=("$(agent_volume_name "$scope")") ;;
+            gpg) volumes=("$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
+            all) volumes=("$(agent_volume_name claude)" "$(agent_volume_name opencode)" "$(agent_volume_name codex)" "$(agent_volume_name pi)" "$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
+            *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', 'gpg', or 'all')"; exit 1 ;;
         esac
+        read -r -p "This will permanently delete volume scope '$scope'. Type '$scope' to continue: " confirm
+        [ "$confirm" = "$scope" ] || { echo "Aborted."; exit 0; }
+        ensure_docker_running
+        docker volume rm "${volumes[@]}"
+        echo "Removed volume scope '$scope'."
         ;;
 
     settings)
@@ -730,10 +702,16 @@ GPGEOF
         fi
 
         settings_agent="$1"
+        if ! valid_agent "$settings_agent"; then
+            echo "Error: unknown agent '$settings_agent' (expected 'claude', 'opencode', 'codex', or 'pi')"
+            exit 1
+        fi
+        settings_volume="$(agent_volume_name "$settings_agent")"
+        settings_image="$(agent_image_name "$settings_agent")"
         ensure_docker_running
         case "$settings_agent" in
             claude)
-                docker run --rm -it --entrypoint sh -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" -lc '
+                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
                     mkdir -p /data/.claude
                     chown -R agent:agent /data/.claude
                     [ -f /data/.claude/settings.json ] || printf "{}\n" > /data/.claude/settings.json
@@ -742,7 +720,7 @@ GPGEOF
                 '
                 ;;
             opencode)
-                docker run --rm -it --entrypoint sh -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" -lc '
+                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
                     mkdir -p /data/.config/opencode
                     chown -R agent:agent /data/.config/opencode
                     if [ -f /data/.config/opencode/opencode.jsonc ]; then
@@ -762,7 +740,7 @@ EOF
                 '
                 ;;
             codex)
-                docker run --rm -it --entrypoint sh -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" -lc '
+                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
                     mkdir -p /data/.codex
                     chown -R agent:agent /data/.codex
                     settings_path=/data/.codex/config.toml
@@ -774,7 +752,7 @@ EOF
                 '
                 ;;
             pi)
-                docker run --rm -it --entrypoint sh -v "${WORKCELL_VOLUME_NAME}:/data" "$WORKCELL_IMAGE_NAME" -lc '
+                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
                     mkdir -p /data/.pi/agent
                     chown -R agent:agent /data/.pi
                     settings_path=/data/.pi/agent/settings.json
@@ -784,10 +762,6 @@ EOF
                     chown agent:agent "$settings_path"
                     exec runuser -u agent -- vi "$settings_path"
                 '
-                ;;
-            *)
-                echo "Error: unknown agent '$settings_agent' (expected 'claude', 'opencode', 'codex', or 'pi')"
-                exit 1
                 ;;
         esac
         ;;
@@ -822,10 +796,11 @@ EOF
         docker run --rm --entrypoint sh \
             --user agent \
             -e HOME=/home/agent \
-            -v "${WORKCELL_VOLUME_NAME}:/home/agent/persist" \
+            -v "$(agent_volume_name opencode):/home/agent/persist" \
+            -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
             -v "$(pwd):/workspaces/${project_name}" \
             -w "/workspaces/${project_name}" \
-            "$WORKCELL_IMAGE_NAME" -c '
+            "$(agent_image_name opencode)" -c '
                 set -e
                 export PATH="/home/agent/.local/bin:$PATH"
                 ids=$(opencode session list --format json 2>/dev/null | jq -r ".[].id")
@@ -870,10 +845,11 @@ EOF
         docker run --rm --entrypoint sh \
             --user agent \
             -e HOME=/home/agent \
-            -v "${WORKCELL_VOLUME_NAME}:/home/agent/persist" \
+            -v "$(agent_volume_name opencode):/home/agent/persist" \
+            -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
             -v "$(pwd):/workspaces/${project_name}" \
             -w "/workspaces/${project_name}" \
-            "$WORKCELL_IMAGE_NAME" -c '
+            "$(agent_image_name opencode)" -c '
                 set -e
                 export PATH="/home/agent/.local/bin:$PATH"
                 count=0

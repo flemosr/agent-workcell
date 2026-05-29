@@ -40,6 +40,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
         env = os.environ.copy()
         env["DOCKER_LOG"] = str(docker_log)
         env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+        env["WORKCELL_TEST_SKIP_WATCHDOG"] = "1"
 
         subprocess.run(
             [str(RUN_SANDBOX), agent, "--", "status"],

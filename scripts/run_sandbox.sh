@@ -4,8 +4,8 @@
 set -e
 
 WORKCELL_DIR_NAME=".workcell"
-WORKCELL_VOLUME_NAME="agent-workcell"
-WORKCELL_IMAGE_NAME="local/agent-workcell"
+WORKCELL_SHARED_GPG_VOLUME_NAME="agent-workcell-gpg"
+WORKCELL_IMAGE_PREFIX="local/agent-workcell"
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,6 +32,8 @@ case "$agent_cli" in
     exit 1
     ;;
 esac
+WORKCELL_VOLUME_NAME="agent-workcell-${agent_cli}"
+WORKCELL_IMAGE_NAME="${WORKCELL_IMAGE_PREFIX}-${agent_cli}"
 
 yolo=false
 firewalled=false
@@ -516,6 +518,7 @@ docker_args=(
   -v "${workspace_root}:/workspaces/${project_name}"
   -w "/workspaces/${project_name}"
   -v "${WORKCELL_VOLUME_NAME}:/home/agent/persist"
+  -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg"
   "${workcell_env_args[@]}"
   -e TERM=xterm-256color
   -e "AGENT_CLI=${agent_cli}"
@@ -596,14 +599,22 @@ fi
 # The watchdog ignores SIGHUP and is disowned from bash's job table, so it
 # survives terminal close on both macOS and Linux.
 
+if ! docker image inspect "$WORKCELL_IMAGE_NAME" >/dev/null 2>&1; then
+  echo "Image $WORKCELL_IMAGE_NAME not found; building it..."
+  (cd "$REPO_ROOT" && docker compose build agent-workcell-base && docker compose build "agent-workcell-${agent_cli}")
+fi
+
 docker run -d "${docker_args[@]}" "$WORKCELL_IMAGE_NAME" $yolo_flag "${args[@]}" >/dev/null
 
-# Spawn watchdog immune to SIGHUP
-( trap '' HUP
-  while kill -0 $$ 2>/dev/null; do sleep 1; done
-  docker stop "$container_name" 2>/dev/null || true
-) &
-disown $!
+# Spawn watchdog immune to SIGHUP. Tests with fake Docker can disable this to
+# avoid leaving background loops after temporary fake command directories vanish.
+if [ "${WORKCELL_TEST_SKIP_WATCHDOG:-}" != "1" ]; then
+  ( trap '' HUP
+    while kill -0 $$ 2>/dev/null; do sleep 1; done
+    docker stop "$container_name" 2>/dev/null || true
+  ) &
+  disown $!
+fi
 
 docker attach "$container_name" || true
 docker stop "$container_name" 2>/dev/null || true
