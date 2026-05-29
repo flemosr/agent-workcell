@@ -29,7 +29,10 @@ Project-specific workcell data lives under `.workcell/`:
 
 - `.workcell/artifacts/` - temporary artifacts from agent work, such as screenshots, logs, traces, and generated previews. Agents may create optional subdirectories such as `screenshots/`, `logs/`, and `mockups/` when that helps organize related files. Put throwaway files here instead of the repo root.
 - `.workcell/.env` - optional workspace-local environment variables loaded into sandboxed agent sessions. Treat it as secret-bearing and leave it ignored by Git.
-- `.workcell/pi-sessions/` - bind-mounted Pi sessions for this project.
+- `.workcell/claude-sessions/` - bind-mounted Claude project sessions when running the Claude harness.
+- `.workcell/opencode-sessions/` - exported OpenCode session backups.
+- `.workcell/codex-sessions/` - workspace-local Codex conversation files when running the Codex harness.
+- `.workcell/pi-sessions/` - bind-mounted Pi project sessions when running the Pi harness.
 - `.workcell/tasks/` - shared task notes for multi-step work and handoffs.
 - `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
 
@@ -43,17 +46,22 @@ Prefer timestamped artifact names so files sort chronologically and avoid collis
 
 Important persisted user paths:
 
-- `~/.nvm/` - Node.js versions and global npm packages.
-- `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, installed binaries, and config.
-- `~/.gnupg/` - GPG keys for commit signing when enabled.
-- `~/.pub-cache/` - Dart pub package cache shared across projects.
-- `~/.flutter/` - Flutter CLI config and version state.
-- `~/.codex/` - Codex config, auth, sessions, history, and global context.
-- `~/.claude/` - Claude Code credentials, settings, and global context.
-- `~/.config/opencode/` and `~/.local/share/opencode/` - OpenCode config, auth, sessions, logs, and storage.
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.nvm/` - Node.js versions and global npm packages for the selected agent volume.
+- `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, installed binaries, and config for the selected agent volume.
+- `~/.gnupg/` - GPG keys for commit signing when enabled; this is the explicitly shared GPG volume mounted into every agent image.
+- `~/.pub-cache/` - Dart pub package cache for the selected agent volume.
+- `~/.flutter/` - Flutter CLI config and version state for the selected agent volume.
 
-Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts. Image-owned SDKs and agent binaries update with the sandbox image. Pi package/extension updates persist under `~/.pi/agent/`; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
+Each agent harness runs in its own image with its own persisted Docker volume, so other harnesses'
+global state paths and binaries are intentionally absent. Depending on the selected harness, the
+available persisted harness path is one of:
+
+- `~/.claude/` - Claude Code credentials, settings, project sessions, and global context.
+- `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` - OpenCode config, auth, sessions, logs, storage, and local UI state.
+- `~/.codex/` - Codex config, auth, history, logs, and global context; project conversation files are bind-mounted from `.workcell/codex-sessions/`.
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context; current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+
+Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts for the selected agent volume. Image-owned SDKs and the selected agent binary update with that agent's sandbox image. Pi package/extension updates persist under `~/.pi/agent/` only in the Pi harness; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the Pi sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
 
 ## Ports And Integrations
 
@@ -97,7 +105,7 @@ When the firewall is active, external network access is limited to essential age
 |----------|-------|
 | Languages | Node.js LTS through `nvm`, Python 3.11, Rust stable |
 | Node.js | `nvm`, `npm`, `npx` |
-| Agents | `claude`, `opencode`, `codex`, `pi` |
+| Agent harness | Only the selected harness CLI is installed in this image: `claude`, `opencode`, `codex`, or `pi` |
 | Python | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
 | Browser | `browser` CLI for Chrome automation; read `/opt/agent-context-web.md` before use |
 | Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); read `/opt/agent-context-flutter.md` before use |
