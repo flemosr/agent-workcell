@@ -130,6 +130,8 @@ class SandboxImageSplitTests(unittest.TestCase):
             ["pi", "settings", "extra"],
             ["opencode", "sessions-export", "extra"],
             ["opencode", "sessions-import", "extra"],
+            ["gpg", "new", "extra"],
+            ["gpg", "erase", "extra"],
         ]
         for command in commands:
             with self.subTest(command=command), tempfile.TemporaryDirectory() as temp_dir:
