@@ -182,17 +182,19 @@ workcell opencode settings
 workcell codex settings
 workcell pi settings
 
-workcell claude context
-workcell opencode context
-workcell codex context
-workcell pi context
+workcell claude context edit
+workcell opencode context edit
+workcell codex context edit
+workcell pi context edit
+workcell claude context restore
 ```
 
 The `settings` commands open an agent's config file in `vi` inside the workcell Docker volume.
-The `context` commands open the persisted global context file in `vi`: Claude uses
+The `context edit` commands open the persisted global context file in `vi`: Claude uses
 `~/.claude/CLAUDE.md`; OpenCode, Codex, and Pi use their `AGENTS.md` files. If a context file
 is absent, it is seeded from the image default; existing persisted context files are never
-overwritten by setup or image updates.
+overwritten by setup or image updates. Use `context restore` to replace the persisted context file
+with the image default.
 
 ### GPG Keys
 
