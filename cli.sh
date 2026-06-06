@@ -6,7 +6,8 @@
 #                                          (agent: claude | opencode | codex | pi)
 #   workcell <agent> build [args]     Build/rebuild one agent sandbox image
 #   workcell <agent> settings         Open an agent's settings/config in vi
-#   workcell <agent> context          Open an agent's global context file in vi
+#   workcell <agent> context edit     Open an agent's global context file in vi
+#   workcell <agent> context restore  Restore an agent's context from image default
 #   workcell opencode sessions export Export opencode sessions for current workspace
 #   workcell opencode sessions import Import opencode sessions from workspace backup
 #   workcell build                    Build/rebuild all sandbox images
@@ -59,7 +60,7 @@ Agent commands:
                     agent: claude | opencode | codex | pi
   <agent> build     Build/rebuild one agent sandbox image
   <agent> settings  Open an agent's settings/config in vi
-  <agent> context   Open an agent's global context file in vi
+  <agent> context   Edit or restore an agent's global context file
   opencode sessions export  Export opencode sessions for current workspace
                             to .workcell/opencode-sessions/
   opencode sessions import  Import opencode sessions from
@@ -103,10 +104,11 @@ Examples:
   workcell opencode settings
   workcell codex settings
   workcell pi settings
-  workcell claude context
-  workcell opencode context
-  workcell codex context
-  workcell pi context
+  workcell claude context edit
+  workcell opencode context edit
+  workcell codex context edit
+  workcell pi context edit
+  workcell claude context restore
   workcell opencode sessions export
   workcell opencode sessions import
 
@@ -126,7 +128,7 @@ Subcommands:
   run        Run $agent in the current directory
   build      Build/rebuild the $agent sandbox image
   settings   Open $agent settings/config in vi
-  context    Open $agent global context in vi
+  context    Edit or restore $agent global context
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
@@ -140,7 +142,8 @@ Examples:
   workcell $agent run --yolo --with-chrome --port 3000
   workcell $agent build --no-cache
   workcell $agent settings
-  workcell $agent context
+  workcell $agent context edit
+  workcell $agent context restore
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
@@ -497,105 +500,112 @@ cmd_harness_context() {
     shift
 
     if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-        echo "Open an agent's global context file in vi (inside the sandbox volume)"
+        echo "Manage an agent's global context file (inside the sandbox volume)"
         echo ""
         echo "Usage:"
-        echo "  workcell $agent context"
+        echo "  workcell $agent context edit"
+        echo "  workcell $agent context restore"
+        echo ""
+        echo "Subcommands:"
+        echo "  edit      Open the persisted global context file in vi"
+        echo "  restore   Replace the persisted global context file with the image default"
         echo ""
         echo "Context files by agent:"
         echo "  claude    ~/.claude/CLAUDE.md"
         echo "  opencode  ~/.config/opencode/AGENTS.md"
         echo "  codex     ~/.codex/AGENTS.md"
         echo "  pi        ~/.pi/agent/AGENTS.md"
-        echo ""
-        echo "If the context file is absent, it is seeded from the image default."
-        echo "Existing persisted context files are never overwritten."
         exit 0
     fi
 
-    reject_extra_args "workcell $agent context" "$@"
+    local action="${1:-}"
+    if [ -z "$action" ]; then
+        echo "Error: subcommand required for 'workcell $agent context'"
+        echo "Try: workcell $agent context --help"
+        exit 1
+    fi
+    shift
+
+    case "$action" in
+        edit|restore)
+            ;;
+        *)
+            echo "Error: unknown subcommand '$action' for 'workcell $agent context'"
+            echo "Try: workcell $agent context --help"
+            exit 1
+            ;;
+    esac
+
+    reject_extra_args "workcell $agent context $action" "$@"
 
     local context_volume="$(agent_volume_name "$agent")"
     local context_image="$(agent_image_name "$agent")"
-    ensure_docker_running
+    local context_dir context_name context_display
     case "$agent" in
         claude)
-            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
-                set -e
-                mkdir -p /data/.claude
-                context_path=/data/.claude/CLAUDE.md
-                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
-                    cp /opt/agent-context.md "$context_path"
-                fi
-                chown agent:agent /data/.claude 2>/dev/null || true
-                if [ -L "$context_path" ]; then
-                    chown -h agent:agent "$context_path" 2>/dev/null || true
-                else
-                    chown agent:agent "$context_path" 2>/dev/null || true
-                fi
-                echo "Editing persisted context: ~/.claude/CLAUDE.md"
-                echo "Image defaults seed this file only when it is absent; existing content is preserved."
-                exec runuser -u agent -- vi "$context_path"
-            '
+            context_dir=/data/.claude
+            context_name=CLAUDE.md
+            context_display='~/.claude/CLAUDE.md'
             ;;
         opencode)
-            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
-                set -e
-                mkdir -p /data/.config/opencode
-                context_path=/data/.config/opencode/AGENTS.md
-                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
-                    cp /opt/agent-context.md "$context_path"
-                fi
-                chown agent:agent /data/.config/opencode 2>/dev/null || true
-                if [ -L "$context_path" ]; then
-                    chown -h agent:agent "$context_path" 2>/dev/null || true
-                else
-                    chown agent:agent "$context_path" 2>/dev/null || true
-                fi
-                echo "Editing persisted context: ~/.config/opencode/AGENTS.md"
-                echo "Image defaults seed this file only when it is absent; existing content is preserved."
-                exec runuser -u agent -- vi "$context_path"
-            '
+            context_dir=/data/.config/opencode
+            context_name=AGENTS.md
+            context_display='~/.config/opencode/AGENTS.md'
             ;;
         codex)
-            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
-                set -e
-                mkdir -p /data/.codex
-                context_path=/data/.codex/AGENTS.md
-                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
-                    cp /opt/agent-context.md "$context_path"
-                fi
-                chown agent:agent /data/.codex 2>/dev/null || true
-                if [ -L "$context_path" ]; then
-                    chown -h agent:agent "$context_path" 2>/dev/null || true
-                else
-                    chown agent:agent "$context_path" 2>/dev/null || true
-                fi
-                echo "Editing persisted context: ~/.codex/AGENTS.md"
-                echo "Image defaults seed this file only when it is absent; existing content is preserved."
-                exec runuser -u agent -- vi "$context_path"
-            '
+            context_dir=/data/.codex
+            context_name=AGENTS.md
+            context_display='~/.codex/AGENTS.md'
             ;;
         pi)
-            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
-                set -e
-                mkdir -p /data/.pi/agent
-                context_path=/data/.pi/agent/AGENTS.md
+            context_dir=/data/.pi/agent
+            context_name=AGENTS.md
+            context_display='~/.pi/agent/AGENTS.md'
+            ;;
+    esac
+
+    ensure_docker_running
+    docker run --rm -it --entrypoint sh \
+        -v "${context_volume}:/data" \
+        -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
+        -e "WORKCELL_CONTEXT_ACTION=$action" \
+        -e "WORKCELL_CONTEXT_DIR=$context_dir" \
+        -e "WORKCELL_CONTEXT_NAME=$context_name" \
+        -e "WORKCELL_CONTEXT_PATH=$context_dir/$context_name" \
+        -e "WORKCELL_CONTEXT_DISPLAY=$context_display" \
+        "$context_image" -lc '
+            set -e
+            mkdir -p "$WORKCELL_CONTEXT_DIR"
+            context_path="$WORKCELL_CONTEXT_PATH"
+            seed_context() {
                 if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
                     cp /opt/agent-context.md "$context_path"
                 fi
-                chown agent:agent /data/.pi /data/.pi/agent 2>/dev/null || true
-                if [ -L "$context_path" ]; then
-                    chown -h agent:agent "$context_path" 2>/dev/null || true
-                else
+            }
+            restore_context() {
+                rm -f "$context_path"
+                cp /opt/agent-context.md "$context_path"
+            }
+            chown agent:agent "$WORKCELL_CONTEXT_DIR" 2>/dev/null || true
+            case "$WORKCELL_CONTEXT_ACTION" in
+                edit)
+                    seed_context
+                    if [ -L "$context_path" ]; then
+                        chown -h agent:agent "$context_path" 2>/dev/null || true
+                    else
+                        chown agent:agent "$context_path" 2>/dev/null || true
+                    fi
+                    echo "Editing persisted context: $WORKCELL_CONTEXT_DISPLAY"
+                    echo "Image defaults seed this file only when it is absent; existing content is preserved."
+                    exec runuser -u agent -- vi "$context_path"
+                    ;;
+                restore)
+                    restore_context
                     chown agent:agent "$context_path" 2>/dev/null || true
-                fi
-                echo "Editing persisted context: ~/.pi/agent/AGENTS.md"
-                echo "Image defaults seed this file only when it is absent; existing content is preserved."
-                exec runuser -u agent -- vi "$context_path"
-            '
-            ;;
-    esac
+                    echo "Restored persisted context from image default: $WORKCELL_CONTEXT_DISPLAY"
+                    ;;
+            esac
+        '
 }
 
 cmd_opencode_sessions_export() {
