@@ -187,6 +187,11 @@ workcell opencode context edit
 workcell codex context edit
 workcell pi context edit
 workcell claude context restore
+
+workcell claude skill list
+workcell opencode skill list
+workcell codex skill list
+workcell pi skill list
 ```
 
 The `settings` commands open an agent's config file in `vi` inside the workcell Docker volume.
@@ -195,6 +200,9 @@ The `context edit` commands open the persisted global context file in `vi`: Clau
 is absent, it is seeded from the image default; existing persisted context files are never
 overwritten by setup or image updates. Use `context restore` to replace the persisted context file
 with the image default.
+
+The `skill list` commands list the union of baked default skills and the selected harness's
+persisted global skills.
 
 ### GPG Keys
 
