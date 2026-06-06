@@ -27,8 +27,8 @@ seed_default_skill() {
     chown agent:agent "$skill_file" 2>/dev/null || true
   fi
 }
-seed_default_skill web
-seed_default_skill flutter
+seed_default_skill chrome-integration
+seed_default_skill flutter-integration
 
 [ -d /home/agent/.pi ] && [ ! -L /home/agent/.pi ] && rm -rf /home/agent/.pi
 ln -sfn /home/agent/persist/.pi /home/agent/.pi
