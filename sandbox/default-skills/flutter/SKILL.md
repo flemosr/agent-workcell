@@ -1,3 +1,8 @@
+---
+name: flutter
+description: Use for native/device Flutter work, host Flutter targets, hot reload, screenshots, and flutterctl workflows inside Agent Workcell sandboxes.
+---
+
 # Flutter Native Agent Context
 
 Use this document when a task involves Flutter or Dart development: in-container
@@ -5,7 +10,7 @@ SDK tooling (`flutter test`, `flutter analyze`, `dart format`, `flutter pub`),
 native/device targets, the host Flutter bridge, hot reload, screenshots, or UI
 automation.
 
-For Flutter web, read `/opt/agent-context-web.md` and use the web development workflow instead.
+For Flutter web, use the `web` skill instead.
 
 ## Container Flutter SDK
 
