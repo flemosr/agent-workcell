@@ -117,9 +117,9 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "opencode", "sessions-export"], cwd=workspace, env=env, check=True)
+            subprocess.run([str(CLI), "opencode", "sessions", "export"], cwd=workspace, env=env, check=True)
             (workspace / ".workcell" / "opencode-sessions" / "session.json").write_text("{}\n", encoding="utf-8")
-            subprocess.run([str(CLI), "opencode", "sessions-import"], cwd=workspace, env=env, check=True)
+            subprocess.run([str(CLI), "opencode", "sessions", "import"], cwd=workspace, env=env, check=True)
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-opencode:/home/agent/persist\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t", f"{log}\t")
@@ -128,8 +128,8 @@ class SandboxImageSplitTests(unittest.TestCase):
     def test_cli_argless_commands_reject_unexpected_args(self):
         commands = [
             ["pi", "settings", "extra"],
-            ["opencode", "sessions-export", "extra"],
-            ["opencode", "sessions-import", "extra"],
+            ["opencode", "sessions", "export", "extra"],
+            ["opencode", "sessions", "import", "extra"],
             ["gpg", "new", "extra"],
             ["gpg", "erase", "extra"],
             ["volume", "shell", "codex", "extra"],
