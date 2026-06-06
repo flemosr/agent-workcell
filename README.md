@@ -257,9 +257,9 @@ Volume commands affect the persisted user data described below.
 - Dev server ports can be exposed with `--port <port>`.
 - `/opt/agent-context.md` is the image default used to seed persisted context files when they
   are absent: `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, `~/.codex/AGENTS.md`,
-  and `~/.pi/agent/AGENTS.md`. Existing persisted context files are never overwritten. Focused
-  tool-specific context docs are available at `/opt/agent-context-web.md` and
-  `/opt/agent-context-flutter.md`.
+  and `~/.pi/agent/AGENTS.md`. Existing persisted context files are never overwritten. Default
+  web and Flutter workflow skills are seeded into each harness's global skills directory only when
+  absent; user edits and user-added skills are preserved.
 
 ## Persistence
 
@@ -277,13 +277,13 @@ Volumes:
 
 Important persisted paths include:
 
-- `~/.claude/` - Claude Code credentials, settings, and global context.
-- `~/.config/opencode/` - OpenCode configuration and global context.
+- `~/.claude/` - Claude Code credentials, settings, global context, and global skills.
+- `~/.config/opencode/` - OpenCode configuration, global context, and global skills.
 - `~/.local/state/opencode/` - OpenCode local UI state.
 - `~/.local/share/opencode/` - OpenCode auth, logs, database, and storage.
-- `~/.codex/` - Codex auth, config, history, logs, and global context.
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global
-  context. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.codex/` - Codex auth, config, history, logs, global context, and global skills.
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, global
+  context, and global skills. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 - `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
 - `~/.gnupg/` - GPG keys for commit signing when enabled; stored in `agent-workcell-gpg`.
 - `~/.nvm/` - Node.js versions and global npm packages.
@@ -294,8 +294,8 @@ Image-owned tool binaries and SDKs, including Flutter under `/opt/flutter-sdk`, 
 version payloads, OpenCode, the default Pi install under `/opt/pi`, and protobuf CLIs, update with
 the sandbox image. The entrypoint sets up symlinks so each tool still sees its expected home
 directory paths without using stale persisted binary copies. It seeds the default agent context
-only when the persisted context file is absent, so custom context survives restarts and image
-updates. Pi runs on the active nvm Node at
+and default global skills only when the persisted files are absent, so custom context and skills
+survive restarts and image updates. Pi runs on the active nvm Node at
 runtime. Pi package/extension updates persist under `~/.pi/agent/`; the entrypoint seeds Pi's
 own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update`
 self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi
@@ -414,8 +414,7 @@ agent-workcell/
 │   └── flutter-bridge.py
 └── sandbox/
     ├── DEFAULT_AGENTS.md
-    ├── agent-context-web.md
-    ├── agent-context-flutter.md
+    ├── default-skills/
     ├── agent-init/
     │   ├── claude.sh
     │   ├── codex.sh
