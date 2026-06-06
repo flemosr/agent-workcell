@@ -192,6 +192,7 @@ workcell claude skill list
 workcell opencode skill list
 workcell codex skill list
 workcell pi skill list
+workcell claude skill edit web
 ```
 
 The `settings` commands open an agent's config file in `vi` inside the workcell Docker volume.
@@ -202,7 +203,8 @@ overwritten by setup or image updates. Use `context restore` to replace the pers
 with the image default.
 
 The `skill list` commands list the union of baked default skills and the selected harness's
-persisted global skills.
+persisted global skills. The `skill edit` command opens the selected harness's persisted
+`SKILL.md` in `vi`, seeding from the baked default when available.
 
 ### GPG Keys
 
