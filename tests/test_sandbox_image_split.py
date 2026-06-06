@@ -139,6 +139,18 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("/data/.claude/CLAUDE.md", log)
             self.assertIn("cp /opt/agent-context.md", log)
 
+    def test_harness_skill_list_uses_selected_agent_image_and_volume(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            env, docker_log = self.fake_docker_env(workspace)
+            subprocess.run([str(CLI), "opencode", "skill", "list"], cwd=workspace, env=env, check=True)
+            log = docker_log.read_text()
+            self.assertIn("\t-v\tagent-workcell-opencode:/data\t", f"{log}\t")
+            self.assertIn("\tlocal/agent-workcell-opencode\t", f"{log}\t")
+            self.assertIn("/opt/agent-default-skills", log)
+            self.assertIn("/data/.config/opencode/skills", log)
+            self.assertIn("sort -u", log)
+
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -156,6 +168,7 @@ class SandboxImageSplitTests(unittest.TestCase):
             ["pi", "settings", "extra"],
             ["pi", "context", "edit", "extra"],
             ["pi", "context", "restore", "extra"],
+            ["pi", "skill", "list", "extra"],
             ["opencode", "sessions", "export", "extra"],
             ["opencode", "sessions", "import", "extra"],
             ["gpg", "new", "extra"],
