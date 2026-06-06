@@ -61,6 +61,7 @@ Agent commands:
   <agent> build     Build/rebuild one agent sandbox image
   <agent> settings  Open an agent's settings/config in vi
   <agent> context   Edit or restore an agent's global context file
+  <agent> skill     Manage an agent's global skills
   opencode sessions export  Export opencode sessions for current workspace
                             to .workcell/opencode-sessions/
   opencode sessions import  Import opencode sessions from
@@ -109,6 +110,7 @@ Examples:
   workcell codex context edit
   workcell pi context edit
   workcell claude context restore
+  workcell claude skill list
   workcell opencode sessions export
   workcell opencode sessions import
 
@@ -129,6 +131,7 @@ Subcommands:
   build      Build/rebuild the $agent sandbox image
   settings   Open $agent settings/config in vi
   context    Edit or restore $agent global context
+  skill      Manage $agent global skills
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
@@ -144,6 +147,7 @@ Examples:
   workcell $agent settings
   workcell $agent context edit
   workcell $agent context restore
+  workcell $agent skill list
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
@@ -384,6 +388,67 @@ EOF
 }
 
 # ── Harness subcommand handlers ──────────────────────────────────────────────
+
+cmd_harness_skill() {
+    local agent="$1"
+    shift
+
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        echo "Manage $agent global Agent Skills"
+        echo ""
+        echo "Usage:"
+        echo "  workcell $agent skill list"
+        echo ""
+        echo "Subcommands:"
+        echo "  list      List $agent global skills"
+        exit 0
+    fi
+
+    local action="${1:-}"
+    if [ -z "$action" ]; then
+        echo "Error: subcommand required for 'workcell $agent skill'"
+        echo "Try: workcell $agent skill --help"
+        exit 1
+    fi
+    shift
+
+    case "$action" in
+        list)
+            reject_extra_args "workcell $agent skill list" "$@"
+            ;;
+        *)
+            echo "Error: unknown subcommand '$action' for 'workcell $agent skill'"
+            echo "Try: workcell $agent skill --help"
+            exit 1
+            ;;
+    esac
+
+    local skill_volume="$(agent_volume_name "$agent")"
+    local skill_image="$(agent_image_name "$agent")"
+    local skill_root
+    case "$agent" in
+        claude) skill_root=/data/.claude/skills ;;
+        opencode) skill_root=/data/.config/opencode/skills ;;
+        codex) skill_root=/data/.codex/skills ;;
+        pi) skill_root=/data/.pi/agent/skills ;;
+    esac
+
+    ensure_docker_running
+    docker run --rm --entrypoint sh \
+        -v "${skill_volume}:/data" \
+        -e "WORKCELL_SKILL_ROOT=$skill_root" \
+        "$skill_image" -lc '
+            set -e
+            for root in /opt/agent-default-skills "$WORKCELL_SKILL_ROOT"; do
+                [ -d "$root" ] || continue
+                for skill_file in "$root"/*/SKILL.md; do
+                    [ -e "$skill_file" ] || [ -L "$skill_file" ] || continue
+                    skill_dir=${skill_file%/SKILL.md}
+                    basename "$skill_dir"
+                done
+            done | sort -u
+        '
+}
 
 cmd_harness_run() {
     local agent="$1"
@@ -746,6 +811,9 @@ case "$command" in
             context)
                 cmd_harness_context "$agent" "$@"
                 ;;
+            skill)
+                cmd_harness_skill "$agent" "$@"
+                ;;
             sessions)
                 if [[ "$agent" != "opencode" ]]; then
                     echo "Error: 'sessions' is only available for opencode"
@@ -796,7 +864,7 @@ case "$command" in
         ;;
 
     # ── Global commands ──────────────────────────────────────────────────
-    run|settings|context)
+    run|settings|context|skill)
         exit 1
         ;;
 
@@ -841,6 +909,7 @@ case "$command" in
 
         exec "$SCRIPT_DIR/scripts/start-flutter-bridge.sh" "$@"
         ;;
+
 
     gpg)
         shift
