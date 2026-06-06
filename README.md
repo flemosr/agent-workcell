@@ -200,8 +200,8 @@ See [GPG setup](docs/gpg-setup.md) for key setup, backup, and rotation guidance.
 ### OpenCode Sessions
 
 ```bash
-workcell opencode sessions-export
-workcell opencode sessions-import
+workcell opencode sessions export
+workcell opencode sessions import
 ```
 
 These commands export and import OpenCode sessions between the Docker volume and
