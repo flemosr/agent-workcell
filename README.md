@@ -48,7 +48,7 @@ source ~/.zshrc
 Run the workcell with a selected agent to build its sandbox image on demand:
 
 ```bash
-workcell run opencode
+workcell opencode run
 ```
 
 See [Run Agents](#run-agents) below for the other agent commands. Each harness has its own native
@@ -79,12 +79,13 @@ Then follow the focused setup guide you need:
 workcell build
 
 # Or build one agent image plus the shared base
-workcell build pi
+workcell pi build
 ```
 
 `workcell build` runs `docker compose build` from the workcell repository root, so it works even
-when you invoke `workcell` from another directory. `workcell build all` builds all four agent
-images; targeted builds accept `claude`, `opencode`, `codex`, or `pi`.
+when you invoke `workcell` from another directory, and builds all four agent images plus the
+shared base. To build a single agent, use the harness subcommand form:
+`workcell <agent> build` where agent is `claude`, `opencode`, `codex`, or `pi`.
 
 ### Run Agents
 
@@ -92,33 +93,33 @@ Navigate to any project directory and run:
 
 ```bash
 # Normal mode
-workcell run claude
-workcell run opencode
-workcell run codex
-workcell run pi  # Pi does not use permission prompts by default
+workcell claude run
+workcell opencode run
+workcell codex run
+workcell pi run  # Pi does not use permission prompts by default
 
 # YOLO mode (no permission prompts)
-workcell run claude --yolo
-workcell run opencode --yolo
-workcell run codex --yolo
+workcell claude run --yolo
+workcell opencode run --yolo
+workcell codex run --yolo
 
 # Firewalled mode (restricted network access)
-workcell run codex --firewalled
+workcell codex run --firewalled
 
 # With a prompt
-workcell run claude --yolo -p "fix the tests"
+workcell claude run --yolo -- -p "fix the tests"
 
-# Pass agent-specific arguments
-workcell run claude --resume
-workcell run opencode run "summarize the repo"
-workcell run codex "fix the tests"
-workcell run pi -p "summarize the repo"
+# Pass agent-specific arguments after --
+workcell claude run -- --resume
+workcell opencode run -- run "summarize the repo"
+workcell codex run -- "fix the tests"
+workcell pi run -- -p "summarize the repo"
 ```
 
-The first positional arg after `run` selects the agent and is required: `claude`, `opencode`,
-`codex`, or `pi`. Each agent uses its own sandbox image and persistent Docker volume, plus a
-shared GPG volume. If the selected image is missing, `workcell run <agent>` builds that agent image
-and the shared base automatically.
+The agent is the first positional argument and is required: `claude`, `opencode`, `codex`, or
+`pi`. Each agent uses its own sandbox image and persistent Docker volume, plus a shared GPG
+volume. If the selected image is missing, `workcell <agent> run` builds that agent image and the
+shared base automatically.
 
 `--with-chrome` and `--with-flutter` are mutually exclusive. `--port` exposes container dev
 servers to the host in all modes. In Flutter mode, use `--bridge-port` to select the host Flutter
@@ -133,11 +134,11 @@ bridge port. If the Flutter project is in a workspace subdirectory, pass
 - **pi**: ignored because Pi does not ask for permissions by default; the container is the
   permission boundary
 
-Running `workcell` or `workcell run` without an agent exits with a usage error instead of choosing
-an agent implicitly.
+Running `workcell` or `workcell <agent>` without a subcommand exits with a usage error instead of
+choosing an agent implicitly.
 
 ```bash
-workcell run codex --yolo
+workcell codex run --yolo
 ```
 
 See [Integrations](#integrations) for Chrome, Flutter, and port examples.
@@ -146,12 +147,12 @@ See [Integrations](#integrations) for Chrome, Flutter, and port examples.
 
 ```bash
 # Chrome enabled for web development
-workcell run claude --with-chrome
-workcell run codex --yolo --with-chrome --port 3000
+workcell claude run --with-chrome
+workcell codex run --yolo --with-chrome --port 3000
 
 # Expose container dev-server ports to the host
-workcell run opencode --port 3000
-workcell run codex --port 3000 --port 5173
+workcell opencode run --port 3000
+workcell codex run --port 3000 --port 5173
 
 # Start Chrome independently on the host
 workcell start-chrome
@@ -159,10 +160,10 @@ workcell start-chrome --restart
 workcell start-chrome --port 9333 --profile "Profile 1"
 
 # Flutter native/device bridge
-workcell run claude --with-flutter
-workcell run codex --with-flutter --bridge-port 8765
-workcell run codex --with-flutter --flutter-project-dir ./gui
-workcell run codex --with-flutter --bridge-port 8766 --port 3000
+workcell claude run --with-flutter
+workcell codex run --with-flutter --bridge-port 8765
+workcell codex run --with-flutter --flutter-project-dir ./gui
+workcell codex run --with-flutter --bridge-port 8766 --port 3000
 
 # Start the Flutter bridge independently on the host
 workcell start-flutter-bridge
@@ -176,14 +177,13 @@ See [Chrome integration](docs/chrome-integration.md) and
 ### Settings
 
 ```bash
-workcell settings claude
-workcell settings opencode
-workcell settings codex
-workcell settings pi
+workcell claude settings
+workcell opencode settings
+workcell codex settings
+workcell pi settings
 ```
 
-These commands open an agent's config file in `vi` inside the workcell Docker volume. The agent
-argument is required to avoid accidentally editing the wrong file.
+These commands open an agent's config file in `vi` inside the workcell Docker volume.
 
 ### GPG Keys
 
@@ -200,8 +200,8 @@ See [GPG setup](docs/gpg-setup.md) for key setup, backup, and rotation guidance.
 ### OpenCode Sessions
 
 ```bash
-workcell opencode-sessions-export
-workcell opencode-sessions-import
+workcell opencode sessions-export
+workcell opencode sessions-import
 ```
 
 These commands export and import OpenCode sessions between the Docker volume and
@@ -337,7 +337,7 @@ flutter-config.json
 artifacts/
 ```
 
-When `.workcell/.env` exists, `workcell run <agent>` parses it as dotenv-style `KEY=VALUE`
+When `.workcell/.env` exists, `workcell <agent> run` parses it as dotenv-style `KEY=VALUE`
 entries and passes the values into the sandboxed agent environment. Blank lines and comments are
 ignored, `export KEY=VALUE` is accepted, quoted values are unquoted, and invalid lines stop the
 launch with an error. Launcher-controlled variables such as the selected agent, timezone, exposed
