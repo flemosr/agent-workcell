@@ -11,11 +11,11 @@
 #   workcell build                    Build/rebuild all sandbox images
 #   workcell start-chrome [options]   Start Chrome with remote debugging
 #   workcell start-flutter-bridge     Start Flutter host bridge
-#   workcell gpg-new                  Generate a new sandbox GPG key
-#   workcell gpg-export --file <f>    Export sandbox GPG key to a file
-#   workcell gpg-import --file <f>    Import a GPG key into the sandbox
-#   workcell gpg-revoke --file <f>    Generate a revocation certificate
-#   workcell gpg-erase                Erase the sandbox GPG key
+#   workcell gpg new                  Generate a new sandbox GPG key
+#   workcell gpg export --file <f>    Export sandbox GPG key to a file
+#   workcell gpg import --file <f>    Import a GPG key into the sandbox
+#   workcell gpg revoke --file <f>    Generate a revocation certificate
+#   workcell gpg erase                Erase the sandbox GPG key
 #   workcell volume-shell <scope>     Open a shell in a workcell volume
 #   workcell volume-backup --file <f> Backup all workcell volumes
 #   workcell volume-restore --file <f> Restore all workcell volumes from backup
@@ -67,11 +67,11 @@ Global commands:
   build             Build/rebuild all sandbox images
   start-chrome      Start Chrome with remote debugging (run on host)
   start-flutter-bridge  Start Flutter host bridge (run on host)
-  gpg-new           Generate a new sandbox GPG key
-  gpg-export        Export the sandbox GPG key to a file
-  gpg-import        Import a GPG key into the sandbox
-  gpg-revoke        Generate a revocation certificate
-  gpg-erase         Erase the sandbox GPG key
+  gpg new           Generate a new sandbox GPG key
+  gpg export        Export the sandbox GPG key to a file
+  gpg import        Import a GPG key into the sandbox
+  gpg revoke        Generate a revocation certificate
+  gpg erase         Erase the sandbox GPG key
   volume-shell      Open a shell in a workcell volume scope
   volume-backup     Backup all workcell volumes to a file
   volume-restore    Restore all workcell volumes from a backup
@@ -88,11 +88,11 @@ Examples:
   workcell start-chrome
   workcell start-chrome --restart
   workcell start-flutter-bridge
-  workcell gpg-new
-  workcell gpg-export --file my-key.asc
-  workcell gpg-import --file my-key.asc
-  workcell gpg-revoke --file revoke.asc
-  workcell gpg-erase
+  workcell gpg new
+  workcell gpg export --file my-key.asc
+  workcell gpg import --file my-key.asc
+  workcell gpg revoke --file revoke.asc
+  workcell gpg erase
   workcell volume-shell codex
   workcell volume-backup --file backup.tgz
   workcell volume-restore --file backup.tgz
@@ -136,6 +136,29 @@ Examples:
   workcell $agent settings
 
 Use 'workcell $agent <subcommand> --help' for subcommand-specific help.
+EOF
+}
+
+show_gpg_help() {
+    cat << 'EOF'
+GPG key management for Agent Workcell
+
+Usage:
+  workcell gpg <subcommand> [options]
+
+Subcommands:
+  new       Generate a new sandbox GPG key
+  export    Export the sandbox GPG key to a file
+  import    Import a GPG key into the sandbox
+  revoke    Generate a revocation certificate
+  erase     Erase the sandbox GPG key
+
+Examples:
+  workcell gpg new
+  workcell gpg export --file my-key.asc
+  workcell gpg import --file my-key.asc
+  workcell gpg revoke --file revoke.asc
+  workcell gpg erase
 EOF
 }
 
@@ -639,60 +662,76 @@ case "$command" in
         exec "$SCRIPT_DIR/scripts/start-flutter-bridge.sh" "$@"
         ;;
 
-    gpg-new)
+    gpg)
         shift
-        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-            echo "Generate a new sandbox GPG key"
-            echo ""
-            echo "Usage:"
-            echo "  workcell gpg-new"
-            echo ""
-            echo "Reads GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL from config.sh."
-            echo "If a key already exists, prompts before overwriting."
+        subcmd="${1:-}"
+
+        if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+            show_gpg_help
             exit 0
         fi
 
-        reject_extra_args "workcell gpg-new" "$@"
-
-        # Source config for identity
-        if [ -f "$SCRIPT_DIR/config.sh" ]; then
-            source "$SCRIPT_DIR/config.sh"
-        fi
-
-        if [ -z "$GIT_AUTHOR_NAME" ] || [ -z "$GIT_AUTHOR_EMAIL" ]; then
-            echo "Error: GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL must be set in config.sh"
+        if [ -z "$subcmd" ]; then
+            echo "Error: subcommand required for 'workcell gpg'"
+            echo "Try: workcell gpg --help"
             exit 1
         fi
+        shift
 
-        ensure_docker_running
-
-        # Check for existing key
-        existing=$(docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
-            -c 'gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^uid" | head -1 | cut -d: -f10')
-
-        if [ -n "$existing" ]; then
-            echo "An existing GPG key was found: $existing"
-            echo "Generating a new key will erase the existing one."
-            echo ""
-            read -r -p "Continue? [y/N] " confirm
-            case "$confirm" in
-                y|Y) ;;
-                *)
-                    echo "Aborted."
+        case "$subcmd" in
+            new)
+                if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                    echo "Generate a new sandbox GPG key"
+                    echo ""
+                    echo "Usage:"
+                    echo "  workcell gpg new"
+                    echo ""
+                    echo "Reads GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL from config.sh."
+                    echo "If a key already exists, prompts before overwriting."
                     exit 0
-                    ;;
-            esac
-            docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
-                -c 'rm -rf /data/.gnupg/*'
-        fi
+                fi
 
-        echo "Generating GPG signing key for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>..."
-        docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
-            -e "GIT_AUTHOR_NAME=$GIT_AUTHOR_NAME" \
-            -e "GIT_AUTHOR_EMAIL=$GIT_AUTHOR_EMAIL" \
-            "$WORKCELL_BASE_IMAGE_NAME" \
-            -c '
-                gpg --homedir /data/.gnupg --no-permission-warning --batch --gen-key <<GPGEOF
+                reject_extra_args "workcell gpg new" "$@"
+
+                # Source config for identity
+                if [ -f "$SCRIPT_DIR/config.sh" ]; then
+                    source "$SCRIPT_DIR/config.sh"
+                fi
+
+                if [ -z "$GIT_AUTHOR_NAME" ] || [ -z "$GIT_AUTHOR_EMAIL" ]; then
+                    echo "Error: GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL must be set in config.sh"
+                    exit 1
+                fi
+
+                ensure_docker_running
+
+                # Check for existing key
+                existing=$(docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
+                    -c 'gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^uid" | head -1 | cut -d: -f10')
+
+                if [ -n "$existing" ]; then
+                    echo "An existing GPG key was found: $existing"
+                    echo "Generating a new key will erase the existing one."
+                    echo ""
+                    read -r -p "Continue? [y/N] " confirm
+                    case "$confirm" in
+                        y|Y) ;;
+                        *)
+                            echo "Aborted."
+                            exit 0
+                            ;;
+                    esac
+                    docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
+                        -c 'rm -rf /data/.gnupg/*'
+                fi
+
+                echo "Generating GPG signing key for $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>..."
+                docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
+                    -e "GIT_AUTHOR_NAME=$GIT_AUTHOR_NAME" \
+                    -e "GIT_AUTHOR_EMAIL=$GIT_AUTHOR_EMAIL" \
+                    "$WORKCELL_BASE_IMAGE_NAME" \
+                    -c '
+                        gpg --homedir /data/.gnupg --no-permission-warning --batch --gen-key <<GPGEOF
 %no-protection
 Key-Type: eddsa
 Key-Curve: ed25519
@@ -701,180 +740,184 @@ Name-Email: $GIT_AUTHOR_EMAIL
 Expire-Date: 0
 %commit
 GPGEOF
-                echo ""
-                echo "=== GPG Public Key (add to GitHub → Settings → SSH and GPG keys) ==="
-                gpg --homedir /data/.gnupg --no-permission-warning --armor --export "$GIT_AUTHOR_EMAIL"
-                echo "==================================================================="
-                chown -R 1000:1000 /data/.gnupg
-            '
-        ;;
+                        echo ""
+                        echo "=== GPG Public Key (add to GitHub → Settings → SSH and GPG keys) ==="
+                        gpg --homedir /data/.gnupg --no-permission-warning --armor --export "$GIT_AUTHOR_EMAIL"
+                        echo "==================================================================="
+                        chown -R 1000:1000 /data/.gnupg
+                    '
+                ;;
 
-    gpg-export)
-        shift
-        outfile=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --file) outfile="$2"; shift 2 ;;
-                --help|-h)
-                    echo "Export the sandbox GPG key to a file"
-                    echo ""
-                    echo "Usage:"
-                    echo "  workcell gpg-export --file <path>"
-                    echo ""
-                    echo "Options:"
-                    echo "  --file <path>   Output file (required)"
-                    exit 0
-                    ;;
-                *) echo "Unknown option: $1"; exit 1 ;;
-            esac
-        done
+            export)
+                outfile=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --file) outfile="$2"; shift 2 ;;
+                        --help|-h)
+                            echo "Export the sandbox GPG key to a file"
+                            echo ""
+                            echo "Usage:"
+                            echo "  workcell gpg export --file <path>"
+                            echo ""
+                            echo "Options:"
+                            echo "  --file <path>   Output file (required)"
+                            exit 0
+                            ;;
+                        *) echo "Unknown option: $1"; exit 1 ;;
+                    esac
+                done
 
-        if [ -z "$outfile" ]; then
-            echo "Error: --file is required"
-            echo "Usage: workcell gpg-export --file <path>"
-            exit 1
-        fi
-
-        ensure_docker_running
-        docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
-            -c 'gpg --homedir /data/.gnupg --no-permission-warning --export-secret-keys --armor 2>/dev/null' > "$outfile"
-
-        if [ ! -s "$outfile" ]; then
-            rm -f "$outfile"
-            echo "Error: No GPG keys found in the sandbox volume."
-            exit 1
-        fi
-
-        echo "Exported GPG key to: $outfile"
-        echo "WARNING: This file contains your PRIVATE key. Do not commit or share it."
-        ;;
-
-    gpg-import)
-        shift
-        infile=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --file) infile="$2"; shift 2 ;;
-                --help|-h)
-                    echo "Import a GPG key into the sandbox"
-                    echo ""
-                    echo "Usage:"
-                    echo "  workcell gpg-import --file <key-file>"
-                    echo ""
-                    echo "Options:"
-                    echo "  --file <path>   Key file to import (required)"
-                    exit 0
-                    ;;
-                *) echo "Unknown option: $1"; exit 1 ;;
-            esac
-        done
-
-        if [ -z "$infile" ]; then
-            echo "Error: --file is required"
-            echo "Usage: workcell gpg-import --file <key-file>"
-            exit 1
-        fi
-
-        if [ ! -f "$infile" ]; then
-            echo "Error: File not found: $infile"
-            exit 1
-        fi
-
-        ensure_docker_running
-        docker run --rm -i --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
-            -c '
-                gpg --homedir /data/.gnupg --no-permission-warning --import && \
-                fpr=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^fpr" | head -1 | cut -d: -f10) && \
-                if [ -n "$fpr" ]; then
-                    echo "$fpr:6:" | gpg --homedir /data/.gnupg --no-permission-warning --import-ownertrust
-                fi && \
-                chown -R 1000:1000 /data/.gnupg
-            ' < "$infile"
-        echo "GPG key imported into the sandbox."
-        ;;
-
-    gpg-revoke)
-        shift
-        outfile=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --file) outfile="$2"; shift 2 ;;
-                --help|-h)
-                    echo "Generate a revocation certificate for the sandbox GPG key"
-                    echo ""
-                    echo "Usage:"
-                    echo "  workcell gpg-revoke --file <path>"
-                    echo ""
-                    echo "Options:"
-                    echo "  --file <path>   Output file (required)"
-                    echo ""
-                    echo "Upload the certificate to GitHub to invalidate the key."
-                    echo "Commits signed before revocation remain verified."
-                    exit 0
-                    ;;
-                *) echo "Unknown option: $1"; exit 1 ;;
-            esac
-        done
-
-        if [ -z "$outfile" ]; then
-            echo "Error: --file is required"
-            echo "Usage: workcell gpg-revoke --file <path>"
-            exit 1
-        fi
-
-        ensure_docker_running
-        # Resolve to absolute path and mount the parent directory
-        outdir="$(cd "$(dirname "$outfile")" && pwd)"
-        outname="$(basename "$outfile")"
-
-        docker run --rm -it --entrypoint bash \
-            -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
-            -v "$outdir:/output" \
-            -e "OUTNAME=$outname" \
-            "$WORKCELL_BASE_IMAGE_NAME" \
-            -c '
-                key_id=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --keyid-format long 2>/dev/null | grep -oP "(?<=ed25519/)[A-F0-9]+" | head -1)
-                if [ -z "$key_id" ]; then
-                    echo "Error: No GPG keys found in the sandbox volume." >&2
+                if [ -z "$outfile" ]; then
+                    echo "Error: --file is required"
+                    echo "Usage: workcell gpg export --file <path>"
                     exit 1
                 fi
-                gpg --homedir /data/.gnupg --no-permission-warning --gen-revoke --output "/output/$OUTNAME" "$key_id"
-            '
 
-        if [ ! -s "$outfile" ]; then
-            rm -f "$outfile"
-            echo "Error: Failed to generate revocation certificate."
-            exit 1
-        fi
-
-        echo "Revocation certificate written to: $outfile"
-        echo "Upload this to GitHub to invalidate the key."
-        ;;
-
-    gpg-erase)
-        shift
-        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-            echo "Erase the sandbox GPG key"
-            echo ""
-            echo "Usage:"
-            echo "  workcell gpg-erase"
-            echo ""
-            echo "This permanently deletes all GPG keys from the sandbox volume."
-            echo "A new key will be generated on the next launch if GPG_SIGNING is enabled."
-            exit 0
-        fi
-
-        reject_extra_args "workcell gpg-erase" "$@"
-
-        read -r -p "This will permanently delete all GPG keys from the sandbox. Continue? [y/N] " confirm
-        case "$confirm" in
-            y|Y)
                 ensure_docker_running
                 docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
-                    -c 'rm -rf /data/.gnupg/* && echo "GPG keys erased."'
+                    -c 'gpg --homedir /data/.gnupg --no-permission-warning --export-secret-keys --armor 2>/dev/null' > "$outfile"
+
+                if [ ! -s "$outfile" ]; then
+                    rm -f "$outfile"
+                    echo "Error: No GPG keys found in the sandbox volume."
+                    exit 1
+                fi
+
+                echo "Exported GPG key to: $outfile"
+                echo "WARNING: This file contains your PRIVATE key. Do not commit or share it."
                 ;;
+
+            import)
+                infile=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --file) infile="$2"; shift 2 ;;
+                        --help|-h)
+                            echo "Import a GPG key into the sandbox"
+                            echo ""
+                            echo "Usage:"
+                            echo "  workcell gpg import --file <key-file>"
+                            echo ""
+                            echo "Options:"
+                            echo "  --file <path>   Key file to import (required)"
+                            exit 0
+                            ;;
+                        *) echo "Unknown option: $1"; exit 1 ;;
+                    esac
+                done
+
+                if [ -z "$infile" ]; then
+                    echo "Error: --file is required"
+                    echo "Usage: workcell gpg import --file <key-file>"
+                    exit 1
+                fi
+
+                if [ ! -f "$infile" ]; then
+                    echo "Error: File not found: $infile"
+                    exit 1
+                fi
+
+                ensure_docker_running
+                docker run --rm -i --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
+                    -c '
+                        gpg --homedir /data/.gnupg --no-permission-warning --import && \
+                        fpr=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --with-colons 2>/dev/null | grep "^fpr" | head -1 | cut -d: -f10) && \
+                        if [ -n "$fpr" ]; then
+                            echo "$fpr:6:" | gpg --homedir /data/.gnupg --no-permission-warning --import-ownertrust
+                        fi && \
+                        chown -R 1000:1000 /data/.gnupg
+                    ' < "$infile"
+                echo "GPG key imported into the sandbox."
+                ;;
+
+            revoke)
+                outfile=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --file) outfile="$2"; shift 2 ;;
+                        --help|-h)
+                            echo "Generate a revocation certificate for the sandbox GPG key"
+                            echo ""
+                            echo "Usage:"
+                            echo "  workcell gpg revoke --file <path>"
+                            echo ""
+                            echo "Options:"
+                            echo "  --file <path>   Output file (required)"
+                            echo ""
+                            echo "Upload the certificate to GitHub to invalidate the key."
+                            echo "Commits signed before revocation remain verified."
+                            exit 0
+                            ;;
+                        *) echo "Unknown option: $1"; exit 1 ;;
+                    esac
+                done
+
+                if [ -z "$outfile" ]; then
+                    echo "Error: --file is required"
+                    echo "Usage: workcell gpg revoke --file <path>"
+                    exit 1
+                fi
+
+                ensure_docker_running
+                # Resolve to absolute path and mount the parent directory
+                outdir="$(cd "$(dirname "$outfile")" && pwd)"
+                outname="$(basename "$outfile")"
+
+                docker run --rm -it --entrypoint bash \
+                    -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
+                    -v "$outdir:/output" \
+                    -e "OUTNAME=$outname" \
+                    "$WORKCELL_BASE_IMAGE_NAME" \
+                    -c '
+                        key_id=$(gpg --homedir /data/.gnupg --no-permission-warning --list-keys --keyid-format long 2>/dev/null | grep -oP "(?<=ed25519/)[A-F0-9]+" | head -1)
+                        if [ -z "$key_id" ]; then
+                            echo "Error: No GPG keys found in the sandbox volume." >&2
+                            exit 1
+                        fi
+                        gpg --homedir /data/.gnupg --no-permission-warning --gen-revoke --output "/output/$OUTNAME" "$key_id"
+                    '
+
+                if [ ! -s "$outfile" ]; then
+                    rm -f "$outfile"
+                    echo "Error: Failed to generate revocation certificate."
+                    exit 1
+                fi
+
+                echo "Revocation certificate written to: $outfile"
+                echo "Upload this to GitHub to invalidate the key."
+                ;;
+
+            erase)
+                if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                    echo "Erase the sandbox GPG key"
+                    echo ""
+                    echo "Usage:"
+                    echo "  workcell gpg erase"
+                    echo ""
+                    echo "This permanently deletes all GPG keys from the sandbox volume."
+                    echo "A new key will be generated on the next launch if GPG_SIGNING is enabled."
+                    exit 0
+                fi
+
+                reject_extra_args "workcell gpg erase" "$@"
+
+                read -r -p "This will permanently delete all GPG keys from the sandbox. Continue? [y/N] " confirm
+                case "$confirm" in
+                    y|Y)
+                        ensure_docker_running
+                        docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
+                            -c 'rm -rf /data/.gnupg/* && echo "GPG keys erased."'
+                        ;;
+                    *)
+                        echo "Aborted."
+                        ;;
+                esac
+                ;;
+
             *)
-                echo "Aborted."
+                echo "Error: unknown subcommand '$subcmd' for 'workcell gpg'"
+                echo "Try: workcell gpg --help"
+                exit 1
                 ;;
         esac
         ;;
