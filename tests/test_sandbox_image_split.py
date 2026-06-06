@@ -155,13 +155,13 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "pi", "skill", "edit", "web"], cwd=workspace, env=env, check=True)
+            subprocess.run([str(CLI), "pi", "skill", "edit", "chrome-integration"], cwd=workspace, env=env, check=True)
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-pi:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-pi\t", f"{log}\t")
             self.assertIn("WORKCELL_SKILL_ROOT=/data/.pi/agent/skills", log)
-            self.assertIn("WORKCELL_SKILL_NAME=web", log)
+            self.assertIn("WORKCELL_SKILL_NAME=chrome-integration", log)
             self.assertIn("/opt/agent-default-skills/$WORKCELL_SKILL_NAME/SKILL.md", log)
             self.assertIn("runuser -u agent -- vi", log)
 
@@ -169,14 +169,14 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "claude", "skill", "restore", "web"], cwd=workspace, env=env, check=True)
+            subprocess.run([str(CLI), "claude", "skill", "restore", "chrome-integration"], cwd=workspace, env=env, check=True)
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-claude:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-claude\t", f"{log}\t")
             self.assertIn("WORKCELL_SKILL_ACTION=restore", log)
             self.assertIn("WORKCELL_SKILL_ROOT=/data/.claude/skills", log)
-            self.assertIn("WORKCELL_SKILL_NAME=web", log)
+            self.assertIn("WORKCELL_SKILL_NAME=chrome-integration", log)
             self.assertIn("not a default skill", log)
             self.assertIn("cp \"$default_skill_file\" \"$skill_file\"", log)
 
@@ -198,8 +198,8 @@ class SandboxImageSplitTests(unittest.TestCase):
             ["pi", "context", "edit", "extra"],
             ["pi", "context", "restore", "extra"],
             ["pi", "skill", "list", "extra"],
-            ["pi", "skill", "edit", "web", "extra"],
-            ["pi", "skill", "restore", "web", "extra"],
+            ["pi", "skill", "edit", "chrome-integration", "extra"],
+            ["pi", "skill", "restore", "chrome-integration", "extra"],
             ["opencode", "sessions", "export", "extra"],
             ["opencode", "sessions", "import", "extra"],
             ["gpg", "new", "extra"],

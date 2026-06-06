@@ -114,8 +114,8 @@ Examples:
   workcell pi context edit
   workcell claude context restore
   workcell claude skill list
-  workcell claude skill edit web
-  workcell claude skill restore web
+  workcell claude skill edit chrome-integration
+  workcell claude skill restore chrome-integration
   workcell opencode sessions export
   workcell opencode sessions import
 
@@ -153,8 +153,8 @@ Examples:
   workcell $agent context edit
   workcell $agent context restore
   workcell $agent skill list
-  workcell $agent skill edit web
-  workcell $agent skill restore web
+  workcell $agent skill edit chrome-integration
+  workcell $agent skill restore chrome-integration
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
