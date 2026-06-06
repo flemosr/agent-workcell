@@ -6,8 +6,8 @@
 #                                          (agent: claude | opencode | codex | pi)
 #   workcell <agent> build [args]     Build/rebuild one agent sandbox image
 #   workcell <agent> settings         Open an agent's settings/config in vi
-#   workcell opencode sessions-export Export opencode sessions for current workspace
-#   workcell opencode sessions-import Import opencode sessions from workspace backup
+#   workcell opencode sessions export Export opencode sessions for current workspace
+#   workcell opencode sessions import Import opencode sessions from workspace backup
 #   workcell build                    Build/rebuild all sandbox images
 #   workcell start-chrome [options]   Start Chrome with remote debugging
 #   workcell start-flutter-bridge     Start Flutter host bridge
@@ -58,9 +58,9 @@ Agent commands:
                     agent: claude | opencode | codex | pi
   <agent> build     Build/rebuild one agent sandbox image
   <agent> settings  Open an agent's settings/config in vi
-  opencode sessions-export  Export opencode sessions for current workspace
+  opencode sessions export  Export opencode sessions for current workspace
                             to .workcell/opencode-sessions/
-  opencode sessions-import  Import opencode sessions from
+  opencode sessions import  Import opencode sessions from
                             .workcell/opencode-sessions/
 
 Global commands:
@@ -101,8 +101,8 @@ Examples:
   workcell opencode settings
   workcell codex settings
   workcell pi settings
-  workcell opencode sessions-export
-  workcell opencode sessions-import
+  workcell opencode sessions export
+  workcell opencode sessions import
 
 For more information, see README.md
 EOF
@@ -123,8 +123,7 @@ Subcommands:
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
-  sessions-export   Export opencode sessions for current workspace
-  sessions-import   Import opencode sessions from workspace backup
+  sessions   Export/import opencode sessions for current workspace
 EOF
     fi
     cat << EOF
@@ -134,6 +133,14 @@ Examples:
   workcell $agent run --yolo --with-chrome --port 3000
   workcell $agent build --no-cache
   workcell $agent settings
+EOF
+    if [[ "$agent" == "opencode" ]]; then
+        cat << 'EOF'
+  workcell opencode sessions export
+  workcell opencode sessions import
+EOF
+    fi
+    cat << EOF
 
 Use 'workcell $agent <subcommand> --help' for subcommand-specific help.
 EOF
@@ -481,7 +488,7 @@ cmd_opencode_sessions_export() {
         echo "Export opencode sessions for the current workspace to a local backup"
         echo ""
         echo "Usage:"
-        echo "  workcell opencode sessions-export"
+        echo "  workcell opencode sessions export"
         echo ""
         echo "Writes one JSON file per session (keyed by session ID) to"
         echo ".workcell/opencode-sessions/ in the current workspace."
@@ -493,7 +500,7 @@ cmd_opencode_sessions_export() {
         exit 0
     fi
 
-    reject_extra_args "workcell opencode sessions-export" "$@"
+    reject_extra_args "workcell opencode sessions export" "$@"
 
     ensure_docker_running
     local project_name="${PWD##*/}"
@@ -529,7 +536,7 @@ cmd_opencode_sessions_import() {
         echo "Import opencode sessions from a workspace backup"
         echo ""
         echo "Usage:"
-        echo "  workcell opencode sessions-import"
+        echo "  workcell opencode sessions import"
         echo ""
         echo "Imports every .json file under .workcell/opencode-sessions/"
         echo "back into opencode's session store. Session IDs and project"
@@ -540,7 +547,7 @@ cmd_opencode_sessions_import() {
         exit 0
     fi
 
-    reject_extra_args "workcell opencode sessions-import" "$@"
+    reject_extra_args "workcell opencode sessions import" "$@"
 
     ensure_docker_running
     local project_name="${PWD##*/}"
@@ -611,19 +618,42 @@ case "$command" in
             settings)
                 cmd_harness_settings "$agent" "$@"
                 ;;
-            sessions-export)
+            sessions)
                 if [[ "$agent" != "opencode" ]]; then
-                    echo "Error: 'sessions-export' is only available for opencode"
+                    echo "Error: 'sessions' is only available for opencode"
                     exit 1
                 fi
-                cmd_opencode_sessions_export "$@"
-                ;;
-            sessions-import)
-                if [[ "$agent" != "opencode" ]]; then
-                    echo "Error: 'sessions-import' is only available for opencode"
+                session_subcmd="${1:-}"
+                if [[ "$session_subcmd" == "--help" || "$session_subcmd" == "-h" ]]; then
+                    echo "OpenCode session management"
+                    echo ""
+                    echo "Usage:"
+                    echo "  workcell opencode sessions <export|import>"
+                    echo ""
+                    echo "Subcommands:"
+                    echo "  export    Export opencode sessions for current workspace"
+                    echo "  import    Import opencode sessions from workspace backup"
+                    exit 0
+                fi
+                if [ -z "$session_subcmd" ]; then
+                    echo "Error: subcommand required for 'workcell opencode sessions'"
+                    echo "Try: workcell opencode sessions --help"
                     exit 1
                 fi
-                cmd_opencode_sessions_import "$@"
+                shift
+                case "$session_subcmd" in
+                    export)
+                        cmd_opencode_sessions_export "$@"
+                        ;;
+                    import)
+                        cmd_opencode_sessions_import "$@"
+                        ;;
+                    *)
+                        echo "Error: unknown subcommand '$session_subcmd' for 'workcell opencode sessions'"
+                        echo "Try: workcell opencode sessions --help"
+                        exit 1
+                        ;;
+                esac
                 ;;
             --help|-h)
                 show_harness_help "$agent"
@@ -638,7 +668,7 @@ case "$command" in
         ;;
 
     # ── Global commands ──────────────────────────────────────────────────
-    run|settings|opencode-sessions-export|opencode-sessions-import)
+    run|settings)
         exit 1
         ;;
 
