@@ -113,6 +113,18 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-pi\t", f"{log}\t")
 
+    def test_cli_context_uses_selected_agent_image_volume_and_gpg(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            env, docker_log = self.fake_docker_env(workspace)
+            subprocess.run([str(CLI), "codex", "context"], cwd=workspace, env=env, check=True)
+            log = docker_log.read_text()
+            self.assertIn("\t-v\tagent-workcell-codex:/data\t", f"{log}\t")
+            self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
+            self.assertIn("\tlocal/agent-workcell-codex\t", f"{log}\t")
+            self.assertIn("/data/.codex/AGENTS.md", log)
+            self.assertIn("cp /opt/agent-context.md", log)
+
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -128,6 +140,7 @@ class SandboxImageSplitTests(unittest.TestCase):
     def test_cli_argless_commands_reject_unexpected_args(self):
         commands = [
             ["pi", "settings", "extra"],
+            ["pi", "context", "extra"],
             ["opencode", "sessions", "export", "extra"],
             ["opencode", "sessions", "import", "extra"],
             ["gpg", "new", "extra"],
@@ -156,6 +169,15 @@ class SandboxImageSplitTests(unittest.TestCase):
         self.assertIn("WORKCELL_IMAGE_AGENT", entrypoint)
         self.assertIn("image/agent mismatch", entrypoint)
         self.assertLess(entrypoint.index("image/agent mismatch"), entrypoint.index("workcell-agent-init.sh"))
+
+    def test_agent_context_init_preserves_existing_context_files(self):
+        for script_name in ["claude.sh", "opencode.sh", "codex.sh", "pi.sh"]:
+            with self.subTest(script=script_name):
+                script = (REPO_ROOT / "sandbox" / "agent-init" / script_name).read_text(encoding="utf-8")
+                self.assertNotIn("ln -sfn /opt/agent-context.md", script)
+                self.assertNotIn("readlink \"$context_path\"", script)
+                self.assertIn("cp /opt/agent-context.md", script)
+                self.assertIn("[ ! -e \"$context_path\" ] && [ ! -L \"$context_path\" ]", script)
 
     def test_agent_installers_are_not_in_base_dockerfile(self):
         base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(encoding="utf-8")
