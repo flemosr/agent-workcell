@@ -2,27 +2,29 @@
 # Agent Workcell CLI
 #
 # Usage:
-#   workcell build [target] [options] Build/rebuild sandbox images
-#   workcell run <agent> [options]   Run the sandbox in current directory
+#   workcell <agent> run [options]    Run an agent in the current directory
 #                                          (agent: claude | opencode | codex | pi)
-#   workcell start-chrome [options]  Start Chrome with remote debugging
+#   workcell <agent> build [args]     Build/rebuild one agent sandbox image
+#   workcell <agent> settings         Open an agent's settings/config in vi
+#   workcell opencode sessions-export Export opencode sessions for current workspace
+#   workcell opencode sessions-import Import opencode sessions from workspace backup
+#   workcell build                    Build/rebuild all sandbox images
+#   workcell start-chrome [options]   Start Chrome with remote debugging
 #   workcell start-flutter-bridge     Start Flutter host bridge
 #   workcell gpg-new                  Generate a new sandbox GPG key
 #   workcell gpg-export --file <f>    Export sandbox GPG key to a file
-#   workcell gpg-import --file <f>   Import a GPG key into the sandbox
-#   workcell gpg-revoke --file <f>   Generate a revocation certificate
-#   workcell gpg-erase               Erase the sandbox GPG key
+#   workcell gpg-import --file <f>    Import a GPG key into the sandbox
+#   workcell gpg-revoke --file <f>    Generate a revocation certificate
+#   workcell gpg-erase                Erase the sandbox GPG key
 #   workcell volume-shell <scope>     Open a shell in a workcell volume
 #   workcell volume-backup --file <f> Backup all workcell volumes
 #   workcell volume-restore --file <f> Restore all workcell volumes from backup
 #   workcell volume-rm <scope>        Remove a workcell volume scope
-#   workcell settings <agent>        Open an agent's settings/config in vi
-#   workcell opencode-sessions-export Export opencode sessions for current workspace
-#   workcell opencode-sessions-import Import opencode sessions from workspace backup
-#   workcell help                    Show this help message
+#   workcell help                     Show this help message
 #
 # For detailed help on each command:
-#   workcell run --help
+#   workcell <agent> --help
+#   workcell <agent> run --help
 #   workcell start-chrome --help
 
 set -e
@@ -51,34 +53,38 @@ Agent Workcell - Run coding agents safely in Docker
 Usage:
   workcell <command> [options]
 
-Commands:
-  build           Build/rebuild the sandbox image
-  run <agent>     Run the sandbox in current directory
-                  agent: claude | opencode | codex | pi
-  start-chrome    Start Chrome with remote debugging (run on host)
-  start-flutter-bridge  Start Flutter host bridge (run on host)
-  gpg-new         Generate a new sandbox GPG key
-  gpg-export      Export the sandbox GPG key to a file
-  gpg-import      Import a GPG key into the sandbox
-  gpg-revoke      Generate a revocation certificate
-  gpg-erase       Erase the sandbox GPG key
-  volume-shell    Open a shell in a workcell volume scope
-  volume-backup   Backup all workcell volumes to a file
-  volume-restore  Restore all workcell volumes from a backup
-  volume-rm       Remove a workcell volume scope
-  settings <agent>   Open an agent's settings/config in vi
-  opencode-sessions-export  Export opencode sessions for current workspace
+Agent commands:
+  <agent> run       Run an agent in the current directory
+                    agent: claude | opencode | codex | pi
+  <agent> build     Build/rebuild one agent sandbox image
+  <agent> settings  Open an agent's settings/config in vi
+  opencode sessions-export  Export opencode sessions for current workspace
                             to .workcell/opencode-sessions/
-  opencode-sessions-import  Import opencode sessions from
+  opencode sessions-import  Import opencode sessions from
                             .workcell/opencode-sessions/
-  help            Show this help message
+
+Global commands:
+  build             Build/rebuild all sandbox images
+  start-chrome      Start Chrome with remote debugging (run on host)
+  start-flutter-bridge  Start Flutter host bridge (run on host)
+  gpg-new           Generate a new sandbox GPG key
+  gpg-export        Export the sandbox GPG key to a file
+  gpg-import        Import a GPG key into the sandbox
+  gpg-revoke        Generate a revocation certificate
+  gpg-erase         Erase the sandbox GPG key
+  volume-shell      Open a shell in a workcell volume scope
+  volume-backup     Backup all workcell volumes to a file
+  volume-restore    Restore all workcell volumes from a backup
+  volume-rm         Remove a workcell volume scope
+  help              Show this help message
 
 Examples:
+  workcell claude run --yolo --with-chrome --port 3000
+  workcell opencode run --yolo
+  workcell codex run --yolo
+  workcell pi run
+  workcell claude build --no-cache
   workcell build
-  workcell run claude --yolo --with-chrome --port 3000
-  workcell run opencode --yolo
-  workcell run codex --yolo
-  workcell run pi
   workcell start-chrome
   workcell start-chrome --restart
   workcell start-flutter-bridge
@@ -91,14 +97,45 @@ Examples:
   workcell volume-backup --file backup.tgz
   workcell volume-restore --file backup.tgz
   workcell volume-rm codex
-  workcell settings claude
-  workcell settings opencode
-  workcell settings codex
-  workcell settings pi
-  workcell opencode-sessions-export
-  workcell opencode-sessions-import
+  workcell claude settings
+  workcell opencode settings
+  workcell codex settings
+  workcell pi settings
+  workcell opencode sessions-export
+  workcell opencode sessions-import
 
 For more information, see README.md
+EOF
+}
+
+show_harness_help() {
+    local agent="$1"
+    cat << EOF
+Agent Workcell — $agent harness
+
+Usage:
+  workcell $agent <subcommand> [options]
+
+Subcommands:
+  run        Run $agent in the current directory
+  build      Build/rebuild the $agent sandbox image
+  settings   Open $agent settings/config in vi
+EOF
+    if [[ "$agent" == "opencode" ]]; then
+        cat << 'EOF'
+  sessions-export   Export opencode sessions for current workspace
+  sessions-import   Import opencode sessions from workspace backup
+EOF
+    fi
+    cat << EOF
+
+Examples:
+  workcell $agent run --yolo
+  workcell $agent run --yolo --with-chrome --port 3000
+  workcell $agent build --no-cache
+  workcell $agent settings
+
+Use 'workcell $agent <subcommand> --help' for subcommand-specific help.
 EOF
 }
 
@@ -107,7 +144,7 @@ show_run_help() {
 Run the Agent Workcell in the current directory
 
 Usage:
-  workcell run <agent> [options] [-- agent-args]
+  workcell <agent> run [options] [-- agent-args]
 
 Agents:
   claude     Launch Claude Code
@@ -134,17 +171,30 @@ Options:
   --port <port>     Expose a dev-server port to the host (repeatable)
 
 Examples:
-  workcell run claude --yolo
-  workcell run opencode --yolo
-  workcell run codex --yolo
-  workcell run pi
-  workcell run claude --yolo --with-chrome --port 3000
-  workcell run codex --with-flutter --bridge-port 8765
-  workcell run codex --with-flutter --flutter-project-dir ./gui
-  workcell run codex --with-flutter --bridge-port 8766 --port 3000
-  workcell run opencode --port 3000 --port 5173
-  workcell run codex --yolo --port 3000
+  workcell claude run --yolo
+  workcell opencode run --yolo
+  workcell codex run --yolo
+  workcell pi run
+  workcell claude run --yolo --with-chrome --port 3000
+  workcell codex run --with-flutter --bridge-port 8765
+  workcell codex run --with-flutter --flutter-project-dir ./gui
+  workcell codex run --with-flutter --bridge-port 8766 --port 3000
+  workcell opencode run --port 3000 --port 5173
+  workcell codex run --yolo --port 3000
+  workcell claude run -- --resume
+  workcell opencode run -- run "summarize the repo"
+  workcell pi run -- -p "summarize the repo"
 EOF
+}
+
+reject_extra_args() {
+    local usage="$1"
+    shift
+    if [[ $# -gt 0 ]]; then
+        echo "Error: unexpected argument: $1"
+        echo "Usage: $usage"
+        exit 1
+    fi
 }
 
 show_build_help() {
@@ -152,16 +202,20 @@ show_build_help() {
 Build or rebuild Agent Workcell Docker images
 
 Usage:
-  workcell build [all|claude|opencode|codex|pi] [docker-compose-build-args]
+  workcell <agent> build [docker-compose-build-args]
+  workcell build [docker-compose-build-args]
 
 Examples:
   workcell build
-  workcell build all
-  workcell build codex --no-cache
+  workcell claude build --no-cache
+  workcell opencode build
+  workcell codex build
+  workcell pi build
 
 Notes:
-  Runs `docker compose build` from the workcell repository root. The shared
-  base image is built before targeted agent images.
+  'workcell build' builds all four agent images plus the shared base.
+  'workcell <agent> build' builds just that agent's image plus the shared base.
+  Runs 'docker compose build' from the workcell repository root.
 EOF
 }
 
@@ -266,14 +320,280 @@ choose the Flutter target with `flutterctl devices` and
 EOF
 }
 
-# Parse command
+# ── Harness subcommand handlers ──────────────────────────────────────────────
+
+cmd_harness_run() {
+    local agent="$1"
+    shift
+
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        show_run_help
+        exit 0
+    fi
+
+    ensure_docker_running
+    exec "$SCRIPT_DIR/scripts/run_sandbox.sh" "$agent" "$@"
+}
+
+cmd_harness_build() {
+    local agent="$1"
+    shift
+
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        show_build_help
+        exit 0
+    fi
+
+    ensure_docker_running
+    cd "$SCRIPT_DIR"
+    docker compose build "$@" agent-workcell-base
+    exec docker compose build "$@" "agent-workcell-$agent"
+}
+
+cmd_harness_settings() {
+    local agent="$1"
+    shift
+
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        echo "Open an agent's config file in vi (inside the sandbox volume)"
+        echo ""
+        echo "Usage:"
+        echo "  workcell $agent settings"
+        echo ""
+        echo "Config files by agent:"
+        echo "  claude    ~/.claude/settings.json"
+        echo "  opencode  ~/.config/opencode/opencode.jsonc (preferred if it exists)"
+        echo "            ~/.config/opencode/opencode.json"
+        echo "  codex     ~/.codex/config.toml"
+        echo "  pi        ~/.pi/agent/settings.json"
+        exit 0
+    fi
+
+    reject_extra_args "workcell $agent settings" "$@"
+
+    local settings_volume="$(agent_volume_name "$agent")"
+    local settings_image="$(agent_image_name "$agent")"
+    ensure_docker_running
+    case "$agent" in
+        claude)
+            docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
+                mkdir -p /data/.claude
+                chown -R agent:agent /data/.claude
+                [ -f /data/.claude/settings.json ] || printf "{}\n" > /data/.claude/settings.json
+                chown agent:agent /data/.claude/settings.json
+                exec runuser -u agent -- vi /data/.claude/settings.json
+            '
+            ;;
+        opencode)
+            docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
+                mkdir -p /data/.config/opencode
+                chown -R agent:agent /data/.config/opencode
+                if [ -f /data/.config/opencode/opencode.jsonc ]; then
+                    settings_path=/data/.config/opencode/opencode.jsonc
+                else
+                    settings_path=/data/.config/opencode/opencode.json
+                    if [ ! -f "$settings_path" ]; then
+                        cat > "$settings_path" <<JSONEOF
+{
+  "\$schema": "https://opencode.ai/config.json"
+}
+JSONEOF
+                    fi
+                fi
+                chown agent:agent "$settings_path"
+                exec runuser -u agent -- vi "$settings_path"
+            '
+            ;;
+        codex)
+            docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
+                mkdir -p /data/.codex
+                chown -R agent:agent /data/.codex
+                settings_path=/data/.codex/config.toml
+                if [ ! -f "$settings_path" ]; then
+                    printf "# Codex user configuration\n" > "$settings_path"
+                fi
+                chown agent:agent "$settings_path"
+                exec runuser -u agent -- vi "$settings_path"
+            '
+            ;;
+        pi)
+            docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
+                mkdir -p /data/.pi/agent
+                chown -R agent:agent /data/.pi
+                settings_path=/data/.pi/agent/settings.json
+                if [ ! -f "$settings_path" ]; then
+                    printf "{}\n" > "$settings_path"
+                fi
+                chown agent:agent "$settings_path"
+                exec runuser -u agent -- vi "$settings_path"
+            '
+            ;;
+    esac
+}
+
+cmd_opencode_sessions_export() {
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        echo "Export opencode sessions for the current workspace to a local backup"
+        echo ""
+        echo "Usage:"
+        echo "  workcell opencode sessions-export"
+        echo ""
+        echo "Writes one JSON file per session (keyed by session ID) to"
+        echo ".workcell/opencode-sessions/ in the current workspace."
+        echo ""
+        echo "Sessions are auto-scoped to the current workspace: opencode derives"
+        echo "the project ID from the git root-commit SHA, or uses \"global\" for"
+        echo "non-git directories. Existing files are overwritten; stale files from"
+        echo "sessions deleted in opencode are left in place as recovery artifacts."
+        exit 0
+    fi
+
+    reject_extra_args "workcell opencode sessions-export" "$@"
+
+    ensure_docker_running
+    local project_name="${PWD##*/}"
+    local output_dir="$(pwd)/.workcell/opencode-sessions"
+    mkdir -p "$output_dir"
+
+    docker run --rm --entrypoint sh \
+        --user agent \
+        -e HOME=/home/agent \
+        -v "$(agent_volume_name opencode):/home/agent/persist" \
+        -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
+        -v "$(pwd):/workspaces/${project_name}" \
+        -w "/workspaces/${project_name}" \
+        "$(agent_image_name opencode)" -c '
+            set -e
+            export PATH="/home/agent/.local/bin:$PATH"
+            ids=$(opencode session list --format json 2>/dev/null | jq -r ".[].id")
+            if [ -z "$ids" ]; then
+                echo "No opencode sessions found for this workspace."
+                exit 0
+            fi
+            count=0
+            for id in $ids; do
+                opencode export "$id" > ".workcell/opencode-sessions/$id.json"
+                count=$((count + 1))
+            done
+            echo "Exported $count session(s) to .workcell/opencode-sessions/"
+        '
+}
+
+cmd_opencode_sessions_import() {
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        echo "Import opencode sessions from a workspace backup"
+        echo ""
+        echo "Usage:"
+        echo "  workcell opencode sessions-import"
+        echo ""
+        echo "Imports every .json file under .workcell/opencode-sessions/"
+        echo "back into opencode's session store. Session IDs and project"
+        echo "scoping are preserved from the JSON, so sessions restore to"
+        echo "their original workspace as long as the git root-commit SHA"
+        echo "matches (or for non-git dirs, as long as projectID is \"global\")."
+        echo "Re-importing an existing session is a no-op."
+        exit 0
+    fi
+
+    reject_extra_args "workcell opencode sessions-import" "$@"
+
+    ensure_docker_running
+    local project_name="${PWD##*/}"
+    local input_dir="$(pwd)/.workcell/opencode-sessions"
+    if [ ! -d "$input_dir" ] || [ -z "$(ls -A "$input_dir"/*.json 2>/dev/null)" ]; then
+        echo "No session files found in .workcell/opencode-sessions/"
+        exit 0
+    fi
+
+    docker run --rm --entrypoint sh \
+        --user agent \
+        -e HOME=/home/agent \
+        -v "$(agent_volume_name opencode):/home/agent/persist" \
+        -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
+        -v "$(pwd):/workspaces/${project_name}" \
+        -w "/workspaces/${project_name}" \
+        "$(agent_image_name opencode)" -c '
+            set -e
+            export PATH="/home/agent/.local/bin:$PATH"
+            count=0
+            for f in .workcell/opencode-sessions/*.json; do
+                [ -e "$f" ] || continue
+                opencode import "$f" >/dev/null
+                count=$((count + 1))
+            done
+            echo "Imported $count session(s) from .workcell/opencode-sessions/"
+        '
+}
+
+# ── Top-level dispatch ──────────────────────────────────────────────────────
+
 command="${1:-}"
 
 case "$command" in
     "")
         show_help
         echo ""
-        echo "Error: command is required. To launch an agent, use: workcell run <agent>"
+        echo "Error: command is required. To launch an agent, use: workcell <agent> run"
+        exit 1
+        ;;
+
+    # ── Harness subcommand groups ────────────────────────────────────────
+    claude|opencode|codex|pi)
+        agent="$command"
+        shift
+        subcmd="${1:-}"
+
+        if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+            show_harness_help "$agent"
+            exit 0
+        fi
+
+        if [ -z "$subcmd" ]; then
+            echo "Error: subcommand required for 'workcell $agent'"
+            echo "Try: workcell $agent run"
+            echo "     workcell $agent --help"
+            exit 1
+        fi
+        shift
+
+        case "$subcmd" in
+            run)
+                cmd_harness_run "$agent" "$@"
+                ;;
+            build)
+                cmd_harness_build "$agent" "$@"
+                ;;
+            settings)
+                cmd_harness_settings "$agent" "$@"
+                ;;
+            sessions-export)
+                if [[ "$agent" != "opencode" ]]; then
+                    echo "Error: 'sessions-export' is only available for opencode"
+                    exit 1
+                fi
+                cmd_opencode_sessions_export "$@"
+                ;;
+            sessions-import)
+                if [[ "$agent" != "opencode" ]]; then
+                    echo "Error: 'sessions-import' is only available for opencode"
+                    exit 1
+                fi
+                cmd_opencode_sessions_import "$@"
+                ;;
+            --help|-h)
+                show_harness_help "$agent"
+                exit 0
+                ;;
+            *)
+                echo "Error: unknown subcommand '$subcmd' for 'workcell $agent'"
+                echo "Try: workcell $agent --help"
+                exit 1
+                ;;
+        esac
+        ;;
+
+    # ── Global commands ──────────────────────────────────────────────────
+    run|settings|opencode-sessions-export|opencode-sessions-import)
         exit 1
         ;;
 
@@ -285,52 +605,16 @@ case "$command" in
             exit 0
         fi
 
-        target="${1:-all}"
-        if [[ "$target" == "all" || "$target" == "claude" || "$target" == "opencode" || "$target" == "codex" || "$target" == "pi" ]]; then
-            shift || true
-        else
-            target="all"
+        if [[ "${1:-}" == "all" ]] || valid_agent "${1:-}"; then
+            echo "Error: unexpected argument: $1"
+            echo "Usage: workcell build [docker-compose-build-args]"
+            exit 1
         fi
 
         ensure_docker_running
         cd "$SCRIPT_DIR"
         docker compose build "$@" agent-workcell-base
-        if [[ "$target" == "all" ]]; then
-            exec docker compose build "$@" agent-workcell-claude agent-workcell-opencode agent-workcell-codex agent-workcell-pi
-        else
-            exec docker compose build "$@" "agent-workcell-$target"
-        fi
-        ;;
-
-    run)
-        shift
-
-        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-            show_run_help
-            exit 0
-        fi
-
-        if [ -z "${1:-}" ]; then
-            echo "Error: agent is required (expected 'claude', 'opencode', 'codex', or 'pi')"
-            echo "Usage: workcell run <agent> [options] [-- agent-args]"
-            exit 1
-        fi
-
-        case "$1" in
-            claude|opencode|codex|pi) ;;
-            -*)
-                echo "Error: agent is required before options (expected 'claude', 'opencode', 'codex', or 'pi')"
-                echo "Usage: workcell run <agent> [options] [-- agent-args]"
-                exit 1
-                ;;
-            *)
-                echo "Error: unknown agent '$1' (expected 'claude', 'opencode', 'codex', or 'pi')"
-                exit 1
-                ;;
-        esac
-
-        ensure_docker_running
-        exec "$SCRIPT_DIR/scripts/run_sandbox.sh" "$@"
+        exec docker compose build "$@" agent-workcell-claude agent-workcell-opencode agent-workcell-codex agent-workcell-pi
         ;;
 
     start-chrome)
@@ -367,6 +651,8 @@ case "$command" in
             echo "If a key already exists, prompts before overwriting."
             exit 0
         fi
+
+        reject_extra_args "workcell gpg-new" "$@"
 
         # Source config for identity
         if [ -f "$SCRIPT_DIR/config.sh" ]; then
@@ -578,6 +864,8 @@ GPGEOF
             exit 0
         fi
 
+        reject_extra_args "workcell gpg-erase" "$@"
+
         read -r -p "This will permanently delete all GPG keys from the sandbox. Continue? [y/N] " confirm
         case "$confirm" in
             y|Y)
@@ -601,6 +889,9 @@ GPGEOF
             exit 0
         fi
         scope="${1:-}"
+        if [[ $# -gt 1 ]]; then
+            reject_extra_args "workcell volume-shell <claude|opencode|codex|pi|gpg>" "${@:2}"
+        fi
         case "$scope" in
             claude|opencode|codex|pi) volume="$(agent_volume_name "$scope")" ;;
             gpg) volume="$WORKCELL_SHARED_GPG_VOLUME_NAME" ;;
@@ -665,6 +956,9 @@ GPGEOF
             exit 0
         fi
         scope="${1:-}"
+        if [[ $# -gt 1 ]]; then
+            reject_extra_args "workcell volume-rm <claude|opencode|codex|pi|gpg|all>" "${@:2}"
+        fi
         case "$scope" in
             claude|opencode|codex|pi) volumes=("$(agent_volume_name "$scope")") ;;
             gpg) volumes=("$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
@@ -678,190 +972,6 @@ GPGEOF
         echo "Removed volume scope '$scope'."
         ;;
 
-    settings)
-        shift
-        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Open an agent's config file in vi (inside the sandbox volume)"
-            echo ""
-            echo "Usage:"
-            echo "  workcell settings <agent>"
-            echo ""
-            echo "Agents (required):"
-            echo "  claude    ~/.claude/settings.json"
-            echo "  opencode  ~/.config/opencode/opencode.jsonc (preferred if it exists)"
-            echo "            ~/.config/opencode/opencode.json"
-            echo "  codex     ~/.codex/config.toml"
-            echo "  pi        ~/.pi/agent/settings.json"
-            exit 0
-        fi
-
-        if [ -z "${1:-}" ]; then
-            echo "Error: agent is required (expected 'claude', 'opencode', 'codex', or 'pi')"
-            echo "Usage: workcell settings <agent>"
-            exit 1
-        fi
-
-        settings_agent="$1"
-        if ! valid_agent "$settings_agent"; then
-            echo "Error: unknown agent '$settings_agent' (expected 'claude', 'opencode', 'codex', or 'pi')"
-            exit 1
-        fi
-        settings_volume="$(agent_volume_name "$settings_agent")"
-        settings_image="$(agent_image_name "$settings_agent")"
-        ensure_docker_running
-        case "$settings_agent" in
-            claude)
-                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
-                    mkdir -p /data/.claude
-                    chown -R agent:agent /data/.claude
-                    [ -f /data/.claude/settings.json ] || printf "{}\n" > /data/.claude/settings.json
-                    chown agent:agent /data/.claude/settings.json
-                    exec runuser -u agent -- vi /data/.claude/settings.json
-                '
-                ;;
-            opencode)
-                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
-                    mkdir -p /data/.config/opencode
-                    chown -R agent:agent /data/.config/opencode
-                    if [ -f /data/.config/opencode/opencode.jsonc ]; then
-                        settings_path=/data/.config/opencode/opencode.jsonc
-                    else
-                        settings_path=/data/.config/opencode/opencode.json
-                        if [ ! -f "$settings_path" ]; then
-                            cat > "$settings_path" <<EOF
-{
-  "\$schema": "https://opencode.ai/config.json"
-}
-EOF
-                        fi
-                    fi
-                    chown agent:agent "$settings_path"
-                    exec runuser -u agent -- vi "$settings_path"
-                '
-                ;;
-            codex)
-                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
-                    mkdir -p /data/.codex
-                    chown -R agent:agent /data/.codex
-                    settings_path=/data/.codex/config.toml
-                    if [ ! -f "$settings_path" ]; then
-                        printf "# Codex user configuration\n" > "$settings_path"
-                    fi
-                    chown agent:agent "$settings_path"
-                    exec runuser -u agent -- vi "$settings_path"
-                '
-                ;;
-            pi)
-                docker run --rm -it --entrypoint sh -v "${settings_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$settings_image" -lc '
-                    mkdir -p /data/.pi/agent
-                    chown -R agent:agent /data/.pi
-                    settings_path=/data/.pi/agent/settings.json
-                    if [ ! -f "$settings_path" ]; then
-                        printf "{}\n" > "$settings_path"
-                    fi
-                    chown agent:agent "$settings_path"
-                    exec runuser -u agent -- vi "$settings_path"
-                '
-                ;;
-        esac
-        ;;
-
-    opencode-sessions-export)
-        shift
-        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Export opencode sessions for the current workspace to a local backup"
-            echo ""
-            echo "Usage:"
-            echo "  workcell opencode-sessions-export"
-            echo ""
-            echo "Writes one JSON file per session (keyed by session ID) to"
-            echo ".workcell/opencode-sessions/ in the current workspace."
-            echo ""
-            echo "Sessions are auto-scoped to the current workspace: opencode derives"
-            echo "the project ID from the git root-commit SHA, or uses \"global\" for"
-            echo "non-git directories. Existing files are overwritten; stale files from"
-            echo "sessions deleted in opencode are left in place as recovery artifacts."
-            exit 0
-        fi
-
-        ensure_docker_running
-        project_name="${PWD##*/}"
-        output_dir="$(pwd)/.workcell/opencode-sessions"
-        mkdir -p "$output_dir"
-
-        # Use --user agent to write as uid 1000 (matches volume ownership).
-        # Bypasses the entrypoint — image-time symlinks already point the
-        # opencode data dirs at /home/agent/persist, so mounting the volume
-        # is enough for opencode to see this workspace's sessions.
-        docker run --rm --entrypoint sh \
-            --user agent \
-            -e HOME=/home/agent \
-            -v "$(agent_volume_name opencode):/home/agent/persist" \
-            -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
-            -v "$(pwd):/workspaces/${project_name}" \
-            -w "/workspaces/${project_name}" \
-            "$(agent_image_name opencode)" -c '
-                set -e
-                export PATH="/home/agent/.local/bin:$PATH"
-                ids=$(opencode session list --format json 2>/dev/null | jq -r ".[].id")
-                if [ -z "$ids" ]; then
-                    echo "No opencode sessions found for this workspace."
-                    exit 0
-                fi
-                count=0
-                for id in $ids; do
-                    opencode export "$id" > ".workcell/opencode-sessions/$id.json"
-                    count=$((count + 1))
-                done
-                echo "Exported $count session(s) to .workcell/opencode-sessions/"
-            '
-        ;;
-
-    opencode-sessions-import)
-        shift
-        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Import opencode sessions from a workspace backup"
-            echo ""
-            echo "Usage:"
-            echo "  workcell opencode-sessions-import"
-            echo ""
-            echo "Imports every .json file under .workcell/opencode-sessions/"
-            echo "back into opencode's session store. Session IDs and project"
-            echo "scoping are preserved from the JSON, so sessions restore to"
-            echo "their original workspace as long as the git root-commit SHA"
-            echo "matches (or for non-git dirs, as long as projectID is \"global\")."
-            echo "Re-importing an existing session is a no-op."
-            exit 0
-        fi
-
-        ensure_docker_running
-        project_name="${PWD##*/}"
-        input_dir="$(pwd)/.workcell/opencode-sessions"
-        if [ ! -d "$input_dir" ] || [ -z "$(ls -A "$input_dir"/*.json 2>/dev/null)" ]; then
-            echo "No session files found in .workcell/opencode-sessions/"
-            exit 0
-        fi
-
-        docker run --rm --entrypoint sh \
-            --user agent \
-            -e HOME=/home/agent \
-            -v "$(agent_volume_name opencode):/home/agent/persist" \
-            -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
-            -v "$(pwd):/workspaces/${project_name}" \
-            -w "/workspaces/${project_name}" \
-            "$(agent_image_name opencode)" -c '
-                set -e
-                export PATH="/home/agent/.local/bin:$PATH"
-                count=0
-                for f in .workcell/opencode-sessions/*.json; do
-                    [ -e "$f" ] || continue
-                    opencode import "$f" >/dev/null
-                    count=$((count + 1))
-                done
-                echo "Imported $count session(s) from .workcell/opencode-sessions/"
-            '
-        ;;
-
     help|--help|-h)
         show_help
         exit 0
@@ -869,7 +979,6 @@ EOF
 
     *)
         # Unknown command - could be flags for open-workspace (backwards compat)
-        # Check if it looks like a flag
         if [[ "$command" == -* ]]; then
             ensure_docker_running
             exec "$SCRIPT_DIR/scripts/run_sandbox.sh" "$@"

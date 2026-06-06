@@ -15,12 +15,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # launches cannot accidentally inherit an implicit tool choice.
 if [[ $# -eq 0 ]]; then
   echo "Error: agent is required (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
-  echo "Usage: workcell run <agent> [options] [-- agent-args]" >&2
+  echo "Usage: workcell <agent> run [options] [-- agent-args]" >&2
   exit 1
 fi
 if [[ "$1" == -* ]]; then
   echo "Error: agent is required before options (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
-  echo "Usage: workcell run <agent> [options] [-- agent-args]" >&2
+  echo "Usage: workcell <agent> run [options] [-- agent-args]" >&2
   exit 1
 fi
 agent_cli="$1"
