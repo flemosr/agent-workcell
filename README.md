@@ -211,18 +211,18 @@ These commands export and import OpenCode sessions between the Docker volume and
 
 ```bash
 # Open a shell in a specific volume
-workcell volume-shell codex
-workcell volume-shell gpg
+workcell volume shell codex
+workcell volume shell gpg
 
 # Backup all workcell volumes
-workcell volume-backup --file agent-workcell-bkp.tgz
+workcell volume backup --file agent-workcell-bkp.tgz
 
 # Restore all workcell volumes from backup
-workcell volume-restore --file agent-workcell-bkp.tgz
+workcell volume restore --file agent-workcell-bkp.tgz
 
 # Remove a specific volume scope, or all scopes
-workcell volume-rm codex
-workcell volume-rm all
+workcell volume rm codex
+workcell volume rm all
 ```
 
 Volume commands affect the persisted user data described below.
