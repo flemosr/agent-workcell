@@ -178,6 +178,10 @@ class SandboxImageSplitTests(unittest.TestCase):
                 self.assertNotIn("readlink \"$context_path\"", script)
                 self.assertIn("cp /opt/agent-context.md", script)
                 self.assertIn("[ ! -e \"$context_path\" ] && [ ! -L \"$context_path\" ]", script)
+                self.assertIn("/skills/$skill_name", script)
+                self.assertIn("/opt/agent-default-skills/$skill_name/SKILL.md", script)
+                self.assertIn("[ ! -e \"$skill_file\" ] && [ ! -L \"$skill_file\" ]", script)
+                self.assertNotIn("/home/agent/persist/.agents/skills", script)
 
     def test_agent_installers_are_not_in_base_dockerfile(self):
         base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(encoding="utf-8")
