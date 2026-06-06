@@ -7,10 +7,10 @@ You are running inside an Agent Workcell Docker container. Treat this file as th
 Load focused workflow skills only when they are relevant to the task.
 
 - For browser-based web development, visual UI checks, dev servers, or the `browser` CLI, use the
-  `web` skill.
+  `chrome-integration` skill.
 - For native/device Flutter work, host Flutter targets, hot reload, screenshots, or the
-  `flutterctl` CLI, use the `flutter` skill.
-- For Flutter web, use the web development workflow, not the native Flutter bridge.
+  `flutterctl` CLI, use the `flutter-integration` skill.
+- For Flutter web, use the Chrome integration workflow, not the native Flutter bridge.
 
 ## Host And Sandbox Boundaries
 
@@ -109,8 +109,8 @@ When the firewall is active, external network access is limited to essential age
 | Node.js | `nvm`, `npm`, `npx` |
 | Agent harness | Only the selected harness CLI is installed in this image: `claude`, `opencode`, `codex`, or `pi` |
 | Python | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
-| Browser | `browser` CLI for Chrome automation; use the `web` skill before browser/web work |
-| Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); use the `flutter` skill before native Flutter work |
+| Browser | `browser` CLI for Chrome automation; use the `chrome-integration` skill before browser/web work |
+| Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); use the `flutter-integration` skill before native Flutter work |
 | Protobuf | `protoc`, `buf`, `protoc-gen-dart`, `protoc-gen-prost`, `grpcurl` |
 | Database | `psql`; connect to host databases through `host.docker.internal` |
 | Utilities | `git`, `curl`, `wget`, `jq`, `yq`, `ripgrep`, `fd` |

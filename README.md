@@ -192,8 +192,8 @@ workcell claude skill list
 workcell opencode skill list
 workcell codex skill list
 workcell pi skill list
-workcell claude skill edit web
-workcell claude skill restore web
+workcell claude skill edit chrome-integration
+workcell claude skill restore chrome-integration
 ```
 
 The `settings` commands open an agent's config file in `vi` inside the workcell Docker volume.
@@ -272,8 +272,8 @@ Volume commands affect the persisted user data described below.
 - `/opt/agent-context.md` is the image default used to seed persisted context files when they
   are absent: `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, `~/.codex/AGENTS.md`,
   and `~/.pi/agent/AGENTS.md`. Existing persisted context files are never overwritten. Default
-  web and Flutter workflow skills are seeded into each harness's global skills directory only when
-  absent; user edits and user-added skills are preserved.
+  Chrome integration and Flutter integration workflow skills are seeded into each harness's global
+  skills directory only when absent; user edits and user-added skills are preserved.
 
 ## Persistence
 
