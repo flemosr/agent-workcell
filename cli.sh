@@ -8,6 +8,7 @@
 #   workcell <agent> settings         Open an agent's settings/config in vi
 #   workcell <agent> context edit     Open an agent's global context file in vi
 #   workcell <agent> context restore  Restore an agent's context from image default
+#   workcell <agent> skill edit <name> Open an agent's global skill in vi
 #   workcell opencode sessions export Export opencode sessions for current workspace
 #   workcell opencode sessions import Import opencode sessions from workspace backup
 #   workcell build                    Build/rebuild all sandbox images
@@ -111,6 +112,7 @@ Examples:
   workcell pi context edit
   workcell claude context restore
   workcell claude skill list
+  workcell claude skill edit web
   workcell opencode sessions export
   workcell opencode sessions import
 
@@ -148,6 +150,7 @@ Examples:
   workcell $agent context edit
   workcell $agent context restore
   workcell $agent skill list
+  workcell $agent skill edit web
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
@@ -398,9 +401,11 @@ cmd_harness_skill() {
         echo ""
         echo "Usage:"
         echo "  workcell $agent skill list"
+        echo "  workcell $agent skill edit <skill-name>"
         echo ""
         echo "Subcommands:"
         echo "  list      List $agent global skills"
+        echo "  edit      Open a persisted $agent global skill in vi"
         exit 0
     fi
 
@@ -412,9 +417,23 @@ cmd_harness_skill() {
     fi
     shift
 
+    local skill_name=""
     case "$action" in
         list)
             reject_extra_args "workcell $agent skill list" "$@"
+            ;;
+        edit)
+            skill_name="${1:-}"
+            if [ -z "$skill_name" ]; then
+                echo "Error: skill name is required"
+                echo "Usage: workcell $agent skill edit <skill-name>"
+                exit 1
+            fi
+            if [[ "$skill_name" == *"/"* || "$skill_name" == *".."* ]]; then
+                echo "Error: invalid skill name: $skill_name"
+                exit 1
+            fi
+            reject_extra_args "workcell $agent skill edit <skill-name>" "${@:2}"
             ;;
         *)
             echo "Error: unknown subcommand '$action' for 'workcell $agent skill'"
@@ -434,20 +453,52 @@ cmd_harness_skill() {
     esac
 
     ensure_docker_running
-    docker run --rm --entrypoint sh \
-        -v "${skill_volume}:/data" \
-        -e "WORKCELL_SKILL_ROOT=$skill_root" \
-        "$skill_image" -lc '
-            set -e
-            for root in /opt/agent-default-skills "$WORKCELL_SKILL_ROOT"; do
-                [ -d "$root" ] || continue
-                for skill_file in "$root"/*/SKILL.md; do
-                    [ -e "$skill_file" ] || [ -L "$skill_file" ] || continue
-                    skill_dir=${skill_file%/SKILL.md}
-                    basename "$skill_dir"
-                done
-            done | sort -u
-        '
+    case "$action" in
+        list)
+            docker run --rm --entrypoint sh \
+                -v "${skill_volume}:/data" \
+                -e "WORKCELL_SKILL_ROOT=$skill_root" \
+                "$skill_image" -lc '
+                    set -e
+                    for root in /opt/agent-default-skills "$WORKCELL_SKILL_ROOT"; do
+                        [ -d "$root" ] || continue
+                        for skill_file in "$root"/*/SKILL.md; do
+                            [ -e "$skill_file" ] || [ -L "$skill_file" ] || continue
+                            skill_dir=${skill_file%/SKILL.md}
+                            basename "$skill_dir"
+                        done
+                    done | sort -u
+                '
+            ;;
+        edit)
+            docker run --rm -it --entrypoint sh \
+                -v "${skill_volume}:/data" \
+                -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
+                -e "WORKCELL_SKILL_ROOT=$skill_root" \
+                -e "WORKCELL_SKILL_NAME=$skill_name" \
+                "$skill_image" -lc '
+                    set -e
+                    skill_dir="$WORKCELL_SKILL_ROOT/$WORKCELL_SKILL_NAME"
+                    skill_file="$skill_dir/SKILL.md"
+                    mkdir -p "$skill_dir"
+                    if [ ! -e "$skill_file" ] && [ ! -L "$skill_file" ]; then
+                        if [ -f "/opt/agent-default-skills/$WORKCELL_SKILL_NAME/SKILL.md" ]; then
+                            cp "/opt/agent-default-skills/$WORKCELL_SKILL_NAME/SKILL.md" "$skill_file"
+                        else
+                            printf "# %s\n\n" "$WORKCELL_SKILL_NAME" > "$skill_file"
+                        fi
+                    fi
+                    chown agent:agent "$WORKCELL_SKILL_ROOT" "$skill_dir" 2>/dev/null || true
+                    if [ -L "$skill_file" ]; then
+                        chown -h agent:agent "$skill_file" 2>/dev/null || true
+                    else
+                        chown agent:agent "$skill_file" 2>/dev/null || true
+                    fi
+                    echo "Editing persisted skill: $WORKCELL_SKILL_NAME"
+                    exec runuser -u agent -- vi "$skill_file"
+                '
+            ;;
+    esac
 }
 
 cmd_harness_run() {
