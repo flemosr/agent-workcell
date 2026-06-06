@@ -56,12 +56,12 @@ Each agent harness runs in its own image with its own persisted Docker volume, s
 global state paths and binaries are intentionally absent. Depending on the selected harness, the
 available persisted harness path is one of:
 
-- `~/.claude/` - Claude Code credentials, settings, project sessions, and global context.
-- `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` - OpenCode config, auth, sessions, logs, storage, and local UI state.
-- `~/.codex/` - Codex config, auth, history, logs, and global context; project conversation files are bind-mounted from `.workcell/codex-sessions/`.
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context; current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.claude/` - Claude Code credentials, settings, project sessions, and global context (`CLAUDE.md`).
+- `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` - OpenCode config, global context (`AGENTS.md`), auth, sessions, logs, storage, and local UI state.
+- `~/.codex/` - Codex config, auth, history, logs, and global context (`AGENTS.md`); project conversation files are bind-mounted from `.workcell/codex-sessions/`.
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context (`AGENTS.md`); current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 
-Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts for the selected agent volume. Image-owned SDKs and the selected agent binary update with that agent's sandbox image. Pi package/extension updates persist under `~/.pi/agent/` only in the Pi harness; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the Pi sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
+Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts for the selected agent volume. Image-owned SDKs and the selected agent binary update with that agent's sandbox image. The image default context is seeded into the persisted harness context file only when that file is absent; existing custom context is never overwritten. Pi package/extension updates persist under `~/.pi/agent/` only in the Pi harness; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the Pi sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
 
 ## Ports And Integrations
 
