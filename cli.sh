@@ -16,10 +16,10 @@
 #   workcell gpg import --file <f>    Import a GPG key into the sandbox
 #   workcell gpg revoke --file <f>    Generate a revocation certificate
 #   workcell gpg erase                Erase the sandbox GPG key
-#   workcell volume-shell <scope>     Open a shell in a workcell volume
-#   workcell volume-backup --file <f> Backup all workcell volumes
-#   workcell volume-restore --file <f> Restore all workcell volumes from backup
-#   workcell volume-rm <scope>        Remove a workcell volume scope
+#   workcell volume shell <scope>     Open a shell in a workcell volume
+#   workcell volume backup --file <f> Backup all workcell volumes
+#   workcell volume restore --file <f> Restore all workcell volumes from backup
+#   workcell volume rm <scope>        Remove a workcell volume scope
 #   workcell help                     Show this help message
 #
 # For detailed help on each command:
@@ -72,10 +72,10 @@ Global commands:
   gpg import        Import a GPG key into the sandbox
   gpg revoke        Generate a revocation certificate
   gpg erase         Erase the sandbox GPG key
-  volume-shell      Open a shell in a workcell volume scope
-  volume-backup     Backup all workcell volumes to a file
-  volume-restore    Restore all workcell volumes from a backup
-  volume-rm         Remove a workcell volume scope
+  volume shell      Open a shell in a workcell volume scope
+  volume backup     Backup all workcell volumes to a file
+  volume restore    Restore all workcell volumes from a backup
+  volume rm         Remove a workcell volume scope
   help              Show this help message
 
 Examples:
@@ -93,10 +93,10 @@ Examples:
   workcell gpg import --file my-key.asc
   workcell gpg revoke --file revoke.asc
   workcell gpg erase
-  workcell volume-shell codex
-  workcell volume-backup --file backup.tgz
-  workcell volume-restore --file backup.tgz
-  workcell volume-rm codex
+  workcell volume shell codex
+  workcell volume backup --file backup.tgz
+  workcell volume restore --file backup.tgz
+  workcell volume rm codex
   workcell claude settings
   workcell opencode settings
   workcell codex settings
@@ -159,6 +159,28 @@ Examples:
   workcell gpg import --file my-key.asc
   workcell gpg revoke --file revoke.asc
   workcell gpg erase
+EOF
+}
+
+show_volume_help() {
+    cat << 'EOF'
+Workcell Docker volume management
+
+Usage:
+  workcell volume <subcommand> [options]
+
+Subcommands:
+  shell      Open a shell in a workcell volume scope
+  backup     Backup all workcell volumes to a file
+  restore    Restore all workcell volumes from a backup
+  rm         Remove a workcell volume scope
+
+Examples:
+  workcell volume shell codex
+  workcell volume shell gpg
+  workcell volume backup --file backup.tgz
+  workcell volume restore --file backup.tgz
+  workcell volume rm codex
 EOF
 }
 
@@ -922,97 +944,118 @@ GPGEOF
         esac
         ;;
 
-    volume-shell)
+    volume)
         shift
-        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Open a shell in a workcell Docker volume"
-            echo ""
-            echo "Usage:"
-            echo "  workcell volume-shell <claude|opencode|codex|pi|gpg>"
+        subcmd="${1:-}"
+
+        if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+            show_volume_help
             exit 0
         fi
-        scope="${1:-}"
-        if [[ $# -gt 1 ]]; then
-            reject_extra_args "workcell volume-shell <claude|opencode|codex|pi|gpg>" "${@:2}"
+
+        if [ -z "$subcmd" ]; then
+            echo "Error: subcommand required for 'workcell volume'"
+            echo "Try: workcell volume --help"
+            exit 1
         fi
-        case "$scope" in
-            claude|opencode|codex|pi) volume="$(agent_volume_name "$scope")" ;;
-            gpg) volume="$WORKCELL_SHARED_GPG_VOLUME_NAME" ;;
-            *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', or 'gpg')"; exit 1 ;;
+        shift
+
+        case "$subcmd" in
+            shell)
+                if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                    echo "Open a shell in a workcell Docker volume"
+                    echo ""
+                    echo "Usage:"
+                    echo "  workcell volume shell <claude|opencode|codex|pi|gpg>"
+                    exit 0
+                fi
+                scope="${1:-}"
+                if [[ $# -gt 1 ]]; then
+                    reject_extra_args "workcell volume shell <claude|opencode|codex|pi|gpg>" "${@:2}"
+                fi
+                case "$scope" in
+                    claude|opencode|codex|pi) volume="$(agent_volume_name "$scope")" ;;
+                    gpg) volume="$WORKCELL_SHARED_GPG_VOLUME_NAME" ;;
+                    *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', or 'gpg')"; exit 1 ;;
+                esac
+                ensure_docker_running
+                docker run --rm -it -v "${volume}:/data" -w /data alpine sh
+                ;;
+
+            backup)
+                outfile=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --file) outfile="$2"; shift 2 ;;
+                        --help|-h)
+                            echo "Backup all workcell volumes to a file"
+                            echo "Usage: workcell volume backup --file <path.tgz>"
+                            echo "Includes claude, opencode, codex, pi, and shared gpg volumes."
+                            exit 0 ;;
+                        *) echo "Unknown option: $1"; exit 1 ;;
+                    esac
+                done
+                [ -n "$outfile" ] || { echo "Error: --file is required"; exit 1; }
+                ensure_docker_running
+                outdir="$(cd "$(dirname "$outfile")" && pwd)"
+                outname="$(basename "$outfile")"
+                docker run --rm             -v "$(agent_volume_name claude):/volumes/claude:ro"             -v "$(agent_volume_name opencode):/volumes/opencode:ro"             -v "$(agent_volume_name codex):/volumes/codex:ro"             -v "$(agent_volume_name pi):/volumes/pi:ro"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg:ro"             -v "$outdir:/backup" alpine             tar -czf "/backup/$outname" -C /volumes .
+                echo "Volumes backed up to: $outfile"
+                ;;
+
+            restore)
+                infile=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --file) infile="$2"; shift 2 ;;
+                        --help|-h)
+                            echo "Restore all workcell volumes from a backup"
+                            echo "Usage: workcell volume restore --file <path.tgz>"
+                            echo "WARNING: This replaces claude, opencode, codex, pi, and shared gpg volume contents."
+                            exit 0 ;;
+                        *) echo "Unknown option: $1"; exit 1 ;;
+                    esac
+                done
+                [ -n "$infile" ] || { echo "Error: --file is required"; exit 1; }
+                [ -f "$infile" ] || { echo "Error: File not found: $infile"; exit 1; }
+                read -r -p "This will replace all workcell volume contents. Type 'all' to continue: " confirm
+                [ "$confirm" = "all" ] || { echo "Aborted."; exit 0; }
+                ensure_docker_running
+                indir="$(cd "$(dirname "$infile")" && pwd)"
+                inname="$(basename "$infile")"
+                docker run --rm             -v "$(agent_volume_name claude):/volumes/claude"             -v "$(agent_volume_name opencode):/volumes/opencode"             -v "$(agent_volume_name codex):/volumes/codex"             -v "$(agent_volume_name pi):/volumes/pi"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg"             -v "$indir:/backup:ro" alpine             sh -c 'for d in /volumes/*; do rm -rf "$d"/* "$d"/.[!.]* "$d"/..?* 2>/dev/null || true; done; tar -xzf "/backup/$0" -C /volumes' "$inname"
+                echo "Volumes restored from: $infile"
+                ;;
+
+            rm)
+                if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                    echo "Remove workcell Docker volumes"
+                    echo "Usage: workcell volume rm <claude|opencode|codex|pi|gpg|all>"
+                    exit 0
+                fi
+                scope="${1:-}"
+                if [[ $# -gt 1 ]]; then
+                    reject_extra_args "workcell volume rm <claude|opencode|codex|pi|gpg|all>" "${@:2}"
+                fi
+                case "$scope" in
+                    claude|opencode|codex|pi) volumes=("$(agent_volume_name "$scope")") ;;
+                    gpg) volumes=("$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
+                    all) volumes=("$(agent_volume_name claude)" "$(agent_volume_name opencode)" "$(agent_volume_name codex)" "$(agent_volume_name pi)" "$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
+                    *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', 'gpg', or 'all')"; exit 1 ;;
+                esac
+                read -r -p "This will permanently delete volume scope '$scope'. Type '$scope' to continue: " confirm
+                [ "$confirm" = "$scope" ] || { echo "Aborted."; exit 0; }
+                ensure_docker_running
+                docker volume rm "${volumes[@]}"
+                echo "Removed volume scope '$scope'."
+                ;;
+
+            *)
+                echo "Error: unknown subcommand '$subcmd' for 'workcell volume'"
+                echo "Try: workcell volume --help"
+                exit 1
+                ;;
         esac
-        ensure_docker_running
-        docker run --rm -it -v "${volume}:/data" -w /data alpine sh
-        ;;
-
-    volume-backup)
-        shift
-        outfile=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --file) outfile="$2"; shift 2 ;;
-                --help|-h)
-                    echo "Backup all workcell volumes to a file"
-                    echo "Usage: workcell volume-backup --file <path.tgz>"
-                    echo "Includes claude, opencode, codex, pi, and shared gpg volumes."
-                    exit 0 ;;
-                *) echo "Unknown option: $1"; exit 1 ;;
-            esac
-        done
-        [ -n "$outfile" ] || { echo "Error: --file is required"; exit 1; }
-        ensure_docker_running
-        outdir="$(cd "$(dirname "$outfile")" && pwd)"
-        outname="$(basename "$outfile")"
-        docker run --rm             -v "$(agent_volume_name claude):/volumes/claude:ro"             -v "$(agent_volume_name opencode):/volumes/opencode:ro"             -v "$(agent_volume_name codex):/volumes/codex:ro"             -v "$(agent_volume_name pi):/volumes/pi:ro"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg:ro"             -v "$outdir:/backup" alpine             tar -czf "/backup/$outname" -C /volumes .
-        echo "Volumes backed up to: $outfile"
-        ;;
-
-    volume-restore)
-        shift
-        infile=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --file) infile="$2"; shift 2 ;;
-                --help|-h)
-                    echo "Restore all workcell volumes from a backup"
-                    echo "Usage: workcell volume-restore --file <path.tgz>"
-                    echo "WARNING: This replaces claude, opencode, codex, pi, and shared gpg volume contents."
-                    exit 0 ;;
-                *) echo "Unknown option: $1"; exit 1 ;;
-            esac
-        done
-        [ -n "$infile" ] || { echo "Error: --file is required"; exit 1; }
-        [ -f "$infile" ] || { echo "Error: File not found: $infile"; exit 1; }
-        read -r -p "This will replace all workcell volume contents. Type 'all' to continue: " confirm
-        [ "$confirm" = "all" ] || { echo "Aborted."; exit 0; }
-        ensure_docker_running
-        indir="$(cd "$(dirname "$infile")" && pwd)"
-        inname="$(basename "$infile")"
-        docker run --rm             -v "$(agent_volume_name claude):/volumes/claude"             -v "$(agent_volume_name opencode):/volumes/opencode"             -v "$(agent_volume_name codex):/volumes/codex"             -v "$(agent_volume_name pi):/volumes/pi"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg"             -v "$indir:/backup:ro" alpine             sh -c 'for d in /volumes/*; do rm -rf "$d"/* "$d"/.[!.]* "$d"/..?* 2>/dev/null || true; done; tar -xzf "/backup/$0" -C /volumes' "$inname"
-        echo "Volumes restored from: $infile"
-        ;;
-
-    volume-rm)
-        shift
-        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-            echo "Remove workcell Docker volumes"
-            echo "Usage: workcell volume-rm <claude|opencode|codex|pi|gpg|all>"
-            exit 0
-        fi
-        scope="${1:-}"
-        if [[ $# -gt 1 ]]; then
-            reject_extra_args "workcell volume-rm <claude|opencode|codex|pi|gpg|all>" "${@:2}"
-        fi
-        case "$scope" in
-            claude|opencode|codex|pi) volumes=("$(agent_volume_name "$scope")") ;;
-            gpg) volumes=("$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
-            all) volumes=("$(agent_volume_name claude)" "$(agent_volume_name opencode)" "$(agent_volume_name codex)" "$(agent_volume_name pi)" "$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
-            *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', 'gpg', or 'all')"; exit 1 ;;
-        esac
-        read -r -p "This will permanently delete volume scope '$scope'. Type '$scope' to continue: " confirm
-        [ "$confirm" = "$scope" ] || { echo "Aborted."; exit 0; }
-        ensure_docker_running
-        docker volume rm "${volumes[@]}"
-        echo "Removed volume scope '$scope'."
         ;;
 
     help|--help|-h)
