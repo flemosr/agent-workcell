@@ -1,9 +1,9 @@
 ---
-name: web
-description: Use for browser-based web development, visual UI checks, container dev servers, and the browser CLI inside Agent Workcell sandboxes.
+name: chrome-integration
+description: Use for browser-based web development, visual UI checks, container dev servers, host Chrome, and the browser CLI inside Agent Workcell sandboxes.
 ---
 
-# Web Development Agent Context
+# Chrome Integration Agent Context
 
 Use this document when a task involves browser-based web development, visual UI verification, container dev servers, or the `browser` CLI.
 

@@ -1,16 +1,16 @@
 ---
-name: flutter
+name: flutter-integration
 description: Use for native/device Flutter work, host Flutter targets, hot reload, screenshots, and flutterctl workflows inside Agent Workcell sandboxes.
 ---
 
-# Flutter Native Agent Context
+# Flutter Integration Agent Context
 
 Use this document when a task involves Flutter or Dart development: in-container
 SDK tooling (`flutter test`, `flutter analyze`, `dart format`, `flutter pub`),
 native/device targets, the host Flutter bridge, hot reload, screenshots, or UI
 automation.
 
-For Flutter web, use the `web` skill instead.
+For Flutter web, use the `chrome-integration` skill instead.
 
 ## Container Flutter SDK
 
