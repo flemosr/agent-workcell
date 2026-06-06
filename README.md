@@ -188,11 +188,11 @@ These commands open an agent's config file in `vi` inside the workcell Docker vo
 ### GPG Keys
 
 ```bash
-workcell gpg-new
-workcell gpg-export --file my-key-backup.asc
-workcell gpg-import --file my-key-backup.asc
-workcell gpg-revoke --file revoke.asc
-workcell gpg-erase
+workcell gpg new
+workcell gpg export --file my-key-backup.asc
+workcell gpg import --file my-key-backup.asc
+workcell gpg revoke --file revoke.asc
+workcell gpg erase
 ```
 
 See [GPG setup](docs/gpg-setup.md) for key setup, backup, and rotation guidance.

@@ -31,7 +31,7 @@ image rebuilds.
 You can generate the key without launching an agent:
 
 ```bash
-workcell gpg-new
+workcell gpg new
 ```
 
 This reads `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` from `config.sh`.
@@ -40,19 +40,19 @@ This reads `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` from `config.sh`.
 
 ```bash
 # Export the workcell GPG key
-workcell gpg-export --file my-key-backup.asc
+workcell gpg export --file my-key-backup.asc
 
 # Import a previously exported key
-workcell gpg-import --file my-key-backup.asc
+workcell gpg import --file my-key-backup.asc
 
 # Generate a revocation certificate
-workcell gpg-revoke --file revoke.asc
+workcell gpg revoke --file revoke.asc
 
 # Erase all GPG keys from the workcell
-workcell gpg-erase
+workcell gpg erase
 ```
 
-`gpg-erase` permanently deletes all GPG keys from the sandbox volume. If `GPG_SIGNING=true` remains
+`gpg erase` permanently deletes all GPG keys from the sandbox volume. If `GPG_SIGNING=true` remains
 enabled, a new key is generated on the next launch.
 
 ## Backup Guidance
@@ -61,7 +61,7 @@ Back up the key if you want verified commits to continue using the same GPG iden
 to a new machine or recreating the Docker volume:
 
 ```bash
-workcell gpg-export --file workcell-gpg-backup.asc
+workcell gpg export --file workcell-gpg-backup.asc
 ```
 
 Treat exported keys and volume backups as sensitive. The key is passphrase-less so agents can sign
@@ -70,10 +70,10 @@ commits non-interactively.
 ## Troubleshooting
 
 - `GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL must be set`: add both values to `config.sh`.
-- Commits are not verified on GitHub: confirm the public key printed by `workcell gpg-new` or first
+- Commits are not verified on GitHub: confirm the public key printed by `workcell gpg new` or first
   launch was added to the same GitHub account associated with the commit email.
 - A new key was generated unexpectedly: check whether the `agent-workcell` Docker volume was
   removed or replaced.
-- Need to rotate the key: run `workcell gpg-revoke --file revoke.asc`, add the revocation
-  certificate where needed, run `workcell gpg-erase`, and generate a new key with
-  `workcell gpg-new`.
+- Need to rotate the key: run `workcell gpg revoke --file revoke.asc`, add the revocation
+  certificate where needed, run `workcell gpg erase`, and generate a new key with
+  `workcell gpg new`.
