@@ -6,6 +6,7 @@
 #                                          (agent: claude | opencode | codex | pi)
 #   workcell <agent> build [args]     Build/rebuild one agent sandbox image
 #   workcell <agent> settings         Open an agent's settings/config in vi
+#   workcell <agent> context          Open an agent's global context file in vi
 #   workcell opencode sessions export Export opencode sessions for current workspace
 #   workcell opencode sessions import Import opencode sessions from workspace backup
 #   workcell build                    Build/rebuild all sandbox images
@@ -58,6 +59,7 @@ Agent commands:
                     agent: claude | opencode | codex | pi
   <agent> build     Build/rebuild one agent sandbox image
   <agent> settings  Open an agent's settings/config in vi
+  <agent> context   Open an agent's global context file in vi
   opencode sessions export  Export opencode sessions for current workspace
                             to .workcell/opencode-sessions/
   opencode sessions import  Import opencode sessions from
@@ -101,6 +103,10 @@ Examples:
   workcell opencode settings
   workcell codex settings
   workcell pi settings
+  workcell claude context
+  workcell opencode context
+  workcell codex context
+  workcell pi context
   workcell opencode sessions export
   workcell opencode sessions import
 
@@ -120,6 +126,7 @@ Subcommands:
   run        Run $agent in the current directory
   build      Build/rebuild the $agent sandbox image
   settings   Open $agent settings/config in vi
+  context    Open $agent global context in vi
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
@@ -133,6 +140,7 @@ Examples:
   workcell $agent run --yolo --with-chrome --port 3000
   workcell $agent build --no-cache
   workcell $agent settings
+  workcell $agent context
 EOF
     if [[ "$agent" == "opencode" ]]; then
         cat << 'EOF'
@@ -483,6 +491,113 @@ JSONEOF
     esac
 }
 
+
+cmd_harness_context() {
+    local agent="$1"
+    shift
+
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        echo "Open an agent's global context file in vi (inside the sandbox volume)"
+        echo ""
+        echo "Usage:"
+        echo "  workcell $agent context"
+        echo ""
+        echo "Context files by agent:"
+        echo "  claude    ~/.claude/CLAUDE.md"
+        echo "  opencode  ~/.config/opencode/AGENTS.md"
+        echo "  codex     ~/.codex/AGENTS.md"
+        echo "  pi        ~/.pi/agent/AGENTS.md"
+        echo ""
+        echo "If the context file is absent, it is seeded from the image default."
+        echo "Existing persisted context files are never overwritten."
+        exit 0
+    fi
+
+    reject_extra_args "workcell $agent context" "$@"
+
+    local context_volume="$(agent_volume_name "$agent")"
+    local context_image="$(agent_image_name "$agent")"
+    ensure_docker_running
+    case "$agent" in
+        claude)
+            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
+                set -e
+                mkdir -p /data/.claude
+                context_path=/data/.claude/CLAUDE.md
+                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
+                    cp /opt/agent-context.md "$context_path"
+                fi
+                chown agent:agent /data/.claude 2>/dev/null || true
+                if [ -L "$context_path" ]; then
+                    chown -h agent:agent "$context_path" 2>/dev/null || true
+                else
+                    chown agent:agent "$context_path" 2>/dev/null || true
+                fi
+                echo "Editing persisted context: ~/.claude/CLAUDE.md"
+                echo "Image defaults seed this file only when it is absent; existing content is preserved."
+                exec runuser -u agent -- vi "$context_path"
+            '
+            ;;
+        opencode)
+            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
+                set -e
+                mkdir -p /data/.config/opencode
+                context_path=/data/.config/opencode/AGENTS.md
+                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
+                    cp /opt/agent-context.md "$context_path"
+                fi
+                chown agent:agent /data/.config/opencode 2>/dev/null || true
+                if [ -L "$context_path" ]; then
+                    chown -h agent:agent "$context_path" 2>/dev/null || true
+                else
+                    chown agent:agent "$context_path" 2>/dev/null || true
+                fi
+                echo "Editing persisted context: ~/.config/opencode/AGENTS.md"
+                echo "Image defaults seed this file only when it is absent; existing content is preserved."
+                exec runuser -u agent -- vi "$context_path"
+            '
+            ;;
+        codex)
+            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
+                set -e
+                mkdir -p /data/.codex
+                context_path=/data/.codex/AGENTS.md
+                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
+                    cp /opt/agent-context.md "$context_path"
+                fi
+                chown agent:agent /data/.codex 2>/dev/null || true
+                if [ -L "$context_path" ]; then
+                    chown -h agent:agent "$context_path" 2>/dev/null || true
+                else
+                    chown agent:agent "$context_path" 2>/dev/null || true
+                fi
+                echo "Editing persisted context: ~/.codex/AGENTS.md"
+                echo "Image defaults seed this file only when it is absent; existing content is preserved."
+                exec runuser -u agent -- vi "$context_path"
+            '
+            ;;
+        pi)
+            docker run --rm -it --entrypoint sh -v "${context_volume}:/data" -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$context_image" -lc '
+                set -e
+                mkdir -p /data/.pi/agent
+                context_path=/data/.pi/agent/AGENTS.md
+                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
+                    cp /opt/agent-context.md "$context_path"
+                fi
+                chown agent:agent /data/.pi /data/.pi/agent 2>/dev/null || true
+                if [ -L "$context_path" ]; then
+                    chown -h agent:agent "$context_path" 2>/dev/null || true
+                else
+                    chown agent:agent "$context_path" 2>/dev/null || true
+                fi
+                echo "Editing persisted context: ~/.pi/agent/AGENTS.md"
+                echo "Image defaults seed this file only when it is absent; existing content is preserved."
+                exec runuser -u agent -- vi "$context_path"
+            '
+            ;;
+    esac
+}
+
 cmd_opencode_sessions_export() {
     if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
         echo "Export opencode sessions for the current workspace to a local backup"
@@ -618,6 +733,9 @@ case "$command" in
             settings)
                 cmd_harness_settings "$agent" "$@"
                 ;;
+            context)
+                cmd_harness_context "$agent" "$@"
+                ;;
             sessions)
                 if [[ "$agent" != "opencode" ]]; then
                     echo "Error: 'sessions' is only available for opencode"
@@ -668,7 +786,7 @@ case "$command" in
         ;;
 
     # ── Global commands ──────────────────────────────────────────────────
-    run|settings)
+    run|settings|context)
         exit 1
         ;;
 
