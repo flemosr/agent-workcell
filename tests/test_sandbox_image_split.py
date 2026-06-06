@@ -151,6 +151,20 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("/data/.config/opencode/skills", log)
             self.assertIn("sort -u", log)
 
+    def test_harness_skill_edit_uses_selected_agent_image_volume_and_gpg(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            env, docker_log = self.fake_docker_env(workspace)
+            subprocess.run([str(CLI), "pi", "skill", "edit", "web"], cwd=workspace, env=env, check=True)
+            log = docker_log.read_text()
+            self.assertIn("\t-v\tagent-workcell-pi:/data\t", f"{log}\t")
+            self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
+            self.assertIn("\tlocal/agent-workcell-pi\t", f"{log}\t")
+            self.assertIn("WORKCELL_SKILL_ROOT=/data/.pi/agent/skills", log)
+            self.assertIn("WORKCELL_SKILL_NAME=web", log)
+            self.assertIn("/opt/agent-default-skills/$WORKCELL_SKILL_NAME/SKILL.md", log)
+            self.assertIn("runuser -u agent -- vi", log)
+
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -169,6 +183,7 @@ class SandboxImageSplitTests(unittest.TestCase):
             ["pi", "context", "edit", "extra"],
             ["pi", "context", "restore", "extra"],
             ["pi", "skill", "list", "extra"],
+            ["pi", "skill", "edit", "web", "extra"],
             ["opencode", "sessions", "export", "extra"],
             ["opencode", "sessions", "import", "extra"],
             ["gpg", "new", "extra"],
