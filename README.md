@@ -413,7 +413,7 @@ agent-workcell/
 │   ├── start-flutter-bridge.sh
 │   └── flutter-bridge.py
 └── sandbox/
-    ├── agent-context.md
+    ├── DEFAULT_AGENTS.md
     ├── agent-context-web.md
     ├── agent-context-flutter.md
     ├── agent-init/
