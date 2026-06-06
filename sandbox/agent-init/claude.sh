@@ -1,10 +1,17 @@
 # Claude Code image-specific initialization.
 mkdir -p /home/agent/persist/.claude
-ln -sfn /opt/agent-context.md /home/agent/persist/.claude/CLAUDE.md
+context_path=/home/agent/persist/.claude/CLAUDE.md
+if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
+  cp /opt/agent-context.md "$context_path"
+fi
 rm -f /home/agent/persist/.claude/agent-context-web.md \
       /home/agent/persist/.claude/agent-context-flutter.md
 chown agent:agent /home/agent/persist/.claude 2>/dev/null || true
-chown -h agent:agent /home/agent/persist/.claude/CLAUDE.md 2>/dev/null || true
+if [ -L "$context_path" ]; then
+  chown -h agent:agent "$context_path" 2>/dev/null || true
+else
+  chown agent:agent "$context_path" 2>/dev/null || true
+fi
 
 [ -d /home/agent/.claude ] && [ ! -L /home/agent/.claude ] && rm -rf /home/agent/.claude
 ln -sfn /home/agent/persist/.claude /home/agent/.claude

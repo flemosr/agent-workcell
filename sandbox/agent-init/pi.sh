@@ -1,10 +1,17 @@
 # Pi image-specific initialization.
 mkdir -p /home/agent/persist/.pi/agent
-ln -sfn /opt/agent-context.md /home/agent/persist/.pi/agent/AGENTS.md
+context_path=/home/agent/persist/.pi/agent/AGENTS.md
+if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
+  cp /opt/agent-context.md "$context_path"
+fi
 rm -f /home/agent/persist/.pi/agent/agent-context-web.md \
       /home/agent/persist/.pi/agent/agent-context-flutter.md
-chown -R agent:agent /home/agent/persist/.pi 2>/dev/null || true
-chown -h agent:agent /home/agent/persist/.pi/agent/AGENTS.md 2>/dev/null || true
+chown agent:agent /home/agent/persist/.pi /home/agent/persist/.pi/agent 2>/dev/null || true
+if [ -L "$context_path" ]; then
+  chown -h agent:agent "$context_path" 2>/dev/null || true
+else
+  chown agent:agent "$context_path" 2>/dev/null || true
+fi
 [ -d /home/agent/.pi ] && [ ! -L /home/agent/.pi ] && rm -rf /home/agent/.pi
 ln -sfn /home/agent/persist/.pi /home/agent/.pi
 export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-/home/agent/persist/.pi/agent}"
