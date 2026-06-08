@@ -6,8 +6,9 @@ You are running inside an Agent Workcell Docker container. Treat this file as th
 
 Load focused workflow skills only when they are relevant to the task.
 
-- You MUST load the `task-management` skill before working on any `.workcell/tasks/` entry or
-  when the user describes a new non-trivial task.
+- You MUST load the `project-management` skill before working on `.workcell/ideas.md`,
+  `.workcell/roadmap.md`, any `.workcell/tasks/` entry, or when the user describes a new
+  non-trivial task.
 - For browser-based web development, visual UI checks, dev servers, or the `browser` CLI, use the
   `chrome-integration` skill.
 - For native/device Flutter work, host Flutter targets, hot reload, screenshots, or the

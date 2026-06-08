@@ -1,11 +1,11 @@
 ---
-name: task-management
-description: Use for non-trivial or multi-step work that benefits from continuity, including planning, handoffs, research, risky debugging, or tasks likely to span sessions.
+name: project-management
+description: Use for project planning and non-trivial or multi-step work that benefits from continuity, including ideas, roadmap items, tasks, handoffs, research, risky debugging, or work likely to span sessions.
 ---
 
-# Task Management
+# Project Management
 
-Use `.workcell/tasks/` for work that benefits from continuity: multi-step changes, handoffs, research, parallel-agent coordination, risky debugging, or anything likely to span sessions. Skip task creation for trivial one-step requests.
+Use this skill for project planning files and `.workcell/tasks/` work that benefits from continuity: multi-step changes, handoffs, research, parallel-agent coordination, risky debugging, or anything likely to span sessions. Skip task creation for trivial one-step requests.
 
 Task planning can flow through these stages:
 
