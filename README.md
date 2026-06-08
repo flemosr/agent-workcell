@@ -7,14 +7,17 @@ Supports [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai/)
 [Codex](https://github.com/openai/codex), and [Pi](https://pi.dev/), selectable per launch. It is
 geared toward Rust, Python, TypeScript, and Dart/Flutter development. A global context file is
 seeded into each agent config on first use so the agent is aware of the sandbox's capabilities
-and constraints; persisted user edits are preserved.
+and constraints; persisted user edits are preserved, with optional mounting of a user-managed
+shared context repo across harnesses and workspaces.
 
 ## Documentation
 
+- [Context management](docs/context-management.md) - default context seeding, persistence,
+  shared context repos, and global skills.
+- [GPG setup](docs/gpg-setup.md) - verified Git commits from inside the workcell.
 - [Chrome integration](docs/chrome-integration.md) - host Chrome control for web development.
 - [Flutter integration](docs/flutter-integration.md) - in-container SDK and host bridge for
   native/device Flutter work.
-- [GPG setup](docs/gpg-setup.md) - verified Git commits from inside the workcell.
 
 ## Prerequisites
 
@@ -197,114 +200,11 @@ workcell claude skill restore chrome-integration
 ```
 
 The `settings` commands open an agent's config file in `vi` inside the workcell Docker volume.
-The `context open` command opens the in-effect global context source and prints its exact path.
-Harness-native context paths are symlinks: Claude uses `~/.claude/CLAUDE.md`; OpenCode, Codex,
-and Pi use `AGENTS.md`. Without a configured shared context repo, those symlinks point to
-persisted `workcell-context.md` files seeded from the image default `/opt/agent-context.md`
-(`sandbox/DEFAULT_AGENTS.md`). With a shared context repo and `GLOBAL_AGENTS.md` present, the
-native paths point to the repo file instead. Use `context restore` to restore the in-effect source
-from the image default after an interactive `y/N` confirmation; if the repo file is in effect,
-this overwrites the shared repo file.
-
-The `skill list` command shows effective global skills with `NAME`, `LOCATION`, and `PATH`, plus a
-separate `Shadowed:` section when a mounted repo skill hides a sandbox-volume skill of the same
-name. Baked default skills are seeded into persisted `workcell-skills` directories and are used as
-restore sources. Harness-native `skills/` paths are symlinks to ephemeral merged views under
-`/tmp/workcell-merged-skills`; do not edit or create files directly in those merged views. Use
-`skill open <name>` to open the real in-effect source. If the skill does not exist, it creates a
-new skill in the mounted context repo when configured, otherwise in the sandbox-volume
-`workcell-skills` source. Use `skill restore <name>` to replace an in-effect default skill's entire
-real source directory from the baked image default after confirmation; custom skills must be
-recovered via Git or manual edits.
-
-#### Optional shared context repo
-
-Set `WORKCELL_CONTEXT_REPO` in repository-root `config.sh` to an absolute host directory path:
-
-```bash
-WORKCELL_CONTEXT_REPO="/Users/you/agent-context"
-```
-
-This is only read from `config.sh`; shell environment variables and `.workcell/.env` are not
-supported for this setting. The directory is mounted writable at `/opt/workcell-context`. Supported
-layout is intentionally limited to:
-
-```text
-agent-context/
-├── GLOBAL_AGENTS.md
-└── skills/
-    └── <skill-name>/SKILL.md
-```
-
-`GLOBAL_AGENTS.md` is optional; create it manually in the repo when you want repo global context to
-take effect. `skills/` is optional; repo skills take precedence over sandbox-volume skills by skill
-name, and non-conflicting sandbox-volume skills remain visible. `prompts/` is not supported;
-model reusable prompts or workflows as skills.
-
-The context repo is user-managed and should usually be tracked in Git. Repo context and skill edits
-from the sandbox write back to the host repo when the user explicitly asks for them, and can affect
-all harnesses/workspaces using that repo. Host permissions must allow the container `agent` user to
-write if `context open`, `context restore`, `skill open`, or `skill restore` should modify repo
-files.
-
-| Harness | Native context | Persisted context source | Native skills | Persisted skill source |
-|---------|----------------|--------------------------|---------------|------------------------|
-| Claude | `~/.claude/CLAUDE.md` | `~/.claude/workcell-context.md` | `~/.claude/skills` | `~/.claude/workcell-skills` |
-| OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/workcell-context.md` | `~/.config/opencode/skills` | `~/.config/opencode/workcell-skills` |
-| Codex | `~/.codex/AGENTS.md` | `~/.codex/workcell-context.md` | `~/.agents/skills` | `~/.agents/workcell-skills` |
-| Pi | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/workcell-context.md` | `~/.pi/agent/skills` | `~/.pi/agent/workcell-skills` |
-
-Project-scoped skills are usually preferable; create global skills only when explicitly asking for
-a reusable global skill.
-
-#### One-time manual migration for existing volumes
-
-Workcell now expects native context and skill paths to be symlinks. If an old real context file or
-real native `skills/` directory remains, startup fails with a message asking you to run the manual
-migration. Run the relevant host command before launching that harness. These commands refuse to
-overwrite already-migrated destinations.
-
-```bash
-# Claude
-docker run --rm -v agent-workcell-claude:/data alpine sh -lc '
-set -e
-mkdir -p /data/.claude
-[ ! -e /data/.claude/workcell-context.md ] || { echo "workcell-context.md exists"; exit 1; }
-[ ! -e /data/.claude/workcell-skills ] || { echo "workcell-skills exists"; exit 1; }
-[ -f /data/.claude/CLAUDE.md ] && mv /data/.claude/CLAUDE.md /data/.claude/workcell-context.md || true
-[ -d /data/.claude/skills ] && mv /data/.claude/skills /data/.claude/workcell-skills || true
-'
-
-# OpenCode
-docker run --rm -v agent-workcell-opencode:/data alpine sh -lc '
-set -e
-mkdir -p /data/.config/opencode
-[ ! -e /data/.config/opencode/workcell-context.md ] || { echo "workcell-context.md exists"; exit 1; }
-[ ! -e /data/.config/opencode/workcell-skills ] || { echo "workcell-skills exists"; exit 1; }
-[ -f /data/.config/opencode/AGENTS.md ] && mv /data/.config/opencode/AGENTS.md /data/.config/opencode/workcell-context.md || true
-[ -d /data/.config/opencode/skills ] && mv /data/.config/opencode/skills /data/.config/opencode/workcell-skills || true
-'
-
-# Codex (global skills moved from legacy ~/.codex/skills to ~/.agents/workcell-skills)
-docker run --rm -v agent-workcell-codex:/data alpine sh -lc '
-set -e
-mkdir -p /data/.codex /data/.agents
-[ ! -e /data/.codex/workcell-context.md ] || { echo "workcell-context.md exists"; exit 1; }
-[ ! -e /data/.agents/workcell-skills ] || { echo "workcell-skills exists"; exit 1; }
-[ -f /data/.codex/AGENTS.md ] && mv /data/.codex/AGENTS.md /data/.codex/workcell-context.md || true
-[ -d /data/.codex/skills ] && mv /data/.codex/skills /data/.agents/workcell-skills || true
-'
-
-# Pi
-docker run --rm -v agent-workcell-pi:/data alpine sh -lc '
-set -e
-mkdir -p /data/.pi/agent
-[ ! -e /data/.pi/agent/workcell-context.md ] || { echo "workcell-context.md exists"; exit 1; }
-[ ! -e /data/.pi/agent/workcell-skills ] || { echo "workcell-skills exists"; exit 1; }
-[ -f /data/.pi/agent/AGENTS.md ] && mv /data/.pi/agent/AGENTS.md /data/.pi/agent/workcell-context.md || true
-[ -d /data/.pi/agent/skills ] && mv /data/.pi/agent/skills /data/.pi/agent/workcell-skills || true
-'
-```
+The `context` commands manage the in-effect global context source, which is either a persisted
+harness-volume `workcell-context.md` file seeded from the image default or, when configured, a
+shared repo `GLOBAL_AGENTS.md`. The `skill` commands manage global skills from persisted
+harness-volume sources plus optional shared repo skills. See [Context management](docs/context-management.md)
+for default seeding, persistence, shared context repo mounting, and skill precedence details.
 
 ### GPG Keys
 
