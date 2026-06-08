@@ -52,7 +52,7 @@ class SandboxImageSplitTests(unittest.TestCase):
         return env, docker_log
 
     def test_cli_run_uses_agent_image_volume_and_shared_gpg(self):
-        for agent in ["claude", "opencode", "codex", "pi"]:
+        for agent in ["pi", "opencode", "codex", "claude"]:
             with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
                 workspace = Path(temp_dir)
                 env, docker_log = self.fake_docker_env(workspace)
@@ -98,7 +98,7 @@ class SandboxImageSplitTests(unittest.TestCase):
             env, docker_log = self.fake_docker_env(workspace)
             subprocess.run([str(CLI), "build"], cwd=workspace, env=env, check=True)
             self.assertIn(
-                "DOCKER\tps\nDOCKER\tcompose\tbuild\tagent-workcell-base\nDOCKER\tcompose\tbuild\tagent-workcell-claude\tagent-workcell-opencode\tagent-workcell-codex\tagent-workcell-pi",
+                "DOCKER\tps\nDOCKER\tcompose\tbuild\tagent-workcell-base\nDOCKER\tcompose\tbuild\tagent-workcell-pi\tagent-workcell-opencode\tagent-workcell-codex\tagent-workcell-claude",
                 docker_log.read_text(),
             )
 
@@ -316,7 +316,7 @@ class SandboxImageSplitTests(unittest.TestCase):
 
     def test_agent_installers_are_not_in_base_dockerfile(self):
         base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(encoding="utf-8")
-        forbidden = ["claude.ai/install.sh", "opencode-linux", "@earendil-works/pi-coding-agent", "codex-${CODEX_ARCH}"]
+        forbidden = ["@earendil-works/pi-coding-agent", "opencode-linux", "codex-${CODEX_ARCH}", "claude.ai/install.sh"]
         for token in forbidden:
             self.assertNotIn(token, base)
 

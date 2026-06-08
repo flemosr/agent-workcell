@@ -3,7 +3,7 @@
 #
 # Usage:
 #   workcell <agent> run [options]    Run an agent in the current directory
-#                                          (agent: claude | opencode | codex | pi)
+#                                          (agent: pi | opencode | codex | claude)
 #   workcell <agent> build [args]     Build/rebuild one agent sandbox image
 #   workcell <agent> settings         Open an agent's settings/config in vi
 #   workcell <agent> context open     Open an agent's global context file in vi
@@ -40,7 +40,7 @@ WORKCELL_BASE_IMAGE_NAME="local/agent-workcell-base"
 WORKCELL_SHARED_GPG_VOLUME_NAME="agent-workcell-gpg"
 agent_volume_name() { echo "agent-workcell-$1"; }
 agent_image_name() { echo "${WORKCELL_IMAGE_PREFIX}-$1"; }
-valid_agent() { case "$1" in claude|opencode|codex|pi) return 0 ;; *) return 1 ;; esac; }
+valid_agent() { case "$1" in pi|opencode|codex|claude) return 0 ;; *) return 1 ;; esac; }
 
 load_workcell_config() {
     WORKCELL_CONTEXT_REPO=""
@@ -91,7 +91,7 @@ Usage:
 
 Agent commands:
   <agent> run       Run an agent in the current directory
-                    agent: claude | opencode | codex | pi
+                    agent: pi | opencode | codex | claude
   <agent> build     Build/rebuild one agent sandbox image
   <agent> settings  Open an agent's settings/config in vi
   <agent> context   Open or restore an agent's global context file
@@ -117,11 +117,11 @@ Global commands:
   help              Show this help message
 
 Examples:
-  workcell claude run --yolo --with-chrome --port 3000
+  workcell pi run
   workcell opencode run --yolo
   workcell codex run --yolo
-  workcell pi run
-  workcell claude build --no-cache
+  workcell claude run --yolo --with-chrome --port 3000
+  workcell pi build --no-cache
   workcell build
   workcell start-chrome
   workcell start-chrome --restart
@@ -135,18 +135,18 @@ Examples:
   workcell volume backup --file backup.tgz
   workcell volume restore --file backup.tgz
   workcell volume rm codex
-  workcell claude settings
+  workcell pi settings
   workcell opencode settings
   workcell codex settings
-  workcell pi settings
-  workcell claude context open
+  workcell claude settings
+  workcell pi context open
   workcell opencode context open
   workcell codex context open
-  workcell pi context open
-  workcell claude context restore
-  workcell claude skill list
-  workcell claude skill open chrome-integration
-  workcell claude skill restore chrome-integration
+  workcell claude context open
+  workcell pi context restore
+  workcell pi skill list
+  workcell pi skill open chrome-integration
+  workcell pi skill restore chrome-integration
   workcell opencode sessions export
   workcell opencode sessions import
 
@@ -252,18 +252,18 @@ Usage:
   workcell <agent> run [options] [-- agent-args]
 
 Agents:
-  claude     Launch Claude Code
+  pi         Launch Pi
   opencode   Launch opencode
   codex      Launch Codex
-  pi         Launch Pi
+  claude     Launch Claude Code
 
 Options:
   --yolo            Enable YOLO mode (no permission prompts)
-                    claude:   passes --dangerously-skip-permissions
+                    pi:       no extra flag; container is the permission boundary
                     opencode: injects {"permission":"allow"} via
                               OPENCODE_CONFIG_CONTENT
                     codex:    passes --dangerously-bypass-approvals-and-sandbox
-                    pi:       no extra flag; container is the permission boundary
+                    claude:   passes --dangerously-skip-permissions
   --firewalled      Restrict network to essential domains only
   --with-chrome     Start Chrome with remote debugging
   --with-flutter    Start Flutter host bridge
@@ -276,19 +276,19 @@ Options:
   --port <port>     Expose a dev-server port to the host (repeatable)
 
 Examples:
-  workcell claude run --yolo
+  workcell pi run
   workcell opencode run --yolo
   workcell codex run --yolo
-  workcell pi run
+  workcell claude run --yolo
   workcell claude run --yolo --with-chrome --port 3000
   workcell codex run --with-flutter --bridge-port 8765
   workcell codex run --with-flutter --flutter-project-dir ./gui
   workcell codex run --with-flutter --bridge-port 8766 --port 3000
   workcell opencode run --port 3000 --port 5173
   workcell codex run --yolo --port 3000
-  workcell claude run -- --resume
-  workcell opencode run -- run "summarize the repo"
   workcell pi run -- -p "summarize the repo"
+  workcell opencode run -- run "summarize the repo"
+  workcell claude run -- --resume
 EOF
 }
 
@@ -312,10 +312,10 @@ Usage:
 
 Examples:
   workcell build
-  workcell claude build --no-cache
+  workcell pi build --no-cache
   workcell opencode build
   workcell codex build
-  workcell pi build
+  workcell claude build
 
 Notes:
   'workcell build' builds all four agent images plus the shared base.
@@ -592,11 +592,11 @@ cmd_harness_settings() {
         echo "  workcell $agent settings"
         echo ""
         echo "Config files by agent:"
-        echo "  claude    ~/.claude/settings.json"
+        echo "  pi        ~/.pi/agent/settings.json"
         echo "  opencode  ~/.config/opencode/opencode.jsonc (preferred if it exists)"
         echo "            ~/.config/opencode/opencode.json"
         echo "  codex     ~/.codex/config.toml"
-        echo "  pi        ~/.pi/agent/settings.json"
+        echo "  claude    ~/.claude/settings.json"
         exit 0
     fi
 
@@ -679,10 +679,10 @@ cmd_harness_context() {
         echo "  restore   Replace the in-effect global context file with the image default"
         echo ""
         echo "Native context targets by agent:"
-        echo "  claude    ~/.claude/CLAUDE.md"
+        echo "  pi        ~/.pi/agent/AGENTS.md"
         echo "  opencode  ~/.config/opencode/AGENTS.md"
         echo "  codex     ~/.codex/AGENTS.md"
-        echo "  pi        ~/.pi/agent/AGENTS.md"
+        echo "  claude    ~/.claude/CLAUDE.md"
         exit 0
     fi
 
@@ -866,7 +866,7 @@ case "$command" in
         ;;
 
     # ── Harness subcommand groups ────────────────────────────────────────
-    claude|opencode|codex|pi)
+    pi|opencode|codex|claude)
         agent="$command"
         shift
         subcmd="${1:-}"
@@ -940,7 +940,7 @@ case "$command" in
     # ── Global commands ──────────────────────────────────────────────────
     run|settings|context|skill)
         echo "Error: '$command' must be scoped to an agent"
-        echo "Usage: workcell <claude|opencode|codex|pi> $command${2:+ ...}"
+        echo "Usage: workcell <pi|opencode|codex|claude> $command${2:+ ...}"
         case "$command" in
             run) echo "Example: workcell pi run" ;;
             settings) echo "Example: workcell pi settings" ;;
@@ -967,7 +967,7 @@ case "$command" in
         ensure_docker_running
         cd "$SCRIPT_DIR"
         docker compose build "$@" agent-workcell-base
-        exec docker compose build "$@" agent-workcell-claude agent-workcell-opencode agent-workcell-codex agent-workcell-pi
+        exec docker compose build "$@" agent-workcell-pi agent-workcell-opencode agent-workcell-codex agent-workcell-claude
         ;;
 
     start-chrome)
@@ -1263,17 +1263,17 @@ GPGEOF
                     echo "Open a shell in a workcell Docker volume"
                     echo ""
                     echo "Usage:"
-                    echo "  workcell volume shell <claude|opencode|codex|pi|gpg>"
+                    echo "  workcell volume shell <pi|opencode|codex|claude|gpg>"
                     exit 0
                 fi
                 scope="${1:-}"
                 if [[ $# -gt 1 ]]; then
-                    reject_extra_args "workcell volume shell <claude|opencode|codex|pi|gpg>" "${@:2}"
+                    reject_extra_args "workcell volume shell <pi|opencode|codex|claude|gpg>" "${@:2}"
                 fi
                 case "$scope" in
-                    claude|opencode|codex|pi) volume="$(agent_volume_name "$scope")" ;;
+                    pi|opencode|codex|claude) volume="$(agent_volume_name "$scope")" ;;
                     gpg) volume="$WORKCELL_SHARED_GPG_VOLUME_NAME" ;;
-                    *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', or 'gpg')"; exit 1 ;;
+                    *) echo "Error: scope is required (expected 'pi', 'opencode', 'codex', 'claude', or 'gpg')"; exit 1 ;;
                 esac
                 ensure_docker_running
                 docker run --rm -it -v "${volume}:/data" -w /data alpine sh
@@ -1287,7 +1287,7 @@ GPGEOF
                         --help|-h)
                             echo "Backup all workcell volumes to a file"
                             echo "Usage: workcell volume backup --file <path.tgz>"
-                            echo "Includes claude, opencode, codex, pi, and shared gpg volumes."
+                            echo "Includes pi, opencode, codex, claude, and shared gpg volumes."
                             exit 0 ;;
                         *) echo "Unknown option: $1"; exit 1 ;;
                     esac
@@ -1296,7 +1296,7 @@ GPGEOF
                 ensure_docker_running
                 outdir="$(cd "$(dirname "$outfile")" && pwd)"
                 outname="$(basename "$outfile")"
-                docker run --rm             -v "$(agent_volume_name claude):/volumes/claude:ro"             -v "$(agent_volume_name opencode):/volumes/opencode:ro"             -v "$(agent_volume_name codex):/volumes/codex:ro"             -v "$(agent_volume_name pi):/volumes/pi:ro"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg:ro"             -v "$outdir:/backup" alpine             tar -czf "/backup/$outname" -C /volumes .
+                docker run --rm             -v "$(agent_volume_name pi):/volumes/pi:ro"             -v "$(agent_volume_name opencode):/volumes/opencode:ro"             -v "$(agent_volume_name codex):/volumes/codex:ro"             -v "$(agent_volume_name claude):/volumes/claude:ro"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg:ro"             -v "$outdir:/backup" alpine             tar -czf "/backup/$outname" -C /volumes .
                 echo "Volumes backed up to: $outfile"
                 ;;
 
@@ -1308,7 +1308,7 @@ GPGEOF
                         --help|-h)
                             echo "Restore all workcell volumes from a backup"
                             echo "Usage: workcell volume restore --file <path.tgz>"
-                            echo "WARNING: This replaces claude, opencode, codex, pi, and shared gpg volume contents."
+                            echo "WARNING: This replaces pi, opencode, codex, claude, and shared gpg volume contents."
                             exit 0 ;;
                         *) echo "Unknown option: $1"; exit 1 ;;
                     esac
@@ -1320,25 +1320,25 @@ GPGEOF
                 ensure_docker_running
                 indir="$(cd "$(dirname "$infile")" && pwd)"
                 inname="$(basename "$infile")"
-                docker run --rm             -v "$(agent_volume_name claude):/volumes/claude"             -v "$(agent_volume_name opencode):/volumes/opencode"             -v "$(agent_volume_name codex):/volumes/codex"             -v "$(agent_volume_name pi):/volumes/pi"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg"             -v "$indir:/backup:ro" alpine             sh -c 'for d in /volumes/*; do rm -rf "$d"/* "$d"/.[!.]* "$d"/..?* 2>/dev/null || true; done; tar -xzf "/backup/$0" -C /volumes' "$inname"
+                docker run --rm             -v "$(agent_volume_name pi):/volumes/pi"             -v "$(agent_volume_name opencode):/volumes/opencode"             -v "$(agent_volume_name codex):/volumes/codex"             -v "$(agent_volume_name claude):/volumes/claude"             -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/volumes/gpg"             -v "$indir:/backup:ro" alpine             sh -c 'for d in /volumes/*; do rm -rf "$d"/* "$d"/.[!.]* "$d"/..?* 2>/dev/null || true; done; tar -xzf "/backup/$0" -C /volumes' "$inname"
                 echo "Volumes restored from: $infile"
                 ;;
 
             rm)
                 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
                     echo "Remove workcell Docker volumes"
-                    echo "Usage: workcell volume rm <claude|opencode|codex|pi|gpg|all>"
+                    echo "Usage: workcell volume rm <pi|opencode|codex|claude|gpg|all>"
                     exit 0
                 fi
                 scope="${1:-}"
                 if [[ $# -gt 1 ]]; then
-                    reject_extra_args "workcell volume rm <claude|opencode|codex|pi|gpg|all>" "${@:2}"
+                    reject_extra_args "workcell volume rm <pi|opencode|codex|claude|gpg|all>" "${@:2}"
                 fi
                 case "$scope" in
-                    claude|opencode|codex|pi) volumes=("$(agent_volume_name "$scope")") ;;
+                    pi|opencode|codex|claude) volumes=("$(agent_volume_name "$scope")") ;;
                     gpg) volumes=("$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
-                    all) volumes=("$(agent_volume_name claude)" "$(agent_volume_name opencode)" "$(agent_volume_name codex)" "$(agent_volume_name pi)" "$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
-                    *) echo "Error: scope is required (expected 'claude', 'opencode', 'codex', 'pi', 'gpg', or 'all')"; exit 1 ;;
+                    all) volumes=("$(agent_volume_name pi)" "$(agent_volume_name opencode)" "$(agent_volume_name codex)" "$(agent_volume_name claude)" "$WORKCELL_SHARED_GPG_VOLUME_NAME") ;;
+                    *) echo "Error: scope is required (expected 'pi', 'opencode', 'codex', 'claude', 'gpg', or 'all')"; exit 1 ;;
                 esac
                 read -r -p "This will permanently delete volume scope '$scope'. Type '$scope' to continue: " confirm
                 [ "$confirm" = "$scope" ] || { echo "Aborted."; exit 0; }

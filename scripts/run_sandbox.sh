@@ -14,21 +14,21 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # First positional arg selects the agent CLI. Agent selection is required so
 # launches cannot accidentally inherit an implicit tool choice.
 if [[ $# -eq 0 ]]; then
-  echo "Error: agent is required (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
+  echo "Error: agent is required (expected 'pi', 'opencode', 'codex', or 'claude')" >&2
   echo "Usage: workcell <agent> run [options] [-- agent-args]" >&2
   exit 1
 fi
 if [[ "$1" == -* ]]; then
-  echo "Error: agent is required before options (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
+  echo "Error: agent is required before options (expected 'pi', 'opencode', 'codex', or 'claude')" >&2
   echo "Usage: workcell <agent> run [options] [-- agent-args]" >&2
   exit 1
 fi
 agent_cli="$1"
 shift
 case "$agent_cli" in
-  claude|opencode|codex|pi) ;;
+  pi|opencode|codex|claude) ;;
   *)
-    echo "Error: unknown agent '$agent_cli' (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
+    echo "Error: unknown agent '$agent_cli' (expected 'pi', 'opencode', 'codex', or 'claude')" >&2
     exit 1
     ;;
 esac

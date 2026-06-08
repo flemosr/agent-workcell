@@ -2,16 +2,16 @@
 # Common entrypoint script for Agent Workcell images.
 set -e
 
-expected_agents="claude, opencode, codex, or pi"
+expected_agents="pi, opencode, codex, or claude"
 
 if [ -z "${AGENT_CLI:-}" ]; then
-  echo "Error: AGENT_CLI is required (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
+  echo "Error: AGENT_CLI is required (expected 'pi', 'opencode', 'codex', or 'claude')" >&2
   exit 1
 fi
 case "$AGENT_CLI" in
-  claude|opencode|codex|pi) ;;
+  pi|opencode|codex|claude) ;;
   *)
-    echo "Error: unknown AGENT_CLI '$AGENT_CLI' (expected 'claude', 'opencode', 'codex', or 'pi')" >&2
+    echo "Error: unknown AGENT_CLI '$AGENT_CLI' (expected 'pi', 'opencode', 'codex', or 'claude')" >&2
     exit 1
     ;;
 esac

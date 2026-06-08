@@ -26,10 +26,10 @@ create them in the selected harness's persisted source directory:
 
 | Harness | Persisted global skill source |
 |---------|-------------------------------|
-| Claude | `~/.claude/workcell-skills` |
+| Pi | `~/.pi/agent/workcell-skills` |
 | OpenCode | `~/.config/opencode/workcell-skills` |
 | Codex | `~/.agents/workcell-skills` |
-| Pi | `~/.pi/agent/workcell-skills` |
+| Claude | `~/.claude/workcell-skills` |
 
 ## Host And Sandbox Boundaries
 
@@ -50,10 +50,10 @@ Project-specific workcell data lives under `.workcell/`:
 
 - `.workcell/artifacts/` - temporary artifacts from agent work, such as screenshots, logs, traces, and generated previews. Agents may create optional subdirectories such as `screenshots/`, `logs/`, and `mockups/` when that helps organize related files. Put throwaway files here instead of the repo root.
 - `.workcell/.env` - optional workspace-local environment variables loaded into sandboxed agent sessions. Treat it as secret-bearing and leave it ignored by Git.
-- `.workcell/claude-sessions/` - bind-mounted Claude project sessions when running the Claude harness.
+- `.workcell/pi-sessions/` - bind-mounted Pi project sessions when running the Pi harness.
 - `.workcell/opencode-sessions/` - exported OpenCode session backups.
 - `.workcell/codex-sessions/` - workspace-local Codex conversation files when running the Codex harness.
-- `.workcell/pi-sessions/` - bind-mounted Pi project sessions when running the Pi harness.
+- `.workcell/claude-sessions/` - bind-mounted Claude project sessions when running the Claude harness.
 - `.workcell/tasks/` - shared task notes for multi-step work and handoffs.
 - `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
 
@@ -77,10 +77,10 @@ Each agent harness runs in its own image with its own persisted Docker volume, s
 global state paths and binaries are intentionally absent. Depending on the selected harness, the
 available persisted harness path is one of:
 
-- `~/.claude/` - Claude Code credentials, settings, project sessions, and global context (`CLAUDE.md`).
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context (`AGENTS.md`); current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 - `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` - OpenCode config, global context (`AGENTS.md`), auth, sessions, logs, storage, and local UI state.
 - `~/.codex/` - Codex config, auth, history, logs, and global context (`AGENTS.md`); project conversation files are bind-mounted from `.workcell/codex-sessions/`.
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context (`AGENTS.md`); current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.claude/` - Claude Code credentials, settings, project sessions, and global context (`CLAUDE.md`).
 
 Harness-native context paths are symlinks to the in-effect source: mounted repo
 `/opt/workcell-context/GLOBAL_AGENTS.md` when present, otherwise the harness's persisted
@@ -132,7 +132,7 @@ When the firewall is active, external network access is limited to essential age
 |----------|-------|
 | Languages | Node.js LTS through `nvm`, Python 3.11, Rust stable |
 | Node.js | `nvm`, `npm`, `npx` |
-| Agent harness | Only the selected harness CLI is installed in this image: `claude`, `opencode`, `codex`, or `pi` |
+| Agent harness | Only the selected harness CLI is installed in this image: `pi`, `opencode`, `codex`, or `claude` |
 | Python | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
 | Browser | `browser` CLI for Chrome automation; use the `chrome-integration` skill before browser/web work |
 | Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); use the `flutter-integration` skill before native Flutter work |

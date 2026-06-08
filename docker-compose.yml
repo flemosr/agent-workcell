@@ -5,11 +5,11 @@ services:
       dockerfile: dockerfiles/base.Dockerfile
     image: local/agent-workcell-base
 
-  agent-workcell-claude:
+  agent-workcell-pi:
     build:
       context: sandbox/
-      dockerfile: dockerfiles/claude.Dockerfile
-    image: local/agent-workcell-claude
+      dockerfile: dockerfiles/pi.Dockerfile
+    image: local/agent-workcell-pi
     depends_on:
       - agent-workcell-base
 
@@ -29,10 +29,10 @@ services:
     depends_on:
       - agent-workcell-base
 
-  agent-workcell-pi:
+  agent-workcell-claude:
     build:
       context: sandbox/
-      dockerfile: dockerfiles/pi.Dockerfile
-    image: local/agent-workcell-pi
+      dockerfile: dockerfiles/claude.Dockerfile
+    image: local/agent-workcell-claude
     depends_on:
       - agent-workcell-base

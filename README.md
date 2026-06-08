@@ -3,12 +3,12 @@
 An opinionated, containerized environment for running TUI coding agents in YOLO mode, with
 Chrome and Flutter integrations, selective persistence, and isolated GPG-signed commits.
 
-Supports [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai/),
-[Codex](https://github.com/openai/codex), and [Pi](https://pi.dev/), selectable per launch. It is
-geared toward Rust, Python, TypeScript, and Dart/Flutter development. A global context file is
-seeded into each agent config on first use so the agent is aware of the sandbox's capabilities
-and constraints; persisted user edits are preserved, with optional mounting of a user-managed
-shared context repo across harnesses and workspaces.
+Supports [Pi](https://pi.dev/), [OpenCode](https://opencode.ai/),
+[Codex](https://github.com/openai/codex), and [Claude Code](https://claude.ai/code), selectable per
+launch. It is geared toward Rust, Python, TypeScript, and Dart/Flutter development. A global context
+file is seeded into each agent config on first use so the agent is aware of the sandbox's
+capabilities and constraints; persisted user edits are preserved, with optional mounting of a
+user-managed shared context repo across harnesses and workspaces.
 
 ## Documentation
 
@@ -88,7 +88,7 @@ workcell pi build
 `workcell build` runs `docker compose build` from the workcell repository root, so it works even
 when you invoke `workcell` from another directory, and builds all four agent images plus the
 shared base. To build a single agent, use the harness subcommand form:
-`workcell <agent> build` where agent is `claude`, `opencode`, `codex`, or `pi`.
+`workcell <agent> build` where agent is `pi`, `opencode`, `codex`, or `claude`.
 
 ### Run Agents
 
@@ -96,15 +96,15 @@ Navigate to any project directory and run:
 
 ```bash
 # Normal mode
-workcell claude run
+workcell pi run  # Pi does not use permission prompts by default
 workcell opencode run
 workcell codex run
-workcell pi run  # Pi does not use permission prompts by default
+workcell claude run
 
 # YOLO mode (no permission prompts)
-workcell claude run --yolo
 workcell opencode run --yolo
 workcell codex run --yolo
+workcell claude run --yolo
 
 # Firewalled mode (restricted network access)
 workcell codex run --firewalled
@@ -113,14 +113,14 @@ workcell codex run --firewalled
 workcell claude run --yolo -- -p "fix the tests"
 
 # Pass agent-specific arguments after --
-workcell claude run -- --resume
+workcell pi run -- -p "summarize the repo"
 workcell opencode run -- run "summarize the repo"
 workcell codex run -- "fix the tests"
-workcell pi run -- -p "summarize the repo"
+workcell claude run -- --resume
 ```
 
-The agent is the first positional argument and is required: `claude`, `opencode`, `codex`, or
-`pi`. Each agent uses its own sandbox image and persistent Docker volume, plus a shared GPG
+The agent is the first positional argument and is required: `pi`, `opencode`, `codex`, or
+`claude`. Each agent uses its own sandbox image and persistent Docker volume, plus a shared GPG
 volume. If the selected image is missing, `workcell <agent> run` builds that agent image and the
 shared base automatically.
 
@@ -131,11 +131,11 @@ bridge port. If the Flutter project is in a workspace subdirectory, pass
 
 `--yolo` maps to each agent's native bypass where one exists:
 
-- **claude**: `--dangerously-skip-permissions`
-- **opencode**: `{"permission":"allow"}` injected through `OPENCODE_CONFIG_CONTENT`
-- **codex**: `--dangerously-bypass-approvals-and-sandbox`
 - **pi**: ignored because Pi does not ask for permissions by default; the container is the
   permission boundary
+- **opencode**: `{"permission":"allow"}` injected through `OPENCODE_CONFIG_CONTENT`
+- **codex**: `--dangerously-bypass-approvals-and-sandbox`
+- **claude**: `--dangerously-skip-permissions`
 
 Running `workcell` or `workcell <agent>` without a subcommand exits with a usage error instead of
 choosing an agent implicitly.
@@ -150,7 +150,7 @@ See [Integrations](#integrations) for Chrome, Flutter, and port examples.
 
 ```bash
 # Chrome enabled for web development
-workcell claude run --with-chrome
+workcell pi run --with-chrome
 workcell codex run --yolo --with-chrome --port 3000
 
 # Expose container dev-server ports to the host
@@ -163,7 +163,7 @@ workcell start-chrome --restart
 workcell start-chrome --port 9333 --profile "Profile 1"
 
 # Flutter native/device bridge
-workcell claude run --with-flutter
+workcell pi run --with-flutter
 workcell codex run --with-flutter --bridge-port 8765
 workcell codex run --with-flutter --flutter-project-dir ./gui
 workcell codex run --with-flutter --bridge-port 8766 --port 3000
@@ -180,23 +180,23 @@ See [Chrome integration](docs/chrome-integration.md) and
 ### Settings, Context, and Skills
 
 ```bash
-workcell claude settings
+workcell pi settings
 workcell opencode settings
 workcell codex settings
-workcell pi settings
+workcell claude settings
 
-workcell claude context open
+workcell pi context open
 workcell opencode context open
 workcell codex context open
-workcell pi context open
-workcell claude context restore
+workcell claude context open
+workcell pi context restore
 
-workcell claude skill list
+workcell pi skill list
 workcell opencode skill list
 workcell codex skill list
-workcell pi skill list
-workcell claude skill open chrome-integration
-workcell claude skill restore chrome-integration
+workcell claude skill list
+workcell pi skill open chrome-integration
+workcell pi skill restore chrome-integration
 ```
 
 The `settings` commands open an agent's config file in `vi` inside the workcell Docker volume.
@@ -252,24 +252,24 @@ Volume commands affect the persisted user data described below.
 
 - Your current directory is mounted at `/workspaces/<project-name>` inside the container.
 - Workspace-local workcell files for the current project live under `.workcell/`.
-- Claude session history for the project is stored in `.workcell/claude-sessions/`.
+- Pi auth, settings, packages/extensions, and the persisted Pi install prefix live in the Docker
+  volume under `~/.pi/agent/`, with project sessions bind-mounted into `.workcell/pi-sessions/`.
 - OpenCode session history and storage persist in the Docker volume under
   `~/.local/share/opencode/`.
 - Codex auth, config, history, logs, and session data persist under `~/.codex/`, with project
   conversation files bind-mounted into `.workcell/codex-sessions/`.
-- Pi auth, settings, packages/extensions, and the persisted Pi install prefix live in the Docker
-  volume under `~/.pi/agent/`, with project sessions bind-mounted into `.workcell/pi-sessions/`.
+- Claude session history for the project is stored in `.workcell/claude-sessions/`.
 - Agent settings, credentials, Rust toolchains, Node versions, and language caches persist in the
-  selected agent's Docker volume (`agent-workcell-claude`, `agent-workcell-opencode`,
-  `agent-workcell-codex`, or `agent-workcell-pi`).
+  selected agent's Docker volume (`agent-workcell-pi`, `agent-workcell-opencode`,
+  `agent-workcell-codex`, or `agent-workcell-claude`).
 - GPG keys persist in the shared `agent-workcell-gpg` Docker volume.
 - The container runs as a non-root `agent` user.
 - Filesystem access is isolated to the mounted project directory.
 - Host services are reachable from the container through `host.docker.internal`.
 - Dev server ports can be exposed with `--port <port>`.
 - `/opt/agent-context.md` is the image default used to seed persisted context files when they
-  are absent: `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, `~/.codex/AGENTS.md`,
-  and `~/.pi/agent/AGENTS.md`. Existing persisted context files are never overwritten. Default
+  are absent: `~/.pi/agent/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.codex/AGENTS.md`,
+  and `~/.claude/CLAUDE.md`. Existing persisted context files are never overwritten. Default
   Chrome integration and Flutter integration workflow skills are seeded into each harness's global
   skills directory only when absent; user edits and user-added skills are preserved.
 
@@ -281,21 +281,21 @@ User-level data is split across per-agent Docker volumes. The selected agent vol
 
 Volumes:
 
-- `agent-workcell-claude`
+- `agent-workcell-pi`
 - `agent-workcell-opencode`
 - `agent-workcell-codex`
-- `agent-workcell-pi`
+- `agent-workcell-claude`
 - `agent-workcell-gpg` (shared signing keys only)
 
 Important persisted paths include:
 
-- `~/.claude/` - Claude Code credentials, settings, global context, and global skills.
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, global
+  context, and global skills. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 - `~/.config/opencode/` - OpenCode configuration, global context, and global skills.
 - `~/.local/state/opencode/` - OpenCode local UI state.
 - `~/.local/share/opencode/` - OpenCode auth, logs, database, and storage.
 - `~/.codex/` - Codex auth, config, history, logs, global context, and global skills.
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, global
-  context, and global skills. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.claude/` - Claude Code credentials, settings, global context, and global skills.
 - `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
 - `~/.gnupg/` - GPG keys for commit signing when enabled; stored in `agent-workcell-gpg`.
 - `~/.nvm/` - Node.js versions and global npm packages.
@@ -381,7 +381,7 @@ JSON files before removing the volume. See [OpenCode sessions](#opencode-session
 |----------|-------|
 | **Languages** | Node.js LTS through nvm, Python 3.11, Rust stable |
 | **Node.js** | `nvm`, `npm`, `npx` |
-| **Agents** | `claude`, `opencode`, `codex`, `pi` |
+| **Agents** | `pi`, `opencode`, `codex`, `claude` |
 | **Python** | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
 | **Browser** | Chrome automation support |
 | **Flutter SDK** | `flutter`, `dart` — tests, analysis, formatting, pub (in-container, no host setup) |

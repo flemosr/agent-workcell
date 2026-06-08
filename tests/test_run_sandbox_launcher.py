@@ -106,7 +106,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
 
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("'claude', 'opencode', 'codex', or 'pi'", result.stdout)
+            self.assertIn("'pi', 'opencode', 'codex', or 'claude'", result.stdout)
 
     def test_flutter_project_dir_requires_flutter_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:

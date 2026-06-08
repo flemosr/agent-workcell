@@ -14,10 +14,10 @@ Harness-native paths are symlinks to the in-effect source:
 
 | Harness | Native context | Persisted context source |
 |---------|----------------|--------------------------|
-| Claude | `~/.claude/CLAUDE.md` | `~/.claude/workcell-context.md` |
+| Pi | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/workcell-context.md` |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/workcell-context.md` |
 | Codex | `~/.codex/AGENTS.md` | `~/.codex/workcell-context.md` |
-| Pi | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/workcell-context.md` |
+| Claude | `~/.claude/CLAUDE.md` | `~/.claude/workcell-context.md` |
 
 ## Default context seeding
 
@@ -26,7 +26,7 @@ On first use without an effective repo `GLOBAL_AGENTS.md`, Workcell creates the 
 After that first seed, the persisted file is user data. Rebuilding images or updating Workcell does not overwrite it. To intentionally replace the in-effect context with the current image default, run:
 
 ```bash
-workcell <claude|opencode|codex|pi> context restore
+workcell <pi|opencode|codex|claude> context restore
 ```
 
 `context restore` asks for confirmation before overwriting the in-effect source.
