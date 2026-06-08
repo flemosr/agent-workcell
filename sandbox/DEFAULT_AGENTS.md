@@ -2,7 +2,7 @@
 
 You are running inside an Agent Workcell Docker container. Treat this file as the general sandbox context. Load the focused docs only when the task needs them.
 
-## Global Skills
+## Global Context And Skills
 
 Load focused workflow skills only when they are relevant to the task.
 
@@ -11,6 +11,25 @@ Load focused workflow skills only when they are relevant to the task.
 - For native/device Flutter work, host Flutter targets, hot reload, screenshots, or the
   `flutterctl` CLI, use the `flutter-integration` skill.
 - For Flutter web, use the Chrome integration workflow, not the native Flutter bridge.
+
+When `/opt/workcell-context` exists, it is a user-managed host-mounted shared context repo. Do not
+modify it unless the user explicitly asks you to. Its `GLOBAL_AGENTS.md` (when present) is the
+in-effect global context, and its `skills/` entries take precedence over sandbox-volume skills;
+changes can affect every harness/workspace using that repo. The harness-visible `skills/` path may
+be an ephemeral merged symlink view under `/tmp/workcell-merged-skills`; do not create or edit
+skills through that merged view.
+
+Project-scoped skills are usually preferable. Create reusable global skills only when the user
+explicitly asks for a global/reusable skill. If a context repo is mounted, create new global skills
+in `/opt/workcell-context/skills/<skill-name>/SKILL.md` (creating `skills/` if needed). Otherwise,
+create them in the selected harness's persisted source directory:
+
+| Harness | Persisted global skill source |
+|---------|-------------------------------|
+| Claude | `~/.claude/workcell-skills` |
+| OpenCode | `~/.config/opencode/workcell-skills` |
+| Codex | `~/.agents/workcell-skills` |
+| Pi | `~/.pi/agent/workcell-skills` |
 
 ## Host And Sandbox Boundaries
 
@@ -63,7 +82,13 @@ available persisted harness path is one of:
 - `~/.codex/` - Codex config, auth, history, logs, and global context (`AGENTS.md`); project conversation files are bind-mounted from `.workcell/codex-sessions/`.
 - `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context (`AGENTS.md`); current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
 
-Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts for the selected agent volume. Image-owned SDKs and the selected agent binary update with that agent's sandbox image. The image default context is seeded into the persisted harness context file only when that file is absent; existing custom context is never overwritten. Pi package/extension updates persist under `~/.pi/agent/` only in the Pi harness; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the Pi sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
+Harness-native context paths are symlinks to the in-effect source: mounted repo
+`/opt/workcell-context/GLOBAL_AGENTS.md` when present, otherwise the harness's persisted
+`workcell-context.md`. Harness-native skill paths are symlinks to an ephemeral merged view; real
+persisted skills live in `workcell-skills` source directories. Codex global skills use
+`~/.agents/skills`, with persisted sources in `~/.agents/workcell-skills`.
+
+Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts for the selected agent volume. Image-owned SDKs and the selected agent binary update with that agent's sandbox image. The image default context is seeded into the persisted harness context source file only when that file is absent; existing custom context is never overwritten. Pi package/extension updates persist under `~/.pi/agent/` only in the Pi harness; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the Pi sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
 
 ## Ports And Integrations
 
