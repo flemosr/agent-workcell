@@ -235,8 +235,9 @@ workcell migrate
 ```
 
 This temporary command migrates legacy project session directories from
-`.workcell/<harness>-sessions/` to `.workcell/sessions/<harness>/`. Run it once in existing
-projects created with the older layout.
+`.workcell/<harness>-sessions/` to `.workcell/sessions/<harness>/` and converts timestamped
+`.workcell/tasks/*.md` task files into `.workcell/tasks/<task>/task.md` plus `log.md`. Run it once
+in existing projects created with the older layout.
 
 ### Volume Management
 
@@ -341,7 +342,8 @@ Each project gets a `.workcell/` directory for project-scoped agent state:
   - `.workcell/sessions/codex/` - workspace-local Codex conversation files.
   - `.workcell/sessions/pi/` - bind-mounted Pi project sessions.
 - `.workcell/.env` - optional workspace-local environment variables to define for sandboxed agents.
-- `.workcell/tasks/` - multi-agent task files and scratch notes.
+- `.workcell/tasks/` - multi-agent task directories and scratch notes. Timestamped task
+  directories contain `task.md` for objective/planning state and `log.md` for history.
 - `.workcell/flutter-config.json` - project-local Flutter bridge launch and connection settings
   when Flutter integration is used.
 
@@ -361,6 +363,9 @@ Example `.workcell/` layout:
 │   ├── opencode/
 │   └── pi/
 ├── tasks/
+│   └── 20260608-165656-restructure-project-scoped-workcell-dir/
+│       ├── task.md
+│       └── log.md
 └── flutter-config.json
 ```
 
