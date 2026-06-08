@@ -87,11 +87,11 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
             run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
             expected_mount = (
-                f"{workspace / '.workcell' / 'pi-sessions'}:"
+                f"{workspace / '.workcell' / 'sessions' / 'pi'}:"
                 f"/home/agent/persist/.pi/agent/sessions/--workspaces-{workspace.name}--"
             )
             self.assertIn(f"\t-v\t{expected_mount}\t", f"{run_line}\t")
-            self.assertTrue((workspace / ".workcell" / "pi-sessions").is_dir())
+            self.assertTrue((workspace / ".workcell" / "sessions" / "pi").is_dir())
 
     def test_unknown_agent_error_mentions_pi(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -210,12 +210,36 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("WORKCELL_SKILL_NAME=chrome-integration", log)
             self.assertIn("wc_skill_restore", log)
 
+    def test_migrate_moves_legacy_session_dirs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            for name in ["claude-sessions", "opencode-sessions", "codex-sessions", "pi-sessions"]:
+                legacy_dir = workspace / ".workcell" / name
+                legacy_dir.mkdir(parents=True)
+                (legacy_dir / "session.json").write_text("{}\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [str(CLI), "migrate"],
+                cwd=workspace,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+
+            self.assertIn("Migration complete.", result.stdout)
+            for harness in ["claude", "opencode", "codex", "pi"]:
+                self.assertTrue((workspace / ".workcell" / "sessions" / harness / "session.json").is_file())
+            for name in ["claude-sessions", "opencode-sessions", "codex-sessions", "pi-sessions"]:
+                self.assertFalse((workspace / ".workcell" / name).exists())
+
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
             subprocess.run([str(CLI), "opencode", "sessions", "export"], cwd=workspace, env=env, check=True)
-            (workspace / ".workcell" / "opencode-sessions" / "session.json").write_text("{}\n", encoding="utf-8")
+            (workspace / ".workcell" / "sessions" / "opencode").mkdir(parents=True, exist_ok=True)
+            (workspace / ".workcell" / "sessions" / "opencode" / "session.json").write_text("{}\n", encoding="utf-8")
             subprocess.run([str(CLI), "opencode", "sessions", "import"], cwd=workspace, env=env, check=True)
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-opencode:/home/agent/persist\t", f"{log}\t")
