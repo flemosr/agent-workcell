@@ -342,6 +342,12 @@ Each project gets a `.workcell/` directory for project-scoped agent state:
   - `.workcell/sessions/codex/` - workspace-local Codex conversation files.
   - `.workcell/sessions/pi/` - bind-mounted Pi project sessions.
 - `.workcell/.env` - optional workspace-local environment variables to define for sandboxed agents.
+- `.workcell/ideas.md` - user-approved bullet list of possible future improvements yet to be
+  properly evaluated; bullets may include concise sub-points for crucial context, and agents should
+  not modify it without user approval.
+- `.workcell/roadmap.md` - user-approved bullet list of next-direction items not yet fully
+  converted into task files; bullets may include concise sub-points for crucial context, and agents
+  should not modify it without user approval.
 - `.workcell/tasks/` - multi-agent task directories and scratch notes. Timestamped task
   directories contain `task.md` for objective/planning state and `log.md` for history.
 - `.workcell/flutter-config.json` - project-local Flutter bridge launch and connection settings
@@ -362,6 +368,8 @@ Example `.workcell/` layout:
 │   ├── codex/
 │   ├── opencode/
 │   └── pi/
+├── ideas.md
+├── roadmap.md
 ├── tasks/
 │   └── 20260608-165656-restructure-project-scoped-workcell-dir/
 │       ├── task.md

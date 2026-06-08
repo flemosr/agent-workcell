@@ -6,7 +6,8 @@ You are running inside an Agent Workcell Docker container. Treat this file as th
 
 Load focused workflow skills only when they are relevant to the task.
 
-- For non-trivial or multi-step work that benefits from continuity, use the `task-management` skill.
+- You MUST load the `task-management` skill before working on any `.workcell/tasks/` entry or
+  when the user describes a new non-trivial task.
 - For browser-based web development, visual UI checks, dev servers, or the `browser` CLI, use the
   `chrome-integration` skill.
 - For native/device Flutter work, host Flutter targets, hot reload, screenshots, or the
@@ -56,6 +57,12 @@ Project-specific workcell data lives under `.workcell/`:
   - `.workcell/sessions/opencode/` - exported OpenCode session backups.
   - `.workcell/sessions/codex/` - workspace-local Codex conversation files when running the Codex harness.
   - `.workcell/sessions/claude/` - bind-mounted Claude project sessions when running the Claude harness.
+- `.workcell/ideas.md` - user-approved bullet list of possible future improvements yet to be
+  properly evaluated; bullets may include concise sub-points for crucial context; do not modify
+  without user approval.
+- `.workcell/roadmap.md` - user-approved bullet list of next-direction items not yet fully
+  converted into tasks; bullets may include concise sub-points for crucial context; do not modify
+  without user approval.
 - `.workcell/tasks/` - shared task notes for multi-step work and handoffs.
 - `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
 
