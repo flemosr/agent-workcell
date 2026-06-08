@@ -208,7 +208,8 @@ ENV BASH_ENV="/etc/profile.d/workcell-nvm.sh"
 ENV WORKCELL_IMAGE_AGENT=""
 COPY init-firewall.sh /opt/init-firewall.sh
 COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/init-firewall.sh /opt/entrypoint.sh
+COPY workcell-context-lib.sh /opt/workcell-context-lib.sh
+RUN chmod +x /opt/init-firewall.sh /opt/entrypoint.sh /opt/workcell-context-lib.sh
 
 # Copy agent context files. Entrypoint seeds the main context and default skills
 # into agent config only when absent.
