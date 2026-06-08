@@ -8,6 +8,12 @@
 #
 # Your config.sh is gitignored, so your personal settings won't be committed.
 #
+# Optional: mount a user-managed shared context repo into sandboxes.
+# Must be an absolute host path. Supported layout:
+#   agent-context/GLOBAL_AGENTS.md
+#   agent-context/skills/<skill-name>/SKILL.md
+# WORKCELL_CONTEXT_REPO="/Users/you/agent-context"
+#
 # Optional: override the timezone passed into the sandbox. By default the launcher
 # auto-detects the host timezone and sets TZ for container-local logs and commits.
 # TZ="America/Los_Angeles"
