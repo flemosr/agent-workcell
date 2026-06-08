@@ -259,27 +259,28 @@ wc_skill_open() {
 
 wc_skill_restore() {
   wc_validate_skill_name "$1"
-  default_dir="$WORKCELL_DEFAULT_SKILLS/$1"
-  [ -d "$default_dir" ] && [ -f "$default_dir/SKILL.md" ] || wc_error "not a default skill: $1. Custom skills cannot be restored by Workcell; recover them via Git or manual edits."
+  restore_skill_name="$1"
+  restore_default_dir="$WORKCELL_DEFAULT_SKILLS/$restore_skill_name"
+  [ -d "$restore_default_dir" ] && [ -f "$restore_default_dir/SKILL.md" ] || wc_error "not a default skill: $restore_skill_name. Custom skills cannot be restored by Workcell; recover them via Git or manual edits."
   wc_prepare_skills
-  result="$(wc_skill_source_dir "$1" || true)"
+  result="$(wc_skill_source_dir "$restore_skill_name" || true)"
   if [ -z "$result" ]; then
-    echo "Skill '$1' is already using the image default."
+    echo "Skill '$restore_skill_name' is already using the image default."
     exit 0
   fi
   location=$(printf '%s' "$result" | cut -f1)
   target_dir=$(printf '%s' "$result" | cut -f2-)
   [ -L "$target_dir" ] && wc_error "in-effect skill source is a symlink: $target_dir. Restore symlinked skills manually."
-  echo "About to restore skill '$1' from image default."
+  echo "About to restore skill '$restore_skill_name' from image default."
   echo "  Target ($location): $target_dir"
-  echo "  Source: $default_dir"
+  echo "  Source: $restore_default_dir"
   echo "Warning: this replaces the entire target skill directory and may delete extra files."
   if [ "$location" = "mounted repo" ]; then
     echo "Warning: this overwrites the shared mounted context repo and may affect all workspaces/harnesses using it."
   fi
   wc_confirm_overwrite "Continue?" || exit 0
   rm -rf "$target_dir"
-  cp -a "$default_dir" "$target_dir"
+  cp -a "$restore_default_dir" "$target_dir"
   [ "$location" = "sandbox volume" ] && chown -R agent:agent "$target_dir" 2>/dev/null || true
   echo "Restored skill: $target_dir"
 }
