@@ -239,6 +239,27 @@ class SandboxImageSplitTests(unittest.TestCase):
                 self.assertIn(f"Error: '{command}' must be scoped to an agent", result.stdout)
                 self.assertIn(example, result.stdout)
 
+    def test_command_groups_without_subcommand_show_help(self):
+        for command, expected in [
+            (["pi"], "workcell pi run"),
+            (["pi", "context"], "workcell pi context open"),
+            (["pi", "skill"], "workcell pi skill list"),
+            (["opencode", "sessions"], "workcell opencode sessions <export|import>"),
+            (["gpg"], "workcell gpg new"),
+            (["volume"], "workcell volume shell"),
+        ]:
+            with self.subTest(command=command):
+                result = subprocess.run(
+                    [str(CLI), *command],
+                    cwd=REPO_ROOT,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
+                self.assertEqual(result.returncode, 0)
+                self.assertIn(expected, result.stdout)
+                self.assertIn("Subcommands:", result.stdout)
+
     def test_cli_argless_commands_reject_unexpected_args(self):
         commands = [
             ["pi", "settings", "extra"],

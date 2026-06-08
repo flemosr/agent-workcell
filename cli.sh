@@ -431,7 +431,7 @@ cmd_harness_skill() {
     local agent="$1"
     shift
 
-    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    if [[ -z "${1:-}" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
         echo "Manage $agent global Agent Skills"
         echo ""
         echo "Usage:"
@@ -667,7 +667,7 @@ cmd_harness_context() {
     local agent="$1"
     shift
 
-    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    if [[ -z "${1:-}" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
         echo "Manage an agent's global context file"
         echo ""
         echo "Usage:"
@@ -871,16 +871,9 @@ case "$command" in
         shift
         subcmd="${1:-}"
 
-        if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+        if [[ -z "$subcmd" || "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
             show_harness_help "$agent"
             exit 0
-        fi
-
-        if [ -z "$subcmd" ]; then
-            echo "Error: subcommand required for 'workcell $agent'"
-            echo "Try: workcell $agent run"
-            echo "     workcell $agent --help"
-            exit 1
         fi
         shift
 
@@ -906,7 +899,7 @@ case "$command" in
                     exit 1
                 fi
                 session_subcmd="${1:-}"
-                if [[ "$session_subcmd" == "--help" || "$session_subcmd" == "-h" ]]; then
+                if [[ -z "$session_subcmd" || "$session_subcmd" == "--help" || "$session_subcmd" == "-h" ]]; then
                     echo "OpenCode session management"
                     echo ""
                     echo "Usage:"
@@ -916,11 +909,6 @@ case "$command" in
                     echo "  export    Export opencode sessions for current workspace"
                     echo "  import    Import opencode sessions from workspace backup"
                     exit 0
-                fi
-                if [ -z "$session_subcmd" ]; then
-                    echo "Error: subcommand required for 'workcell opencode sessions'"
-                    echo "Try: workcell opencode sessions --help"
-                    exit 1
                 fi
                 shift
                 case "$session_subcmd" in
@@ -1009,15 +997,9 @@ case "$command" in
         shift
         subcmd="${1:-}"
 
-        if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+        if [[ -z "$subcmd" || "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
             show_gpg_help
             exit 0
-        fi
-
-        if [ -z "$subcmd" ]; then
-            echo "Error: subcommand required for 'workcell gpg'"
-            echo "Try: workcell gpg --help"
-            exit 1
         fi
         shift
 
@@ -1269,15 +1251,9 @@ GPGEOF
         shift
         subcmd="${1:-}"
 
-        if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+        if [[ -z "$subcmd" || "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
             show_volume_help
             exit 0
-        fi
-
-        if [ -z "$subcmd" ]; then
-            echo "Error: subcommand required for 'workcell volume'"
-            echo "Try: workcell volume --help"
-            exit 1
         fi
         shift
 
