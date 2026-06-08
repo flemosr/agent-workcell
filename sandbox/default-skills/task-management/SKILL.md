@@ -7,9 +7,28 @@ description: Use for non-trivial or multi-step work that benefits from continuit
 
 Use `.workcell/tasks/` for work that benefits from continuity: multi-step changes, handoffs, research, parallel-agent coordination, risky debugging, or anything likely to span sessions. Skip task creation for trivial one-step requests.
 
+Task planning can flow through these stages:
+
+```text
+idea -> roadmap -> task
+roadmap -> task
+task
+```
+
+Using `.workcell/roadmap.md` is optional; users may choose to create task directories directly.
+
+- `.workcell/ideas.md` contains succinct bullets for possible future improvements that still need evaluation.
+- `.workcell/roadmap.md` contains succinct bullets for work that should be done next but has not yet been fully converted into task files.
+- Bullets in either file may include nested sub-bullets when crucial context is needed, but keep them concise.
+- `.workcell/tasks/<task>/` contains active or historical task state.
+
+Do not modify `.workcell/ideas.md` or `.workcell/roadmap.md` without user approval. If you notice a possible improvement that does not fit the in-progress task, suggest adding it to `ideas.md` or `roadmap.md` and ask the user before editing either file.
+
+When an item moves to the next stage, remove it from the previous stage so `ideas.md` and `roadmap.md` only describe work yet to be evaluated or implemented. They are not implemented-feature lists; completed work belongs in task directories. The first `roadmap.md` bullet should correspond to the task currently in progress when there is one, and should be removed when that task is completed.
+
 ## Starting Work
 
-Before starting non-trivial work:
+Before starting non-trivial work or working on any `.workcell/tasks/` entry:
 
 1. List `.workcell/tasks/`.
 2. Skim task directory names and the title line in each `task.md` only. Do not read full task files yet.
