@@ -9,6 +9,19 @@ CLI = REPO_ROOT / "cli.sh"
 
 
 class SandboxImageSplitTests(unittest.TestCase):
+    def with_repo_config(self, content: str):
+        config = REPO_ROOT / "config.sh"
+        original = config.read_text(encoding="utf-8") if config.exists() else None
+        config.write_text(content, encoding="utf-8")
+
+        def restore():
+            if original is None:
+                config.unlink(missing_ok=True)
+            else:
+                config.write_text(original, encoding="utf-8")
+
+        self.addCleanup(restore)
+
     def fake_docker_env(self, workspace: Path, image_inspect_missing: bool = False):
         fake_bin = workspace / "bin"
         fake_bin.mkdir()
@@ -113,18 +126,32 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-pi\t", f"{log}\t")
 
+    def test_cli_context_and_skill_mount_configured_context_repo(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            repo = workspace / "agent-context"
+            repo.mkdir()
+            self.with_repo_config(f'WORKCELL_CONTEXT_REPO="{repo}"\n')
+            env, docker_log = self.fake_docker_env(workspace)
+            subprocess.run([str(CLI), "codex", "context", "open"], cwd=workspace, env=env, check=True)
+            subprocess.run([str(CLI), "codex", "skill", "list"], cwd=workspace, env=env, check=True)
+            log = docker_log.read_text()
+            self.assertIn(f"\t-v\t{repo}:/opt/workcell-context:rw\t", f"{log}\t")
+            self.assertNotIn("/opt/workcell-context:ro", log)
+
     def test_cli_context_uses_selected_agent_image_volume_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "codex", "context", "edit"], cwd=workspace, env=env, check=True)
+            subprocess.run([str(CLI), "codex", "context", "open"], cwd=workspace, env=env, check=True)
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-codex:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-codex\t", f"{log}\t")
             self.assertIn("/data/.codex/AGENTS.md", log)
-            self.assertIn("WORKCELL_CONTEXT_ACTION=edit", log)
-            self.assertIn("cp /opt/agent-context.md", log)
+            self.assertIn("/data/.codex/workcell-context.md", log)
+            self.assertIn("WORKCELL_CONTEXT_ACTION=open", log)
+            self.assertIn("/opt/workcell-context-lib.sh", log)
 
     def test_cli_context_restore_uses_selected_agent_image_volume_and_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -137,7 +164,8 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("\tlocal/agent-workcell-claude\t", f"{log}\t")
             self.assertIn("WORKCELL_CONTEXT_ACTION=restore", log)
             self.assertIn("/data/.claude/CLAUDE.md", log)
-            self.assertIn("cp /opt/agent-context.md", log)
+            self.assertIn("/data/.claude/workcell-context.md", log)
+            self.assertIn("/opt/workcell-context-lib.sh", log)
 
     def test_harness_skill_list_uses_selected_agent_image_and_volume(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -147,23 +175,23 @@ class SandboxImageSplitTests(unittest.TestCase):
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-opencode:/data\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-opencode\t", f"{log}\t")
-            self.assertIn("/opt/agent-default-skills", log)
             self.assertIn("/data/.config/opencode/skills", log)
-            self.assertIn("sort -u", log)
+            self.assertIn("/data/.config/opencode/workcell-skills", log)
+            self.assertIn("wc_skill_list", log)
 
     def test_harness_skill_edit_uses_selected_agent_image_volume_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "pi", "skill", "edit", "chrome-integration"], cwd=workspace, env=env, check=True)
+            subprocess.run([str(CLI), "pi", "skill", "open", "chrome-integration"], cwd=workspace, env=env, check=True)
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-pi:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-pi\t", f"{log}\t")
-            self.assertIn("WORKCELL_SKILL_ROOT=/data/.pi/agent/skills", log)
+            self.assertIn("WORKCELL_SKILLS_NATIVE=/data/.pi/agent/skills", log)
+            self.assertIn("WORKCELL_SKILLS_SOURCE=/data/.pi/agent/workcell-skills", log)
             self.assertIn("WORKCELL_SKILL_NAME=chrome-integration", log)
-            self.assertIn("/opt/agent-default-skills/$WORKCELL_SKILL_NAME/SKILL.md", log)
-            self.assertIn("runuser -u agent -- vi", log)
+            self.assertIn("wc_skill_open", log)
 
     def test_harness_skill_restore_uses_selected_agent_image_volume_and_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -175,10 +203,10 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-claude\t", f"{log}\t")
             self.assertIn("WORKCELL_SKILL_ACTION=restore", log)
-            self.assertIn("WORKCELL_SKILL_ROOT=/data/.claude/skills", log)
+            self.assertIn("WORKCELL_SKILLS_NATIVE=/data/.claude/skills", log)
+            self.assertIn("WORKCELL_SKILLS_SOURCE=/data/.claude/workcell-skills", log)
             self.assertIn("WORKCELL_SKILL_NAME=chrome-integration", log)
-            self.assertIn("not a default skill", log)
-            self.assertIn("cp \"$default_skill_file\" \"$skill_file\"", log)
+            self.assertIn("wc_skill_restore", log)
 
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -195,10 +223,10 @@ class SandboxImageSplitTests(unittest.TestCase):
     def test_cli_argless_commands_reject_unexpected_args(self):
         commands = [
             ["pi", "settings", "extra"],
-            ["pi", "context", "edit", "extra"],
+            ["pi", "context", "open", "extra"],
             ["pi", "context", "restore", "extra"],
             ["pi", "skill", "list", "extra"],
-            ["pi", "skill", "edit", "chrome-integration", "extra"],
+            ["pi", "skill", "open", "chrome-integration", "extra"],
             ["pi", "skill", "restore", "chrome-integration", "extra"],
             ["opencode", "sessions", "export", "extra"],
             ["opencode", "sessions", "import", "extra"],
@@ -229,18 +257,20 @@ class SandboxImageSplitTests(unittest.TestCase):
         self.assertIn("image/agent mismatch", entrypoint)
         self.assertLess(entrypoint.index("image/agent mismatch"), entrypoint.index("workcell-agent-init.sh"))
 
-    def test_agent_context_init_preserves_existing_context_files(self):
-        for script_name in ["claude.sh", "opencode.sh", "codex.sh", "pi.sh"]:
+    def test_agent_context_init_uses_shared_context_lib_and_workcell_sources(self):
+        expected = {
+            "claude.sh": ("/home/agent/persist/.claude/CLAUDE.md", "/home/agent/persist/.claude/workcell-context.md", "/home/agent/persist/.claude/workcell-skills"),
+            "opencode.sh": ("/home/agent/persist/.config/opencode/AGENTS.md", "/home/agent/persist/.config/opencode/workcell-context.md", "/home/agent/persist/.config/opencode/workcell-skills"),
+            "codex.sh": ("/home/agent/persist/.codex/AGENTS.md", "/home/agent/persist/.codex/workcell-context.md", "/home/agent/persist/.agents/workcell-skills"),
+            "pi.sh": ("/home/agent/persist/.pi/agent/AGENTS.md", "/home/agent/persist/.pi/agent/workcell-context.md", "/home/agent/persist/.pi/agent/workcell-skills"),
+        }
+        for script_name, tokens in expected.items():
             with self.subTest(script=script_name):
                 script = (REPO_ROOT / "sandbox" / "agent-init" / script_name).read_text(encoding="utf-8")
-                self.assertNotIn("ln -sfn /opt/agent-context.md", script)
-                self.assertNotIn("readlink \"$context_path\"", script)
-                self.assertIn("cp /opt/agent-context.md", script)
-                self.assertIn("[ ! -e \"$context_path\" ] && [ ! -L \"$context_path\" ]", script)
-                self.assertIn("/skills/$skill_name", script)
-                self.assertIn("/opt/agent-default-skills/$skill_name/SKILL.md", script)
-                self.assertIn("[ ! -e \"$skill_file\" ] && [ ! -L \"$skill_file\" ]", script)
-                self.assertNotIn("/home/agent/persist/.agents/skills", script)
+                self.assertIn("/opt/workcell-context-lib.sh", script)
+                self.assertIn("wc_prepare_all", script)
+                for token in tokens:
+                    self.assertIn(token, script)
 
     def test_agent_installers_are_not_in_base_dockerfile(self):
         base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(encoding="utf-8")

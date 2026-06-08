@@ -10,11 +10,25 @@ RUN_SANDBOX = REPO_ROOT / "scripts" / "run_sandbox.sh"
 
 
 class RunSandboxLauncherTests(unittest.TestCase):
+    def with_repo_config(self, content: str):
+        config = REPO_ROOT / "config.sh"
+        original = config.read_text(encoding="utf-8") if config.exists() else None
+        config.write_text(content, encoding="utf-8")
+
+        def restore():
+            if original is None:
+                config.unlink(missing_ok=True)
+            else:
+                config.write_text(original, encoding="utf-8")
+
+        self.addCleanup(restore)
+
     def run_with_fake_docker(
         self,
         workspace: Path,
         env_file: str | None = None,
         agent: str = "codex",
+        extra_env: dict[str, str] | None = None,
     ) -> str:
         fake_bin = workspace / "bin"
         fake_bin.mkdir()
@@ -41,6 +55,9 @@ class RunSandboxLauncherTests(unittest.TestCase):
         env["DOCKER_LOG"] = str(docker_log)
         env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
         env["WORKCELL_TEST_SKIP_WATCHDOG"] = "1"
+        env.pop("WORKCELL_CONTEXT_REPO", None)
+        if extra_env:
+            env.update(extra_env)
 
         subprocess.run(
             [str(RUN_SANDBOX), agent, "--", "status"],
@@ -133,6 +150,50 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("must be relative to the workspace directory", result.stdout)
+
+    def test_context_repo_env_is_ignored_when_not_in_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            docker_log = self.run_with_fake_docker(workspace, extra_env={"WORKCELL_CONTEXT_REPO": str(workspace)})
+            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
+            self.assertNotIn("/opt/workcell-context", run_line)
+
+    def test_context_repo_config_adds_writable_mount(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            repo = workspace / "agent-context"
+            repo.mkdir()
+            self.with_repo_config(f'WORKCELL_CONTEXT_REPO="{repo}"\n')
+            docker_log = self.run_with_fake_docker(workspace)
+            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
+            self.assertIn(f"\t-v\t{repo}:/opt/workcell-context:rw\t", f"{run_line}\t")
+            self.assertNotIn("/opt/workcell-context:ro", run_line)
+
+    def test_context_repo_config_rejects_relative_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            self.with_repo_config('WORKCELL_CONTEXT_REPO="relative/context"\n')
+            result = subprocess.run(
+                [str(RUN_SANDBOX), "codex", "--", "status"],
+                cwd=workspace,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("WORKCELL_CONTEXT_REPO must be an absolute", result.stdout)
+
+    def test_context_repo_env_file_entry_is_not_passed_to_container(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            docker_log = self.run_with_fake_docker(
+                workspace,
+                f"WORKCELL_CONTEXT_REPO={workspace}\nCUSTOM=value\n",
+            )
+            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
+            self.assertNotIn("WORKCELL_CONTEXT_REPO", run_line)
+            self.assertNotIn("/opt/workcell-context", run_line)
+            self.assertIn("\t-e\tCUSTOM=value\t", f"{run_line}\t")
 
     def test_env_file_is_passed_to_docker_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
