@@ -1,35 +1,15 @@
 # Claude Code image-specific initialization.
+. /opt/workcell-context-lib.sh
+
 mkdir -p /home/agent/persist/.claude
-context_path=/home/agent/persist/.claude/CLAUDE.md
-if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
-  cp /opt/agent-context.md "$context_path"
-fi
-chown agent:agent /home/agent/persist/.claude 2>/dev/null || true
-if [ -L "$context_path" ]; then
-  chown -h agent:agent "$context_path" 2>/dev/null || true
-else
-  chown agent:agent "$context_path" 2>/dev/null || true
-fi
-
-mkdir -p /home/agent/persist/.claude/skills
-seed_default_skill() {
-  skill_name="$1"
-  skill_path="/home/agent/persist/.claude/skills/$skill_name"
-  skill_file="$skill_path/SKILL.md"
-  mkdir -p "$skill_path"
-  if [ ! -e "$skill_file" ] && [ ! -L "$skill_file" ]; then
-    cp "/opt/agent-default-skills/$skill_name/SKILL.md" "$skill_file"
-  fi
-  chown agent:agent /home/agent/persist/.claude/skills "$skill_path" 2>/dev/null || true
-  if [ -L "$skill_file" ]; then
-    chown -h agent:agent "$skill_file" 2>/dev/null || true
-  else
-    chown agent:agent "$skill_file" 2>/dev/null || true
-  fi
-}
-seed_default_skill chrome-integration
-seed_default_skill flutter-integration
-
+WORKCELL_CONTEXT_NATIVE=/home/agent/persist/.claude/CLAUDE.md
+WORKCELL_CONTEXT_SOURCE=/home/agent/persist/.claude/workcell-context.md
+WORKCELL_SKILLS_NATIVE=/home/agent/persist/.claude/skills
+WORKCELL_SKILLS_SOURCE=/home/agent/persist/.claude/workcell-skills
+WORKCELL_MERGED_SKILLS=/tmp/workcell-merged-skills/claude
+wc_prepare_all
+wc_chown_persisted_context
+wc_chown_persisted_skills
 
 [ -d /home/agent/.claude ] && [ ! -L /home/agent/.claude ] && rm -rf /home/agent/.claude
 ln -sfn /home/agent/persist/.claude /home/agent/.claude
