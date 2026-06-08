@@ -212,13 +212,39 @@ if [ -f "$workcell_env_file" ]; then
   workcell_env_entries="$(python3 "$SCRIPT_DIR/workcell_env.py" "$workcell_env_file")"
   while IFS= read -r env_entry; do
     [ -n "$env_entry" ] || continue
+    case "$env_entry" in
+      WORKCELL_CONTEXT_REPO=*) continue ;;
+    esac
     workcell_env_args+=(-e "$env_entry")
   done <<< "$workcell_env_entries"
 fi
 
-# Source config.sh if it exists (required for Chrome integration)
+# Source config.sh if it exists (required for Chrome integration and optional
+# Workcell context repo). WORKCELL_CONTEXT_REPO is intentionally read only from
+# config.sh, not from the shell environment or .workcell/.env.
+WORKCELL_CONTEXT_REPO=""
 if [ -f "$REPO_ROOT/config.sh" ]; then
   source "$REPO_ROOT/config.sh"
+fi
+
+context_repo_mount_args=()
+if [ -n "${WORKCELL_CONTEXT_REPO:-}" ]; then
+  case "$WORKCELL_CONTEXT_REPO" in
+    /*) ;;
+    *)
+      echo "Error: WORKCELL_CONTEXT_REPO must be an absolute host path: $WORKCELL_CONTEXT_REPO" >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -e "$WORKCELL_CONTEXT_REPO" ]; then
+    echo "Error: WORKCELL_CONTEXT_REPO does not exist: $WORKCELL_CONTEXT_REPO" >&2
+    exit 1
+  fi
+  if [ ! -d "$WORKCELL_CONTEXT_REPO" ]; then
+    echo "Error: WORKCELL_CONTEXT_REPO is not a directory: $WORKCELL_CONTEXT_REPO" >&2
+    exit 1
+  fi
+  context_repo_mount_args=(-v "${WORKCELL_CONTEXT_REPO}:/opt/workcell-context:rw")
 fi
 
 # Cleanup function for Chrome process
@@ -527,6 +553,10 @@ docker_args=(
 
 if [ ${#session_mount_args[@]} -gt 0 ]; then
   docker_args+=("${session_mount_args[@]}")
+fi
+
+if [ ${#context_repo_mount_args[@]} -gt 0 ]; then
+  docker_args+=("${context_repo_mount_args[@]}")
 fi
 
 if [ ${#yolo_env[@]} -gt 0 ]; then
