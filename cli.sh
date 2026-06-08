@@ -951,6 +951,14 @@ case "$command" in
 
     # ── Global commands ──────────────────────────────────────────────────
     run|settings|context|skill)
+        echo "Error: '$command' must be scoped to an agent"
+        echo "Usage: workcell <claude|opencode|codex|pi> $command${2:+ ...}"
+        case "$command" in
+            run) echo "Example: workcell pi run" ;;
+            settings) echo "Example: workcell pi settings" ;;
+            context) echo "Example: workcell pi context open" ;;
+            skill) echo "Example: workcell pi skill list" ;;
+        esac
         exit 1
         ;;
 

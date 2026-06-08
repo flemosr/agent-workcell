@@ -220,6 +220,25 @@ class SandboxImageSplitTests(unittest.TestCase):
             self.assertIn("\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-opencode\t", f"{log}\t")
 
+    def test_top_level_agent_scoped_commands_show_helpful_error(self):
+        for command, example in [
+            ("run", "workcell pi run"),
+            ("settings", "workcell pi settings"),
+            ("context", "workcell pi context open"),
+            ("skill", "workcell pi skill list"),
+        ]:
+            with self.subTest(command=command):
+                result = subprocess.run(
+                    [str(CLI), command, "list"],
+                    cwd=REPO_ROOT,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"Error: '{command}' must be scoped to an agent", result.stdout)
+                self.assertIn(example, result.stdout)
+
     def test_cli_argless_commands_reject_unexpected_args(self):
         commands = [
             ["pi", "settings", "extra"],
