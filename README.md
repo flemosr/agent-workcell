@@ -226,7 +226,17 @@ workcell opencode sessions import
 ```
 
 These commands export and import OpenCode sessions between the Docker volume and
-`.workcell/opencode-sessions/`.
+`.workcell/sessions/opencode/`.
+
+### Project Workcell Migration
+
+```bash
+workcell migrate
+```
+
+This temporary command migrates legacy project session directories from
+`.workcell/<harness>-sessions/` to `.workcell/sessions/<harness>/`. Run it once in existing
+projects created with the older layout.
 
 ### Volume Management
 
@@ -253,12 +263,12 @@ Volume commands affect the persisted user data described below.
 - Your current directory is mounted at `/workspaces/<project-name>` inside the container.
 - Workspace-local workcell files for the current project live under `.workcell/`.
 - Pi auth, settings, packages/extensions, and the persisted Pi install prefix live in the Docker
-  volume under `~/.pi/agent/`, with project sessions bind-mounted into `.workcell/pi-sessions/`.
+  volume under `~/.pi/agent/`, with project sessions bind-mounted from `.workcell/sessions/pi/`.
 - OpenCode session history and storage persist in the Docker volume under
   `~/.local/share/opencode/`.
 - Codex auth, config, history, logs, and session data persist under `~/.codex/`, with project
-  conversation files bind-mounted into `.workcell/codex-sessions/`.
-- Claude session history for the project is stored in `.workcell/claude-sessions/`.
+  conversation files bind-mounted from `.workcell/sessions/codex/`.
+- Claude session history for the project is stored in `.workcell/sessions/claude/`.
 - Agent settings, credentials, Rust toolchains, Node versions, and language caches persist in the
   selected agent's Docker volume (`agent-workcell-pi`, `agent-workcell-opencode`,
   `agent-workcell-codex`, or `agent-workcell-claude`).
@@ -290,7 +300,7 @@ Volumes:
 Important persisted paths include:
 
 - `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, global
-  context, and global skills. Current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+  context, and global skills. Current-project Pi sessions are bind-mounted from `.workcell/sessions/pi/`.
 - `~/.config/opencode/` - OpenCode configuration, global context, and global skills.
 - `~/.local/state/opencode/` - OpenCode local UI state.
 - `~/.local/share/opencode/` - OpenCode auth, logs, database, and storage.
@@ -325,10 +335,11 @@ Each project gets a `.workcell/` directory for project-scoped agent state:
   generated previews. Agents may create optional subdirectories such as `screenshots/`, `logs/`,
   and `mockups/` when that helps organize related files. Use timestamped filenames such as
   `screenshots/20260429-132400-home-page.png`.
-- `.workcell/claude-sessions/` - bind-mounted Claude project sessions.
-- `.workcell/opencode-sessions/` - exported OpenCode session backups.
-- `.workcell/codex-sessions/` - workspace-local Codex conversation files.
-- `.workcell/pi-sessions/` - bind-mounted Pi project sessions.
+- `.workcell/sessions/` - project-scoped agent session data, organized by harness:
+  - `.workcell/sessions/claude/` - bind-mounted Claude project sessions.
+  - `.workcell/sessions/opencode/` - exported OpenCode session backups.
+  - `.workcell/sessions/codex/` - workspace-local Codex conversation files.
+  - `.workcell/sessions/pi/` - bind-mounted Pi project sessions.
 - `.workcell/.env` - optional workspace-local environment variables to define for sandboxed agents.
 - `.workcell/tasks/` - multi-agent task files and scratch notes.
 - `.workcell/flutter-config.json` - project-local Flutter bridge launch and connection settings
@@ -344,10 +355,11 @@ Example `.workcell/` layout:
 │   ├── screenshots/
 │   ├── logs/
 │   └── mockups/
-├── claude-sessions/
-├── codex-sessions/
-├── opencode-sessions/
-├── pi-sessions/
+├── sessions/
+│   ├── claude/
+│   ├── codex/
+│   ├── opencode/
+│   └── pi/
 ├── tasks/
 └── flutter-config.json
 ```

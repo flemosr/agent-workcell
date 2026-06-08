@@ -50,10 +50,11 @@ Project-specific workcell data lives under `.workcell/`:
 
 - `.workcell/artifacts/` - temporary artifacts from agent work, such as screenshots, logs, traces, and generated previews. Agents may create optional subdirectories such as `screenshots/`, `logs/`, and `mockups/` when that helps organize related files. Put throwaway files here instead of the repo root.
 - `.workcell/.env` - optional workspace-local environment variables loaded into sandboxed agent sessions. Treat it as secret-bearing and leave it ignored by Git.
-- `.workcell/pi-sessions/` - bind-mounted Pi project sessions when running the Pi harness.
-- `.workcell/opencode-sessions/` - exported OpenCode session backups.
-- `.workcell/codex-sessions/` - workspace-local Codex conversation files when running the Codex harness.
-- `.workcell/claude-sessions/` - bind-mounted Claude project sessions when running the Claude harness.
+- `.workcell/sessions/` - project-scoped agent session data, organized by harness:
+  - `.workcell/sessions/pi/` - bind-mounted Pi project sessions when running the Pi harness.
+  - `.workcell/sessions/opencode/` - exported OpenCode session backups.
+  - `.workcell/sessions/codex/` - workspace-local Codex conversation files when running the Codex harness.
+  - `.workcell/sessions/claude/` - bind-mounted Claude project sessions when running the Claude harness.
 - `.workcell/tasks/` - shared task notes for multi-step work and handoffs.
 - `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
 
@@ -77,9 +78,9 @@ Each agent harness runs in its own image with its own persisted Docker volume, s
 global state paths and binaries are intentionally absent. Depending on the selected harness, the
 available persisted harness path is one of:
 
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context (`AGENTS.md`); current-project Pi sessions are bind-mounted from `.workcell/pi-sessions/`.
+- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context (`AGENTS.md`); current-project Pi sessions are bind-mounted from `.workcell/sessions/pi/`.
 - `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` - OpenCode config, global context (`AGENTS.md`), auth, sessions, logs, storage, and local UI state.
-- `~/.codex/` - Codex config, auth, history, logs, and global context (`AGENTS.md`); project conversation files are bind-mounted from `.workcell/codex-sessions/`.
+- `~/.codex/` - Codex config, auth, history, logs, and global context (`AGENTS.md`); project conversation files are bind-mounted from `.workcell/sessions/codex/`.
 - `~/.claude/` - Claude Code credentials, settings, project sessions, and global context (`CLAUDE.md`).
 
 Harness-native context paths are symlinks to the in-effect source: mounted repo
