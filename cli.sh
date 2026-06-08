@@ -6,9 +6,9 @@
 #                                          (agent: claude | opencode | codex | pi)
 #   workcell <agent> build [args]     Build/rebuild one agent sandbox image
 #   workcell <agent> settings         Open an agent's settings/config in vi
-#   workcell <agent> context edit     Open an agent's global context file in vi
+#   workcell <agent> context open     Open an agent's global context file in vi
 #   workcell <agent> context restore  Restore an agent's context from image default
-#   workcell <agent> skill edit <name> Open an agent's global skill in vi
+#   workcell <agent> skill open <name> Open an agent's global skill in vi
 #   workcell <agent> skill restore <name>
 #                                      Restore a default global skill
 #   workcell opencode sessions export Export opencode sessions for current workspace
@@ -42,6 +42,37 @@ agent_volume_name() { echo "agent-workcell-$1"; }
 agent_image_name() { echo "${WORKCELL_IMAGE_PREFIX}-$1"; }
 valid_agent() { case "$1" in claude|opencode|codex|pi) return 0 ;; *) return 1 ;; esac; }
 
+load_workcell_config() {
+    WORKCELL_CONTEXT_REPO=""
+    if [ -f "$SCRIPT_DIR/config.sh" ]; then
+        source "$SCRIPT_DIR/config.sh"
+    fi
+}
+
+context_repo_mount_args=()
+prepare_context_repo_mount_args() {
+    load_workcell_config
+    context_repo_mount_args=()
+    if [ -n "${WORKCELL_CONTEXT_REPO:-}" ]; then
+        case "$WORKCELL_CONTEXT_REPO" in
+            /*) ;;
+            *)
+                echo "Error: WORKCELL_CONTEXT_REPO must be an absolute host path: $WORKCELL_CONTEXT_REPO" >&2
+                exit 1
+                ;;
+        esac
+        if [ ! -e "$WORKCELL_CONTEXT_REPO" ]; then
+            echo "Error: WORKCELL_CONTEXT_REPO does not exist: $WORKCELL_CONTEXT_REPO" >&2
+            exit 1
+        fi
+        if [ ! -d "$WORKCELL_CONTEXT_REPO" ]; then
+            echo "Error: WORKCELL_CONTEXT_REPO is not a directory: $WORKCELL_CONTEXT_REPO" >&2
+            exit 1
+        fi
+        context_repo_mount_args=(-v "${WORKCELL_CONTEXT_REPO}:/opt/workcell-context:rw")
+    fi
+}
+
 # Ensure common Docker CLI locations are on PATH.
 # IDE task runners (e.g. Zed, VS Code) may launch with a minimal environment
 # that doesn't include the directories where Docker Desktop installs its CLI.
@@ -63,7 +94,7 @@ Agent commands:
                     agent: claude | opencode | codex | pi
   <agent> build     Build/rebuild one agent sandbox image
   <agent> settings  Open an agent's settings/config in vi
-  <agent> context   Edit or restore an agent's global context file
+  <agent> context   Open or restore an agent's global context file
   <agent> skill     Manage an agent's global skills
   opencode sessions export  Export opencode sessions for current workspace
                             to .workcell/opencode-sessions/
@@ -108,13 +139,13 @@ Examples:
   workcell opencode settings
   workcell codex settings
   workcell pi settings
-  workcell claude context edit
-  workcell opencode context edit
-  workcell codex context edit
-  workcell pi context edit
+  workcell claude context open
+  workcell opencode context open
+  workcell codex context open
+  workcell pi context open
   workcell claude context restore
   workcell claude skill list
-  workcell claude skill edit chrome-integration
+  workcell claude skill open chrome-integration
   workcell claude skill restore chrome-integration
   workcell opencode sessions export
   workcell opencode sessions import
@@ -135,7 +166,7 @@ Subcommands:
   run        Run $agent in the current directory
   build      Build/rebuild the $agent sandbox image
   settings   Open $agent settings/config in vi
-  context    Edit or restore $agent global context
+  context    Open or restore $agent global context
   skill      Manage $agent global skills
 EOF
     if [[ "$agent" == "opencode" ]]; then
@@ -150,10 +181,10 @@ Examples:
   workcell $agent run --yolo --with-chrome --port 3000
   workcell $agent build --no-cache
   workcell $agent settings
-  workcell $agent context edit
+  workcell $agent context open
   workcell $agent context restore
   workcell $agent skill list
-  workcell $agent skill edit chrome-integration
+  workcell $agent skill open chrome-integration
   workcell $agent skill restore chrome-integration
 EOF
     if [[ "$agent" == "opencode" ]]; then
@@ -405,12 +436,12 @@ cmd_harness_skill() {
         echo ""
         echo "Usage:"
         echo "  workcell $agent skill list"
-        echo "  workcell $agent skill edit <skill-name>"
+        echo "  workcell $agent skill open <skill-name>"
         echo "  workcell $agent skill restore <skill-name>"
         echo ""
         echo "Subcommands:"
-        echo "  list      List $agent global skills"
-        echo "  edit      Open a persisted $agent global skill in vi"
+        echo "  list      List effective $agent global skills"
+        echo "  open      Open an in-effect $agent global skill in vi"
         echo "  restore   Replace a default $agent global skill with the image default"
         exit 0
     fi
@@ -428,7 +459,7 @@ cmd_harness_skill() {
         list)
             reject_extra_args "workcell $agent skill list" "$@"
             ;;
-        edit|restore)
+        open|restore)
             skill_name="${1:-}"
             if [ -z "$skill_name" ]; then
                 echo "Error: skill name is required"
@@ -450,79 +481,72 @@ cmd_harness_skill() {
 
     local skill_volume="$(agent_volume_name "$agent")"
     local skill_image="$(agent_image_name "$agent")"
-    local skill_root
+    local context_native context_source skills_native skills_source merged_skills
     case "$agent" in
-        claude) skill_root=/data/.claude/skills ;;
-        opencode) skill_root=/data/.config/opencode/skills ;;
-        codex) skill_root=/data/.codex/skills ;;
-        pi) skill_root=/data/.pi/agent/skills ;;
+        claude)
+            context_native=/data/.claude/CLAUDE.md
+            context_source=/data/.claude/workcell-context.md
+            skills_native=/data/.claude/skills
+            skills_source=/data/.claude/workcell-skills
+            ;;
+        opencode)
+            context_native=/data/.config/opencode/AGENTS.md
+            context_source=/data/.config/opencode/workcell-context.md
+            skills_native=/data/.config/opencode/skills
+            skills_source=/data/.config/opencode/workcell-skills
+            ;;
+        codex)
+            context_native=/data/.codex/AGENTS.md
+            context_source=/data/.codex/workcell-context.md
+            skills_native=/data/.agents/skills
+            skills_source=/data/.agents/workcell-skills
+            ;;
+        pi)
+            context_native=/data/.pi/agent/AGENTS.md
+            context_source=/data/.pi/agent/workcell-context.md
+            skills_native=/data/.pi/agent/skills
+            skills_source=/data/.pi/agent/workcell-skills
+            ;;
     esac
+    merged_skills="/tmp/workcell-merged-skills/$agent"
 
     ensure_docker_running
+    prepare_context_repo_mount_args
     case "$action" in
         list)
             docker run --rm --entrypoint sh \
                 -v "${skill_volume}:/data" \
-                -e "WORKCELL_SKILL_ROOT=$skill_root" \
+                "${context_repo_mount_args[@]}" \
+                -e "WORKCELL_CONTEXT_NATIVE=$context_native" \
+                -e "WORKCELL_CONTEXT_SOURCE=$context_source" \
+                -e "WORKCELL_SKILLS_NATIVE=$skills_native" \
+                -e "WORKCELL_SKILLS_SOURCE=$skills_source" \
+                -e "WORKCELL_MERGED_SKILLS=$merged_skills" \
                 "$skill_image" -lc '
                     set -e
-                    for root in /opt/agent-default-skills "$WORKCELL_SKILL_ROOT"; do
-                        [ -d "$root" ] || continue
-                        for skill_file in "$root"/*/SKILL.md; do
-                            [ -e "$skill_file" ] || [ -L "$skill_file" ] || continue
-                            skill_dir=${skill_file%/SKILL.md}
-                            basename "$skill_dir"
-                        done
-                    done | sort -u
+                    . /opt/workcell-context-lib.sh
+                    wc_prepare_all
+                    wc_skill_list
                 '
             ;;
-        edit|restore)
+        open|restore)
             docker run --rm -it --entrypoint sh \
                 -v "${skill_volume}:/data" \
                 -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
+                "${context_repo_mount_args[@]}" \
                 -e "WORKCELL_SKILL_ACTION=$action" \
-                -e "WORKCELL_SKILL_ROOT=$skill_root" \
                 -e "WORKCELL_SKILL_NAME=$skill_name" \
+                -e "WORKCELL_CONTEXT_NATIVE=$context_native" \
+                -e "WORKCELL_CONTEXT_SOURCE=$context_source" \
+                -e "WORKCELL_SKILLS_NATIVE=$skills_native" \
+                -e "WORKCELL_SKILLS_SOURCE=$skills_source" \
+                -e "WORKCELL_MERGED_SKILLS=$merged_skills" \
                 "$skill_image" -lc '
                     set -e
-                    skill_dir="$WORKCELL_SKILL_ROOT/$WORKCELL_SKILL_NAME"
-                    skill_file="$skill_dir/SKILL.md"
-                    default_skill_file="/opt/agent-default-skills/$WORKCELL_SKILL_NAME/SKILL.md"
-                    mkdir -p "$skill_dir"
-                    seed_skill() {
-                        if [ ! -e "$skill_file" ] && [ ! -L "$skill_file" ]; then
-                            if [ -f "$default_skill_file" ]; then
-                                cp "$default_skill_file" "$skill_file"
-                            else
-                                printf "# %s\n\n" "$WORKCELL_SKILL_NAME" > "$skill_file"
-                            fi
-                        fi
-                    }
-                    restore_skill() {
-                        if [ ! -f "$default_skill_file" ]; then
-                            echo "Error: not a default skill: $WORKCELL_SKILL_NAME"
-                            exit 1
-                        fi
-                        rm -f "$skill_file"
-                        cp "$default_skill_file" "$skill_file"
-                    }
-                    chown agent:agent "$WORKCELL_SKILL_ROOT" "$skill_dir" 2>/dev/null || true
+                    . /opt/workcell-context-lib.sh
                     case "$WORKCELL_SKILL_ACTION" in
-                        edit)
-                            seed_skill
-                            if [ -L "$skill_file" ]; then
-                                chown -h agent:agent "$skill_file" 2>/dev/null || true
-                            else
-                                chown agent:agent "$skill_file" 2>/dev/null || true
-                            fi
-                            echo "Editing persisted skill: $WORKCELL_SKILL_NAME"
-                            exec runuser -u agent -- vi "$skill_file"
-                            ;;
-                        restore)
-                            restore_skill
-                            chown agent:agent "$skill_file" 2>/dev/null || true
-                            echo "Restored persisted skill from image default: $WORKCELL_SKILL_NAME"
-                            ;;
+                        open) wc_skill_open "$WORKCELL_SKILL_NAME" ;;
+                        restore) wc_skill_restore "$WORKCELL_SKILL_NAME" ;;
                     esac
                 '
             ;;
@@ -644,17 +668,17 @@ cmd_harness_context() {
     shift
 
     if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-        echo "Manage an agent's global context file (inside the sandbox volume)"
+        echo "Manage an agent's global context file"
         echo ""
         echo "Usage:"
-        echo "  workcell $agent context edit"
+        echo "  workcell $agent context open"
         echo "  workcell $agent context restore"
         echo ""
         echo "Subcommands:"
-        echo "  edit      Open the persisted global context file in vi"
-        echo "  restore   Replace the persisted global context file with the image default"
+        echo "  open      Open the in-effect global context file in vi"
+        echo "  restore   Replace the in-effect global context file with the image default"
         echo ""
-        echo "Context files by agent:"
+        echo "Native context targets by agent:"
         echo "  claude    ~/.claude/CLAUDE.md"
         echo "  opencode  ~/.config/opencode/AGENTS.md"
         echo "  codex     ~/.codex/AGENTS.md"
@@ -671,8 +695,7 @@ cmd_harness_context() {
     shift
 
     case "$action" in
-        edit|restore)
-            ;;
+        open|restore) ;;
         *)
             echo "Error: unknown subcommand '$action' for 'workcell $agent context'"
             echo "Try: workcell $agent context --help"
@@ -684,70 +707,54 @@ cmd_harness_context() {
 
     local context_volume="$(agent_volume_name "$agent")"
     local context_image="$(agent_image_name "$agent")"
-    local context_dir context_name context_display
+    local context_native context_source skills_native skills_source merged_skills
     case "$agent" in
         claude)
-            context_dir=/data/.claude
-            context_name=CLAUDE.md
-            context_display='~/.claude/CLAUDE.md'
+            context_native=/data/.claude/CLAUDE.md
+            context_source=/data/.claude/workcell-context.md
+            skills_native=/data/.claude/skills
+            skills_source=/data/.claude/workcell-skills
             ;;
         opencode)
-            context_dir=/data/.config/opencode
-            context_name=AGENTS.md
-            context_display='~/.config/opencode/AGENTS.md'
+            context_native=/data/.config/opencode/AGENTS.md
+            context_source=/data/.config/opencode/workcell-context.md
+            skills_native=/data/.config/opencode/skills
+            skills_source=/data/.config/opencode/workcell-skills
             ;;
         codex)
-            context_dir=/data/.codex
-            context_name=AGENTS.md
-            context_display='~/.codex/AGENTS.md'
+            context_native=/data/.codex/AGENTS.md
+            context_source=/data/.codex/workcell-context.md
+            skills_native=/data/.agents/skills
+            skills_source=/data/.agents/workcell-skills
             ;;
         pi)
-            context_dir=/data/.pi/agent
-            context_name=AGENTS.md
-            context_display='~/.pi/agent/AGENTS.md'
+            context_native=/data/.pi/agent/AGENTS.md
+            context_source=/data/.pi/agent/workcell-context.md
+            skills_native=/data/.pi/agent/skills
+            skills_source=/data/.pi/agent/workcell-skills
             ;;
     esac
+    merged_skills="/tmp/workcell-merged-skills/$agent"
 
     ensure_docker_running
+    prepare_context_repo_mount_args
     docker run --rm -it --entrypoint sh \
         -v "${context_volume}:/data" \
         -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" \
+        "${context_repo_mount_args[@]}" \
         -e "WORKCELL_CONTEXT_ACTION=$action" \
-        -e "WORKCELL_CONTEXT_DIR=$context_dir" \
-        -e "WORKCELL_CONTEXT_NAME=$context_name" \
-        -e "WORKCELL_CONTEXT_PATH=$context_dir/$context_name" \
-        -e "WORKCELL_CONTEXT_DISPLAY=$context_display" \
+        -e "WORKCELL_CONTEXT_NATIVE=$context_native" \
+        -e "WORKCELL_CONTEXT_SOURCE=$context_source" \
+        -e "WORKCELL_SKILLS_NATIVE=$skills_native" \
+        -e "WORKCELL_SKILLS_SOURCE=$skills_source" \
+        -e "WORKCELL_MERGED_SKILLS=$merged_skills" \
         "$context_image" -lc '
             set -e
-            mkdir -p "$WORKCELL_CONTEXT_DIR"
-            context_path="$WORKCELL_CONTEXT_PATH"
-            seed_context() {
-                if [ ! -e "$context_path" ] && [ ! -L "$context_path" ]; then
-                    cp /opt/agent-context.md "$context_path"
-                fi
-            }
-            restore_context() {
-                rm -f "$context_path"
-                cp /opt/agent-context.md "$context_path"
-            }
-            chown agent:agent "$WORKCELL_CONTEXT_DIR" 2>/dev/null || true
+            . /opt/workcell-context-lib.sh
+            wc_prepare_skills
             case "$WORKCELL_CONTEXT_ACTION" in
-                edit)
-                    seed_context
-                    if [ -L "$context_path" ]; then
-                        chown -h agent:agent "$context_path" 2>/dev/null || true
-                    else
-                        chown agent:agent "$context_path" 2>/dev/null || true
-                    fi
-                    echo "Editing persisted context: $WORKCELL_CONTEXT_DISPLAY"
-                    echo "Image defaults seed this file only when it is absent; existing content is preserved."
-                    exec runuser -u agent -- vi "$context_path"
-                    ;;
-                restore)
-                    restore_context
-                    chown agent:agent "$context_path" 2>/dev/null || true
-                    echo "Restored persisted context from image default: $WORKCELL_CONTEXT_DISPLAY"
-                    ;;
+                open) wc_context_open ;;
+                restore) wc_context_restore ;;
             esac
         '
 }
