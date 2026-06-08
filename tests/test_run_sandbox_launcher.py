@@ -10,18 +10,20 @@ RUN_SANDBOX = REPO_ROOT / "scripts" / "run_sandbox.sh"
 
 
 class RunSandboxLauncherTests(unittest.TestCase):
+    def setUp(self):
+        self.config = REPO_ROOT / "config.sh"
+        self.original_config = self.config.read_text(encoding="utf-8") if self.config.exists() else None
+        self.config.unlink(missing_ok=True)
+        self.addCleanup(self.restore_repo_config)
+
+    def restore_repo_config(self):
+        if self.original_config is None:
+            self.config.unlink(missing_ok=True)
+        else:
+            self.config.write_text(self.original_config, encoding="utf-8")
+
     def with_repo_config(self, content: str):
-        config = REPO_ROOT / "config.sh"
-        original = config.read_text(encoding="utf-8") if config.exists() else None
-        config.write_text(content, encoding="utf-8")
-
-        def restore():
-            if original is None:
-                config.unlink(missing_ok=True)
-            else:
-                config.write_text(original, encoding="utf-8")
-
-        self.addCleanup(restore)
+        self.config.write_text(content, encoding="utf-8")
 
     def run_with_fake_docker(
         self,
@@ -122,6 +124,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             self.assertIn("--flutter-project-dir requires --with-flutter", result.stdout)
 
     def test_flutter_project_dir_must_exist_under_workspace(self):
+        self.with_repo_config("\n")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
 
@@ -137,6 +140,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             self.assertIn("Flutter project directory not found", result.stdout)
 
     def test_flutter_project_dir_must_be_relative(self):
+        self.with_repo_config("\n")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
 
