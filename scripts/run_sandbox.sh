@@ -139,10 +139,27 @@ artifacts_dir="${workspace_workcell_dir}/artifacts"
 tasks_dir="${workspace_workcell_dir}/tasks"
 sessions_dir="${workspace_workcell_dir}/sessions"
 workcell_gitignore="${workspace_workcell_dir}/.gitignore"
+workcell_ideas_file="${workspace_workcell_dir}/ideas.md"
+workcell_roadmap_file="${workspace_workcell_dir}/roadmap.md"
 workcell_env_file="${workspace_workcell_dir}/.env"
 session_mount_args=()
 
 mkdir -p "$workspace_workcell_dir" "$artifacts_dir" "$tasks_dir" "$sessions_dir"
+# Seed project planning files once. Do not overwrite because users intentionally curate them.
+if [ ! -e "$workcell_ideas_file" ]; then
+  cat > "$workcell_ideas_file" <<'EOF'
+# Ideas
+
+Possible future improvements yet to be properly evaluated. Agents must not modify this file without user approval.
+EOF
+fi
+if [ ! -e "$workcell_roadmap_file" ]; then
+  cat > "$workcell_roadmap_file" <<'EOF'
+# Roadmap
+
+Future direction not yet fully converted into task files. Agents must not modify this file without user approval.
+EOF
+fi
 # Seed project-local ignores once for generated workcell artifacts and runtime config.
 # Do not overwrite the file because users may intentionally version task notes or sessions.
 if [ ! -e "$workcell_gitignore" ]; then

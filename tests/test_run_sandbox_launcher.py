@@ -33,7 +33,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
         extra_env: dict[str, str] | None = None,
     ) -> str:
         fake_bin = workspace / "bin"
-        fake_bin.mkdir()
+        fake_bin.mkdir(exist_ok=True)
         docker_log = workspace / "docker.log"
         fake_docker = fake_bin / "docker"
         fake_docker.write_text(
@@ -220,6 +220,25 @@ class RunSandboxLauncherTests(unittest.TestCase):
             self.assertEqual(
                 (workspace / ".workcell" / ".gitignore").read_text(encoding="utf-8"),
                 ".DS_Store\n.env\nflutter-config.json\nartifacts/\n",
+            )
+
+    def test_workcell_planning_files_are_seeded_once(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            self.run_with_fake_docker(workspace)
+
+            ideas_file = workspace / ".workcell" / "ideas.md"
+            roadmap_file = workspace / ".workcell" / "roadmap.md"
+            self.assertIn("# Ideas", ideas_file.read_text(encoding="utf-8"))
+            self.assertIn("# Roadmap", roadmap_file.read_text(encoding="utf-8"))
+
+            ideas_file.write_text("# Ideas\n\n- Keep me.\n", encoding="utf-8")
+            roadmap_file.write_text("# Roadmap\n\n- Keep me too.\n", encoding="utf-8")
+            self.run_with_fake_docker(workspace)
+
+            self.assertEqual(ideas_file.read_text(encoding="utf-8"), "# Ideas\n\n- Keep me.\n")
+            self.assertEqual(
+                roadmap_file.read_text(encoding="utf-8"), "# Roadmap\n\n- Keep me too.\n"
             )
 
     def test_existing_gitignore_gets_env_entry(self):
