@@ -11,7 +11,9 @@ CLI = REPO_ROOT / "cli.sh"
 class SandboxImageSplitTests(unittest.TestCase):
     def setUp(self):
         self.config = REPO_ROOT / "config.sh"
-        self.original_config = self.config.read_text(encoding="utf-8") if self.config.exists() else None
+        self.original_config = (
+            self.config.read_text(encoding="utf-8") if self.config.exists() else None
+        )
         self.config.unlink(missing_ok=True)
         self.addCleanup(self.restore_repo_config)
 
@@ -32,9 +34,9 @@ class SandboxImageSplitTests(unittest.TestCase):
         fake_docker.write_text(
             "#!/bin/bash\n"
             "printf 'DOCKER' >> \"$DOCKER_LOG\"\n"
-            "for arg in \"$@\"; do printf '\\t%s' \"$arg\" >> \"$DOCKER_LOG\"; done\n"
+            'for arg in "$@"; do printf \'\\t%s\' "$arg" >> "$DOCKER_LOG"; done\n'
             "printf '\\n' >> \"$DOCKER_LOG\"\n"
-            "if [ \"${1:-}\" = image ] && [ \"${2:-}\" = inspect ] && [ \"${IMAGE_INSPECT_MISSING:-0}\" = 1 ]; then exit 1; fi\n"
+            'if [ "${1:-}" = image ] && [ "${2:-}" = inspect ] && [ "${IMAGE_INSPECT_MISSING:-0}" = 1 ]; then exit 1; fi\n'
             "exit 0\n",
             encoding="utf-8",
         )
@@ -56,17 +58,41 @@ class SandboxImageSplitTests(unittest.TestCase):
             with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
                 workspace = Path(temp_dir)
                 env, docker_log = self.fake_docker_env(workspace)
-                subprocess.run([str(CLI), agent, "run", "--", "--version"], cwd=workspace, env=env, check=True)
-                run_line = next(line for line in docker_log.read_text().splitlines() if line.startswith("DOCKER\trun\t-d\t"))
-                self.assertIn(f"\t-v\tagent-workcell-{agent}:/home/agent/persist\t", f"{run_line}\t")
-                self.assertIn("\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t", f"{run_line}\t")
-                self.assertTrue(run_line.endswith(f"\tlocal/agent-workcell-{agent}\t--version"))
+                subprocess.run(
+                    [str(CLI), agent, "run", "--", "--version"],
+                    cwd=workspace,
+                    env=env,
+                    check=True,
+                )
+                run_line = next(
+                    line
+                    for line in docker_log.read_text().splitlines()
+                    if line.startswith("DOCKER\trun\t-d\t")
+                )
+                self.assertIn(
+                    f"\t-v\tagent-workcell-{agent}:/home/agent/persist\t",
+                    f"{run_line}\t",
+                )
+                self.assertIn(
+                    "\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t",
+                    f"{run_line}\t",
+                )
+                self.assertTrue(
+                    run_line.endswith(f"\tlocal/agent-workcell-{agent}\t--version")
+                )
 
     def test_cli_run_builds_target_image_only_when_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace, image_inspect_missing=True)
-            subprocess.run([str(CLI), "codex", "run", "--", "--version"], cwd=workspace, env=env, check=True)
+            env, docker_log = self.fake_docker_env(
+                workspace, image_inspect_missing=True
+            )
+            subprocess.run(
+                [str(CLI), "codex", "run", "--", "--version"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             lines = docker_log.read_text().splitlines()
             self.assertIn("DOCKER\timage\tinspect\tlocal/agent-workcell-codex", lines)
             self.assertIn("DOCKER\tcompose\tbuild\tagent-workcell-base", lines)
@@ -77,7 +103,12 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "opencode", "run", "--", "--version"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "opencode", "run", "--", "--version"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             log = docker_log.read_text()
             self.assertIn("DOCKER\timage\tinspect\tlocal/agent-workcell-opencode", log)
             self.assertNotIn("DOCKER\tcompose\tbuild", log)
@@ -86,7 +117,12 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "pi", "build", "--no-cache"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "pi", "build", "--no-cache"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             self.assertIn(
                 "DOCKER\tps\nDOCKER\tcompose\tbuild\t--no-cache\tagent-workcell-base\nDOCKER\tcompose\tbuild\t--no-cache\tagent-workcell-pi",
                 docker_log.read_text(),
@@ -122,7 +158,9 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "pi", "settings"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "pi", "settings"], cwd=workspace, env=env, check=True
+            )
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-pi:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
@@ -135,8 +173,15 @@ class SandboxImageSplitTests(unittest.TestCase):
             repo.mkdir()
             self.with_repo_config(f'WORKCELL_CONTEXT_REPO="{repo}"\n')
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "codex", "context", "open"], cwd=workspace, env=env, check=True)
-            subprocess.run([str(CLI), "codex", "skill", "list"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "codex", "context", "open"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
+            subprocess.run(
+                [str(CLI), "codex", "skill", "list"], cwd=workspace, env=env, check=True
+            )
             log = docker_log.read_text()
             self.assertIn(f"\t-v\t{repo}:/opt/workcell-context:rw\t", f"{log}\t")
             self.assertNotIn("/opt/workcell-context:ro", log)
@@ -145,7 +190,12 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "codex", "context", "open"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "codex", "context", "open"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-codex:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
@@ -159,7 +209,12 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "claude", "context", "restore"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "claude", "context", "restore"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-claude:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
@@ -173,7 +228,12 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "opencode", "skill", "list"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "opencode", "skill", "list"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-opencode:/data\t", f"{log}\t")
             self.assertIn("\tlocal/agent-workcell-opencode\t", f"{log}\t")
@@ -185,7 +245,12 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "pi", "skill", "open", "chrome-integration"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "pi", "skill", "open", "chrome-integration"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-pi:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
@@ -199,7 +264,12 @@ class SandboxImageSplitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "claude", "skill", "restore", "chrome-integration"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "claude", "skill", "restore", "chrome-integration"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             log = docker_log.read_text()
             self.assertIn("\t-v\tagent-workcell-claude:/data\t", f"{log}\t")
             self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
@@ -213,10 +283,58 @@ class SandboxImageSplitTests(unittest.TestCase):
     def test_migrate_moves_legacy_session_dirs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            for name in ["claude-sessions", "opencode-sessions", "codex-sessions", "pi-sessions"]:
+            for name in [
+                "claude-sessions",
+                "opencode-sessions",
+                "codex-sessions",
+                "pi-sessions",
+            ]:
                 legacy_dir = workspace / ".workcell" / name
                 legacy_dir.mkdir(parents=True)
                 (legacy_dir / "session.json").write_text("{}\n", encoding="utf-8")
+            task_file = (
+                workspace
+                / ".workcell"
+                / "tasks"
+                / "20260608-165656-restructure-project-scoped-workcell-dir.md"
+            )
+            task_file.parent.mkdir(parents=True)
+            task_file.write_text(
+                "# Restructure Project-Scoped Workcell Directory\n"
+                "\n"
+                "- **Status:** in_progress\n"
+                "- **Created:** 2026-06-08 13:56 GMT-3\n"
+                "- **Updated:** 2026-06-08 14:06 GMT-3\n"
+                "\n"
+                "## Objective\n"
+                "\n"
+                "Restructure `.workcell/`.\n"
+                "\n"
+                "## Context\n"
+                "\n"
+                "Project-scoped data needs cleanup.\n"
+                "\n"
+                "## Plan\n"
+                "\n"
+                "- [ ] Convert tasks.\n"
+                "\n"
+                "## Next Steps\n"
+                "\n"
+                "- Run migration.\n"
+                "\n"
+                "## Log\n"
+                "\n"
+                "- `2026-06-08 14:06 GMT-3` | `pi/gpt-5.5` | Started.\n"
+                "\n"
+                "## Dependencies\n"
+                "\n"
+                "None.\n"
+                "\n"
+                "## Notes\n"
+                "\n"
+                "Keep concise.\n",
+                encoding="utf-8",
+            )
 
             result = subprocess.run(
                 [str(CLI), "migrate"],
@@ -229,21 +347,64 @@ class SandboxImageSplitTests(unittest.TestCase):
 
             self.assertIn("Migration complete.", result.stdout)
             for harness in ["claude", "opencode", "codex", "pi"]:
-                self.assertTrue((workspace / ".workcell" / "sessions" / harness / "session.json").is_file())
-            for name in ["claude-sessions", "opencode-sessions", "codex-sessions", "pi-sessions"]:
+                self.assertTrue(
+                    (
+                        workspace / ".workcell" / "sessions" / harness / "session.json"
+                    ).is_file()
+                )
+            for name in [
+                "claude-sessions",
+                "opencode-sessions",
+                "codex-sessions",
+                "pi-sessions",
+            ]:
                 self.assertFalse((workspace / ".workcell" / name).exists())
+            task_dir = (
+                workspace
+                / ".workcell"
+                / "tasks"
+                / "20260608-165656-restructure-project-scoped-workcell-dir"
+            )
+            self.assertFalse(task_file.exists())
+            self.assertTrue((task_dir / "task.md").is_file())
+            self.assertTrue((task_dir / "log.md").is_file())
+            self.assertIn(
+                "## Objective", (task_dir / "task.md").read_text(encoding="utf-8")
+            )
+            self.assertNotIn(
+                "## Log", (task_dir / "task.md").read_text(encoding="utf-8")
+            )
+            self.assertIn("Started.", (task_dir / "log.md").read_text(encoding="utf-8"))
 
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "opencode", "sessions", "export"], cwd=workspace, env=env, check=True)
-            (workspace / ".workcell" / "sessions" / "opencode").mkdir(parents=True, exist_ok=True)
-            (workspace / ".workcell" / "sessions" / "opencode" / "session.json").write_text("{}\n", encoding="utf-8")
-            subprocess.run([str(CLI), "opencode", "sessions", "import"], cwd=workspace, env=env, check=True)
+            subprocess.run(
+                [str(CLI), "opencode", "sessions", "export"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
+            (workspace / ".workcell" / "sessions" / "opencode").mkdir(
+                parents=True, exist_ok=True
+            )
+            (
+                workspace / ".workcell" / "sessions" / "opencode" / "session.json"
+            ).write_text("{}\n", encoding="utf-8")
+            subprocess.run(
+                [str(CLI), "opencode", "sessions", "import"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
             log = docker_log.read_text()
-            self.assertIn("\t-v\tagent-workcell-opencode:/home/agent/persist\t", f"{log}\t")
-            self.assertIn("\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t", f"{log}\t")
+            self.assertIn(
+                "\t-v\tagent-workcell-opencode:/home/agent/persist\t", f"{log}\t"
+            )
+            self.assertIn(
+                "\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t", f"{log}\t"
+            )
             self.assertIn("\tlocal/agent-workcell-opencode\t", f"{log}\t")
 
     def test_top_level_agent_scoped_commands_show_helpful_error(self):
@@ -262,7 +423,9 @@ class SandboxImageSplitTests(unittest.TestCase):
                     stderr=subprocess.STDOUT,
                 )
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn(f"Error: '{command}' must be scoped to an agent", result.stdout)
+                self.assertIn(
+                    f"Error: '{command}' must be scoped to an agent", result.stdout
+                )
                 self.assertIn(example, result.stdout)
 
     def test_command_groups_without_subcommand_show_help(self):
@@ -302,7 +465,10 @@ class SandboxImageSplitTests(unittest.TestCase):
             ["volume", "rm", "codex", "extra"],
         ]
         for command in commands:
-            with self.subTest(command=command), tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                self.subTest(command=command),
+                tempfile.TemporaryDirectory() as temp_dir,
+            ):
                 workspace = Path(temp_dir)
                 env, docker_log = self.fake_docker_env(workspace)
                 result = subprocess.run(
@@ -318,29 +484,59 @@ class SandboxImageSplitTests(unittest.TestCase):
                 self.assertFalse(docker_log.exists())
 
     def test_entrypoint_has_mismatch_guard(self):
-        entrypoint = (REPO_ROOT / "sandbox" / "entrypoint.sh").read_text(encoding="utf-8")
+        entrypoint = (REPO_ROOT / "sandbox" / "entrypoint.sh").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("WORKCELL_IMAGE_AGENT", entrypoint)
         self.assertIn("image/agent mismatch", entrypoint)
-        self.assertLess(entrypoint.index("image/agent mismatch"), entrypoint.index("workcell-agent-init.sh"))
+        self.assertLess(
+            entrypoint.index("image/agent mismatch"),
+            entrypoint.index("workcell-agent-init.sh"),
+        )
 
     def test_agent_context_init_uses_shared_context_lib_and_workcell_sources(self):
         expected = {
-            "claude.sh": ("/home/agent/persist/.claude/CLAUDE.md", "/home/agent/persist/.claude/workcell-context.md", "/home/agent/persist/.claude/workcell-skills"),
-            "opencode.sh": ("/home/agent/persist/.config/opencode/AGENTS.md", "/home/agent/persist/.config/opencode/workcell-context.md", "/home/agent/persist/.config/opencode/workcell-skills"),
-            "codex.sh": ("/home/agent/persist/.codex/AGENTS.md", "/home/agent/persist/.codex/workcell-context.md", "/home/agent/persist/.agents/workcell-skills"),
-            "pi.sh": ("/home/agent/persist/.pi/agent/AGENTS.md", "/home/agent/persist/.pi/agent/workcell-context.md", "/home/agent/persist/.pi/agent/workcell-skills"),
+            "claude.sh": (
+                "/home/agent/persist/.claude/CLAUDE.md",
+                "/home/agent/persist/.claude/workcell-context.md",
+                "/home/agent/persist/.claude/workcell-skills",
+            ),
+            "opencode.sh": (
+                "/home/agent/persist/.config/opencode/AGENTS.md",
+                "/home/agent/persist/.config/opencode/workcell-context.md",
+                "/home/agent/persist/.config/opencode/workcell-skills",
+            ),
+            "codex.sh": (
+                "/home/agent/persist/.codex/AGENTS.md",
+                "/home/agent/persist/.codex/workcell-context.md",
+                "/home/agent/persist/.agents/workcell-skills",
+            ),
+            "pi.sh": (
+                "/home/agent/persist/.pi/agent/AGENTS.md",
+                "/home/agent/persist/.pi/agent/workcell-context.md",
+                "/home/agent/persist/.pi/agent/workcell-skills",
+            ),
         }
         for script_name, tokens in expected.items():
             with self.subTest(script=script_name):
-                script = (REPO_ROOT / "sandbox" / "agent-init" / script_name).read_text(encoding="utf-8")
+                script = (REPO_ROOT / "sandbox" / "agent-init" / script_name).read_text(
+                    encoding="utf-8"
+                )
                 self.assertIn("/opt/workcell-context-lib.sh", script)
                 self.assertIn("wc_prepare_all", script)
                 for token in tokens:
                     self.assertIn(token, script)
 
     def test_agent_installers_are_not_in_base_dockerfile(self):
-        base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(encoding="utf-8")
-        forbidden = ["@earendil-works/pi-coding-agent", "opencode-linux", "codex-${CODEX_ARCH}", "claude.ai/install.sh"]
+        base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        forbidden = [
+            "@earendil-works/pi-coding-agent",
+            "opencode-linux",
+            "codex-${CODEX_ARCH}",
+            "claude.ai/install.sh",
+        ]
         for token in forbidden:
             self.assertNotIn(token, base)
 

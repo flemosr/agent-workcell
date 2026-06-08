@@ -774,6 +774,11 @@ cmd_migrate() {
         echo "  .workcell/codex-sessions    -> .workcell/sessions/codex"
         echo "  .workcell/pi-sessions       -> .workcell/sessions/pi"
         echo ""
+        echo "Moves legacy task files into per-task directories:"
+        echo "  .workcell/tasks/<timestamp>-<slug>.md -> .workcell/tasks/<timestamp>-<slug>/"
+        echo "    task.md contains task metadata and planning sections"
+        echo "    log.md contains the former Log section"
+        echo ""
         echo "Also moves the older .agent-sessions/claude directory if present and"
         echo "no Claude session destination exists. Existing destinations are never"
         echo "overwritten. Resolve any reported conflicts manually, then rerun."
@@ -812,12 +817,97 @@ cmd_migrate() {
     migrate_session_dir "$workcell_dir/pi-sessions" "$sessions_dir/pi" "Pi"
     migrate_session_dir "$(pwd)/.agent-sessions/claude" "$sessions_dir/claude" "legacy Claude"
 
+    local task_result
+    task_result=$(python3 - "$workcell_dir/tasks" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+tasks_dir = Path(sys.argv[1])
+if not tasks_dir.is_dir():
+    print("0 0")
+    raise SystemExit(0)
+
+pattern = re.compile(r"^\d{8}-\d{6}-.+\.md$")
+section_re = re.compile(r"^##\s+(.+?)\s*$")
+keep_sections = ["Objective", "Context", "Plan", "Next Steps", "Dependencies", "Notes"]
+moved = 0
+failed = 0
+
+for source in sorted(tasks_dir.glob("*.md")):
+    if not pattern.match(source.name):
+        continue
+    dest = source.with_suffix("")
+    if dest.exists():
+        print(f"Conflict: cannot migrate task file because destination exists: {dest}", file=sys.stderr)
+        failed = 1
+        continue
+
+    text = source.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    first_section = next((i for i, line in enumerate(lines) if section_re.match(line)), len(lines))
+    preamble = lines[:first_section]
+    sections = {}
+    current = None
+    buf = []
+
+    for line in lines[first_section:]:
+        match = section_re.match(line)
+        if match:
+            if current is not None:
+                sections[current] = buf
+            current = match.group(1)
+            buf = [line]
+        elif current is not None:
+            buf.append(line)
+    if current is not None:
+        sections[current] = buf
+
+    task_lines = list(preamble)
+    if task_lines and task_lines[-1].strip():
+        task_lines.append("\n")
+    for name in keep_sections:
+        section = sections.get(name)
+        if section:
+            task_lines.extend(section)
+            if task_lines and task_lines[-1].strip():
+                task_lines.append("\n")
+
+    title = preamble[0].strip().lstrip("# ") if preamble else dest.name
+    log_lines = [f"# {title} Log\n", "\n"]
+    log_section = sections.get("Log")
+    if log_section:
+        log_lines.extend(log_section[1:])
+    else:
+        log_lines.append("No log entries yet.\n")
+
+    dest.mkdir()
+    (dest / "task.md").write_text("".join(task_lines).rstrip() + "\n", encoding="utf-8")
+    (dest / "log.md").write_text("".join(log_lines).rstrip() + "\n", encoding="utf-8")
+    source.unlink()
+    print(f"Moved {source} -> {dest}/")
+    moved += 1
+
+print(f"{moved} {failed}")
+PY
+)
+    if [ -n "$task_result" ]; then
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^[0-9]+[[:space:]][0-9]+$ ]]; then
+                moved=$((moved + ${line%% *}))
+                failed=$((failed + ${line##* }))
+            else
+                echo "$line"
+            fi
+        done <<< "$task_result"
+    fi
+
     if [ "$failed" -ne 0 ]; then
         echo "Migration completed with conflicts." >&2
         exit 1
     fi
     if [ "$moved" -eq 0 ]; then
-        echo "No legacy session directories found."
+        echo "No legacy project layout entries found."
     else
         echo "Migration complete."
     fi
