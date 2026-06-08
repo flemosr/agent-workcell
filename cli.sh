@@ -25,6 +25,7 @@
 #   workcell volume backup --file <f> Backup all workcell volumes
 #   workcell volume restore --file <f> Restore all workcell volumes from backup
 #   workcell volume rm <scope>        Remove a workcell volume scope
+#   workcell migrate                  Migrate project .workcell/ layout
 #   workcell help                     Show this help message
 #
 # For detailed help on each command:
@@ -97,9 +98,9 @@ Agent commands:
   <agent> context   Open or restore an agent's global context file
   <agent> skill     Manage an agent's global skills
   opencode sessions export  Export opencode sessions for current workspace
-                            to .workcell/opencode-sessions/
+                            to .workcell/sessions/opencode/
   opencode sessions import  Import opencode sessions from
-                            .workcell/opencode-sessions/
+                            .workcell/sessions/opencode/
 
 Global commands:
   build             Build/rebuild all sandbox images
@@ -114,6 +115,7 @@ Global commands:
   volume backup     Backup all workcell volumes to a file
   volume restore    Restore all workcell volumes from a backup
   volume rm         Remove a workcell volume scope
+  migrate           Migrate project .workcell/ layout to the current format
   help              Show this help message
 
 Examples:
@@ -759,6 +761,68 @@ cmd_harness_context() {
         '
 }
 
+cmd_migrate() {
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        echo "Migrate project .workcell/ layout to the current format"
+        echo ""
+        echo "Usage:"
+        echo "  workcell migrate"
+        echo ""
+        echo "Moves legacy top-level session directories into .workcell/sessions/:"
+        echo "  .workcell/claude-sessions   -> .workcell/sessions/claude"
+        echo "  .workcell/opencode-sessions -> .workcell/sessions/opencode"
+        echo "  .workcell/codex-sessions    -> .workcell/sessions/codex"
+        echo "  .workcell/pi-sessions       -> .workcell/sessions/pi"
+        echo ""
+        echo "Also moves the older .agent-sessions/claude directory if present and"
+        echo "no Claude session destination exists. Existing destinations are never"
+        echo "overwritten. Resolve any reported conflicts manually, then rerun."
+        exit 0
+    fi
+
+    reject_extra_args "workcell migrate" "$@"
+
+    local workcell_dir="$(pwd)/.workcell"
+    local sessions_dir="$workcell_dir/sessions"
+    local failed=0
+    local moved=0
+    mkdir -p "$sessions_dir"
+
+    migrate_session_dir() {
+        local source_dir="$1"
+        local dest_dir="$2"
+        local label="$3"
+
+        if [ ! -d "$source_dir" ]; then
+            return 0
+        fi
+        if [ -e "$dest_dir" ]; then
+            echo "Conflict: cannot migrate $label sessions because destination exists: $dest_dir" >&2
+            failed=1
+            return 0
+        fi
+        mv "$source_dir" "$dest_dir"
+        echo "Moved $source_dir -> $dest_dir"
+        moved=$((moved + 1))
+    }
+
+    migrate_session_dir "$workcell_dir/claude-sessions" "$sessions_dir/claude" "Claude"
+    migrate_session_dir "$workcell_dir/opencode-sessions" "$sessions_dir/opencode" "OpenCode"
+    migrate_session_dir "$workcell_dir/codex-sessions" "$sessions_dir/codex" "Codex"
+    migrate_session_dir "$workcell_dir/pi-sessions" "$sessions_dir/pi" "Pi"
+    migrate_session_dir "$(pwd)/.agent-sessions/claude" "$sessions_dir/claude" "legacy Claude"
+
+    if [ "$failed" -ne 0 ]; then
+        echo "Migration completed with conflicts." >&2
+        exit 1
+    fi
+    if [ "$moved" -eq 0 ]; then
+        echo "No legacy session directories found."
+    else
+        echo "Migration complete."
+    fi
+}
+
 cmd_opencode_sessions_export() {
     if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
         echo "Export opencode sessions for the current workspace to a local backup"
@@ -767,7 +831,7 @@ cmd_opencode_sessions_export() {
         echo "  workcell opencode sessions export"
         echo ""
         echo "Writes one JSON file per session (keyed by session ID) to"
-        echo ".workcell/opencode-sessions/ in the current workspace."
+        echo ".workcell/sessions/opencode/ in the current workspace."
         echo ""
         echo "Sessions are auto-scoped to the current workspace: opencode derives"
         echo "the project ID from the git root-commit SHA, or uses \"global\" for"
@@ -780,7 +844,7 @@ cmd_opencode_sessions_export() {
 
     ensure_docker_running
     local project_name="${PWD##*/}"
-    local output_dir="$(pwd)/.workcell/opencode-sessions"
+    local output_dir="$(pwd)/.workcell/sessions/opencode"
     mkdir -p "$output_dir"
 
     docker run --rm --entrypoint sh \
@@ -800,10 +864,10 @@ cmd_opencode_sessions_export() {
             fi
             count=0
             for id in $ids; do
-                opencode export "$id" > ".workcell/opencode-sessions/$id.json"
+                opencode export "$id" > ".workcell/sessions/opencode/$id.json"
                 count=$((count + 1))
             done
-            echo "Exported $count session(s) to .workcell/opencode-sessions/"
+            echo "Exported $count session(s) to .workcell/sessions/opencode/"
         '
 }
 
@@ -814,7 +878,7 @@ cmd_opencode_sessions_import() {
         echo "Usage:"
         echo "  workcell opencode sessions import"
         echo ""
-        echo "Imports every .json file under .workcell/opencode-sessions/"
+        echo "Imports every .json file under .workcell/sessions/opencode/"
         echo "back into opencode's session store. Session IDs and project"
         echo "scoping are preserved from the JSON, so sessions restore to"
         echo "their original workspace as long as the git root-commit SHA"
@@ -827,9 +891,9 @@ cmd_opencode_sessions_import() {
 
     ensure_docker_running
     local project_name="${PWD##*/}"
-    local input_dir="$(pwd)/.workcell/opencode-sessions"
+    local input_dir="$(pwd)/.workcell/sessions/opencode"
     if [ ! -d "$input_dir" ] || [ -z "$(ls -A "$input_dir"/*.json 2>/dev/null)" ]; then
-        echo "No session files found in .workcell/opencode-sessions/"
+        echo "No session files found in .workcell/sessions/opencode/"
         exit 0
     fi
 
@@ -844,12 +908,12 @@ cmd_opencode_sessions_import() {
             set -e
             export PATH="/home/agent/.local/bin:$PATH"
             count=0
-            for f in .workcell/opencode-sessions/*.json; do
+            for f in .workcell/sessions/opencode/*.json; do
                 [ -e "$f" ] || continue
                 opencode import "$f" >/dev/null
                 count=$((count + 1))
             done
-            echo "Imported $count session(s) from .workcell/opencode-sessions/"
+            echo "Imported $count session(s) from .workcell/sessions/opencode/"
         '
 }
 
@@ -992,6 +1056,10 @@ case "$command" in
         exec "$SCRIPT_DIR/scripts/start-flutter-bridge.sh" "$@"
         ;;
 
+    migrate)
+        shift
+        cmd_migrate "$@"
+        ;;
 
     gpg)
         shift

@@ -137,11 +137,12 @@ workspace_root="$(pwd)"
 workspace_workcell_dir="${workspace_root}/${WORKCELL_DIR_NAME}"
 artifacts_dir="${workspace_workcell_dir}/artifacts"
 tasks_dir="${workspace_workcell_dir}/tasks"
+sessions_dir="${workspace_workcell_dir}/sessions"
 workcell_gitignore="${workspace_workcell_dir}/.gitignore"
 workcell_env_file="${workspace_workcell_dir}/.env"
 session_mount_args=()
 
-mkdir -p "$workspace_workcell_dir" "$artifacts_dir" "$tasks_dir"
+mkdir -p "$workspace_workcell_dir" "$artifacts_dir" "$tasks_dir" "$sessions_dir"
 # Seed project-local ignores once for generated workcell artifacts and runtime config.
 # Do not overwrite the file because users may intentionally version task notes or sessions.
 if [ ! -e "$workcell_gitignore" ]; then
@@ -155,21 +156,17 @@ fi
 
 case "$agent_cli" in
   claude)
-    legacy_session_host_dir="${workspace_root}/.agent-sessions/claude"
-    session_host_dir="${workspace_workcell_dir}/claude-sessions"
-    if [ ! -e "$session_host_dir" ] && [ -d "$legacy_session_host_dir" ]; then
-      mv "$legacy_session_host_dir" "$session_host_dir"
-    fi
+    session_host_dir="${sessions_dir}/claude"
     mkdir -p "$session_host_dir"
     session_mount_args=(
       -v "${session_host_dir}:/home/agent/persist/.claude/projects/-workspaces-${project_name}"
     )
     ;;
   opencode)
-    mkdir -p "${workspace_workcell_dir}/opencode-sessions"
+    mkdir -p "${sessions_dir}/opencode"
     ;;
   codex)
-    codex_session_dir="${workspace_workcell_dir}/codex-sessions"
+    codex_session_dir="${sessions_dir}/codex"
     mkdir -p "${codex_session_dir}/sessions" "${codex_session_dir}/archived_sessions"
     # Codex's Linux sandbox protects a missing project-root `.codex` path by
     # masking it, which can leave behind a zero-byte read-only file on the host.
@@ -188,7 +185,7 @@ case "$agent_cli" in
     )
     ;;
   pi)
-    pi_session_dir="${workspace_workcell_dir}/pi-sessions"
+    pi_session_dir="${sessions_dir}/pi"
     mkdir -p "$pi_session_dir"
     pi_session_key=$(python3 - "/workspaces/${project_name}" <<'PY'
 import re
