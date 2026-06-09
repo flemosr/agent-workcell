@@ -183,4 +183,4 @@ workcell volume rm codex
 workcell volume rm all
 ```
 
-Volume commands affect the persisted user data described in the README.
+Volume commands affect the Docker-volume user data described in [Persistence](persistence.md).

@@ -60,8 +60,10 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
 
 - [CLI reference](docs/cli.md) - command examples for running agents, integrations, settings,
   contexts, skills, migrations, and volumes.
-- [Context management](docs/context-management.md) - default context seeding, persistence,
-  shared context repos, and global skills.
+- [Context management](docs/context-management.md) - default context seeding, shared context repos,
+  and global skills.
+- [Persistence](docs/persistence.md) - host workspace data, per-harness volumes, `.workcell/`,
+  shared GPG storage, and backups.
 - [GPG setup](docs/gpg-setup.md) - verified Git commits from inside the workcell.
 - [Chrome integration](docs/chrome-integration.md) - host Chrome control for web development.
 - [Flutter integration](docs/flutter-integration.md) - in-container SDK and host bridge for
@@ -88,16 +90,14 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
 
 ## Persistence
 
-Workcell uses two persistence scopes:
+Workcell bind-mounts the host workspace and persists Workcell-managed user state in one Docker
+volume per agent harness plus a shared GPG volume. Project-scoped `.workcell/` data lives in the
+host workspace. Image-owned tools and SDKs update with the sandbox image, while user state in Docker
+volumes is preserved across container restarts and image rebuilds.
 
-- **Per-harness Docker volumes** store each agent's auth data, settings, context, skills, language
-  toolchains, Node versions, and package caches.
-- **The shared `agent-workcell-gpg` Docker volume** stores GPG signing keys when commit signing is
-  enabled.
-
-Image-owned tools and SDKs update with the sandbox image, while user state in Docker volumes is
-preserved across container restarts and image rebuilds. Use `workcell volume backup` and
-`workcell volume restore` to back up or restore persisted workcell data.
+Use `workcell volume backup` and `workcell volume restore` to back up or restore persisted Docker
+volume data. See [Persistence](docs/persistence.md) for the full persistence model, including what
+is and is not covered by volume backups.
 
 > **Security note.** Agent credentials are stored as plaintext inside Docker volumes. Treat
 > `agent-workcell-*` volumes and their backups as sensitive.
