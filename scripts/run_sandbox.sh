@@ -137,6 +137,7 @@ workspace_root="$(pwd)"
 workspace_workcell_dir="${workspace_root}/${WORKCELL_DIR_NAME}"
 artifacts_dir="${workspace_workcell_dir}/artifacts"
 tasks_dir="${workspace_workcell_dir}/tasks"
+task_status_dirs=(accepted current deferred dropped finished)
 sessions_dir="${workspace_workcell_dir}/sessions"
 workcell_gitignore="${workspace_workcell_dir}/.gitignore"
 workcell_ideas_file="${workspace_workcell_dir}/ideas.md"
@@ -145,6 +146,9 @@ workcell_env_file="${workspace_workcell_dir}/.env"
 session_mount_args=()
 
 mkdir -p "$workspace_workcell_dir" "$artifacts_dir" "$tasks_dir" "$sessions_dir"
+for task_status in "${task_status_dirs[@]}"; do
+  mkdir -p "${tasks_dir}/${task_status}"
+done
 # Seed project planning files once. Do not overwrite because users intentionally curate them.
 if [ ! -e "$workcell_ideas_file" ]; then
   cat > "$workcell_ideas_file" <<'EOF'

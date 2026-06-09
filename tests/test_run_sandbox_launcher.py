@@ -231,6 +231,8 @@ class RunSandboxLauncherTests(unittest.TestCase):
             roadmap_file = workspace / ".workcell" / "roadmap.md"
             self.assertIn("# Ideas", ideas_file.read_text(encoding="utf-8"))
             self.assertIn("# Roadmap", roadmap_file.read_text(encoding="utf-8"))
+            for status in ["accepted", "current", "deferred", "dropped", "finished"]:
+                self.assertTrue((workspace / ".workcell" / "tasks" / status).is_dir())
 
             ideas_file.write_text("# Ideas\n\n- Keep me.\n", encoding="utf-8")
             roadmap_file.write_text("# Roadmap\n\n- Keep me too.\n", encoding="utf-8")
