@@ -235,9 +235,10 @@ workcell migrate
 ```
 
 This temporary command migrates legacy project session directories from
-`.workcell/<harness>-sessions/` to `.workcell/sessions/<harness>/` and converts timestamped
-`.workcell/tasks/*.md` task files into `.workcell/tasks/<task>/task.md` plus `log.md`. Run it once
-in existing projects created with the older layout.
+`.workcell/<harness>-sessions/` to `.workcell/sessions/<harness>/`, converts timestamped
+`.workcell/tasks/*.md` task files into task directories with `task.md` plus `log.md`, and moves
+flat task directories under status directories. Run it once in existing projects created with the
+older layout.
 
 ### Volume Management
 
@@ -348,8 +349,10 @@ Each project gets a `.workcell/` directory for project-scoped agent state:
 - `.workcell/roadmap.md` - user-approved bullet list of next-direction items not yet fully
   converted into task files; bullets may include concise sub-points for crucial context, and agents
   should not modify it without user approval.
-- `.workcell/tasks/` - multi-agent task directories and scratch notes. Timestamped task
-  directories contain `task.md` for objective/planning state and `log.md` for history.
+- `.workcell/tasks/` - multi-agent task directories organized by status. Canonical status
+  directories are `accepted/`, `current/`, `deferred/`, `dropped/`, and `finished/`. Timestamped
+  task directories contain `task.md` for objective/planning state and `log.md` for history, and the
+  parent status directory should match the `Status` metadata in `task.md`.
 - `.workcell/flutter-config.json` - project-local Flutter bridge launch and connection settings
   when Flutter integration is used.
 
@@ -371,9 +374,14 @@ Example `.workcell/` layout:
 ├── ideas.md
 ├── roadmap.md
 ├── tasks/
-│   └── 20260608-165656-restructure-project-scoped-workcell-dir/
-│       ├── task.md
-│       └── log.md
+│   ├── accepted/
+│   ├── current/
+│   │   └── 20260608-165656-restructure-project-scoped-workcell-dir/
+│   │       ├── task.md
+│   │       └── log.md
+│   ├── deferred/
+│   ├── dropped/
+│   └── finished/
 └── flutter-config.json
 ```
 

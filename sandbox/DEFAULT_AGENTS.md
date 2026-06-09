@@ -64,7 +64,9 @@ Project-specific workcell data lives under `.workcell/`:
 - `.workcell/roadmap.md` - user-approved bullet list of next-direction items not yet fully
   converted into tasks; bullets may include concise sub-points for crucial context; do not modify
   without user approval.
-- `.workcell/tasks/` - shared task notes for multi-step work and handoffs.
+- `.workcell/tasks/` - shared task notes for multi-step work and handoffs, organized by status:
+  `accepted/`, `current/`, `deferred/`, `dropped/`, and `finished/`. A task directory's parent
+  status must match the `Status` metadata in its `task.md`.
 - `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
 
 Prefer timestamped artifact names so files sort chronologically and avoid collisions. For example:
