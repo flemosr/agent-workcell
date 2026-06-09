@@ -331,77 +331,20 @@ copy exists, the sandbox keeps using it and leaves further version upgrades to e
 
 ### Workspace-local data
 
-Each project gets a `.workcell/` directory for project-scoped agent state:
+Each project gets an agent-managed `.workcell/` directory for project-scoped state:
 
-- `.workcell/artifacts/` - temporary agent artifacts such as screenshots, logs, traces, and
-  generated previews. Agents may create optional subdirectories such as `screenshots/`, `logs/`,
-  and `mockups/` when that helps organize related files. Use timestamped filenames such as
-  `screenshots/20260429-132400-home-page.png`.
-- `.workcell/sessions/` - project-scoped agent session data, organized by harness:
-  - `.workcell/sessions/claude/` - bind-mounted Claude project sessions.
-  - `.workcell/sessions/opencode/` - exported OpenCode session backups.
-  - `.workcell/sessions/codex/` - workspace-local Codex conversation files.
-  - `.workcell/sessions/pi/` - bind-mounted Pi project sessions.
-- `.workcell/.env` - optional workspace-local environment variables to define for sandboxed agents.
-- `.workcell/ideas.md` - user-approved bullet list of possible future improvements yet to be
-  properly evaluated; bullets may include concise sub-points for crucial context, and agents should
-  not modify it without user approval.
-- `.workcell/roadmap.md` - user-approved bullet list of next-direction items not yet fully
-  converted into task files; bullets may include concise sub-points for crucial context, and agents
-  should not modify it without user approval.
-- `.workcell/tasks/` - multi-agent task directories organized by status. Canonical status
-  directories are `accepted/`, `current/`, `deferred/`, `dropped/`, and `finished/`. Timestamped
-  task directories contain `task.md` for objective/planning state and `log.md` for history, and the
-  parent status directory should match the `Status` metadata in `task.md`.
-- `.workcell/flutter-config.json` - project-local Flutter bridge launch and connection settings
-  when Flutter integration is used.
+- `.workcell/artifacts/` - temporary or heavy agent artifacts.
+- `.workcell/sessions/` - project-scoped agent session data.
+- `.workcell/.env` - optional workspace-local environment variables for sandboxed agents.
+- `.workcell/ideas.md` - possible future improvements.
+- `.workcell/roadmap.md` - next-direction items not yet converted into tasks.
+- `.workcell/tasks/` - multi-agent task directories.
+- `.workcell/flutter-config.json` - Flutter bridge launch and connection settings.
 
-Example `.workcell/` layout:
-
-```text
-.workcell/
-├── .gitignore
-├── .env
-├── artifacts/
-│   ├── screenshots/
-│   ├── logs/
-│   └── mockups/
-├── sessions/
-│   ├── claude/
-│   ├── codex/
-│   ├── opencode/
-│   └── pi/
-├── ideas.md
-├── roadmap.md
-├── tasks/
-│   ├── accepted/
-│   ├── current/
-│   │   └── 20260608-165656-restructure-project-scoped-workcell-dir/
-│   │       ├── task.md
-│   │       └── log.md
-│   ├── deferred/
-│   ├── dropped/
-│   └── finished/
-└── flutter-config.json
-```
-
-On first run, the launcher creates `.workcell/.gitignore` if it does not already exist:
-
-```gitignore
-.DS_Store
-.env
-flutter-config.json
-artifacts/
-```
-
-When `.workcell/.env` exists, `workcell <agent> run` parses it as dotenv-style `KEY=VALUE`
-entries and passes the values into the sandboxed agent environment. Blank lines and comments are
-ignored, `export KEY=VALUE` is accepted, quoted values are unquoted, and invalid lines stop the
-launch with an error. Launcher-controlled variables such as the selected agent, timezone, exposed
-ports, and integration settings take precedence over duplicate names in `.workcell/.env`.
-
-It is recommended to gitignore `.workcell/` in the parent project repository. If you want version
-control for local agent state, initialize a separate Git repository inside `.workcell/`.
+On first run, the launcher creates `.workcell/.gitignore` to keep transient files such as
+`.env`, `flutter-config.json`, and `artifacts/` out of version control. It is recommended to
+gitignore `.workcell/` in the parent project repository. If you want version control for local
+agent state, initialize a separate Git repository inside `.workcell/`.
 
 ### OpenCode session backup
 

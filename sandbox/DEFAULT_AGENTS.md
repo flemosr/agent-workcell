@@ -49,33 +49,9 @@ Two kinds of data persist between sessions:
 1. **Workspace data:** the mounted project directory, including `.workcell/`.
 2. **User data:** Docker volume data under `~/persist/`, symlinked into expected home paths.
 
-Project-specific workcell data lives under `.workcell/`:
+Project-specific workcell data lives under `.workcell/`. Load the `project-management` skill before working with `.workcell/ideas.md`, `.workcell/roadmap.md`, or `.workcell/tasks/`; that skill contains the detailed layout and artifact-placement rules.
 
-- `.workcell/artifacts/` - temporary artifacts from agent work, such as screenshots, logs, traces, and generated previews. Agents may create optional subdirectories such as `screenshots/`, `logs/`, and `mockups/` when that helps organize related files. Put throwaway files here instead of the repo root.
-- `.workcell/.env` - optional workspace-local environment variables loaded into sandboxed agent sessions. Treat it as secret-bearing and leave it ignored by Git.
-- `.workcell/sessions/` - project-scoped agent session data, organized by harness:
-  - `.workcell/sessions/pi/` - bind-mounted Pi project sessions when running the Pi harness.
-  - `.workcell/sessions/opencode/` - exported OpenCode session backups.
-  - `.workcell/sessions/codex/` - workspace-local Codex conversation files when running the Codex harness.
-  - `.workcell/sessions/claude/` - bind-mounted Claude project sessions when running the Claude harness.
-- `.workcell/ideas.md` - user-approved bullet list of possible future improvements yet to be
-  properly evaluated; bullets may include concise sub-points for crucial context; do not modify
-  without user approval.
-- `.workcell/roadmap.md` - user-approved bullet list of next-direction items not yet fully
-  converted into tasks; bullets may include concise sub-points for crucial context; do not modify
-  without user approval.
-- `.workcell/tasks/` - shared task notes for multi-step work and handoffs, organized by status:
-  `accepted/`, `current/`, `deferred/`, `dropped/`, and `finished/`. A task directory's parent
-  status must match the `Status` metadata in its `task.md`.
-- `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
-
-Prefer timestamped artifact names so files sort chronologically and avoid collisions. For example:
-
-```text
-.workcell/artifacts/screenshots/20260429-132400-home-page.png
-.workcell/artifacts/logs/20260429-132405-test-output.txt
-.workcell/artifacts/mockups/20260429-132410-dashboard-concept.png
-```
+Treat `.workcell/.env` as secret-bearing if present. Flutter bridge runtime settings may appear in `.workcell/flutter-config.json` when Flutter integration is used.
 
 Important persisted user paths:
 
