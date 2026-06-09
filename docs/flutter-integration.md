@@ -1,31 +1,46 @@
 # Flutter Integration
 
-The workcell supports Flutter development in two ways:
+Agent Workcell supports Flutter development in two complementary ways:
 
-- **In-container Flutter SDK** — `flutter test`, `flutter analyze`, `dart format`, and `flutter pub`
-  run directly inside the container with no host setup required.
-- **Host Flutter bridge** — for native/device work, a bridge runs host-side `flutter` commands
-  against simulators, emulators, desktop apps, or devices while agents edit code in the container.
+- **In-container Flutter SDK** — tests, analysis, formatting, code generation, and package
+  management run inside the sandbox with no host Flutter setup required.
+- **Host Flutter bridge** — native/device runs use Flutter on the host machine while the agent edits
+  code in the container workspace.
 
 For Flutter web, use [Chrome integration](chrome-integration.md) instead.
 
-## In-Container Flutter SDK
+## In-container Flutter SDK
 
-A Flutter SDK is bundled with the container image. Agents can run tests, static analysis,
-formatting, and package management against any workspace project with no host setup required.
-The container puts `flutter` and `dart` on `PATH` through workcell wrappers that delegate to the
-image-baked SDK under `/opt/flutter-sdk`. Those wrappers automatically repair host-generated
-`.dart_tool/package_config.json` metadata before local SDK commands.
-The rest of this document covers the host bridge for native/device targets.
+Workcell images include Flutter and Dart. Inside a sandbox, agents can run commands such as:
+
+```bash
+flutter test
+flutter analyze
+dart format .
+flutter pub get
+```
+
+These commands use the SDK bundled with the Workcell image and are suitable for normal source-level
+verification. Pub packages are cached in the selected harness's persisted Docker volume.
+
+## Host Flutter bridge
+
+Native/device targets require host-side tooling such as Xcode, Android Studio, simulators,
+emulators, desktop windows, or physical devices. The Flutter bridge connects the sandbox to a host
+Flutter process so an agent can launch, attach to, hot reload, capture screenshots, and perform
+supported UI interactions without broad host shell access.
+
+The bridge is intended for native/device targets only. It is not needed for tests, analysis,
+formatting, or Flutter web.
 
 ## Prerequisites
 
 - Flutter SDK installed on the host machine.
-- At least one configured Flutter target, such as iOS Simulator, Android Emulator, macOS desktop,
-  or a physical device.
+- At least one configured Flutter target, such as iOS Simulator, Android Emulator, macOS desktop, or
+  a physical device.
 - macOS host for the primary supported path. Linux Android Emulator support can follow.
-- For macOS desktop UI automation and screenshots, allow the host terminal or agent process in
-  macOS Accessibility and Screen Recording privacy settings when prompted.
+- For macOS desktop UI automation and screenshots, host privacy permissions such as Accessibility
+  and Screen Recording may be required.
 
 ## Setup
 
@@ -35,7 +50,7 @@ Create your local config file if it does not exist:
 cp config.template.sh config.sh
 ```
 
-The default Flutter bridge settings are:
+Default bridge settings are:
 
 ```bash
 FLUTTER_DEFAULT_BRIDGE_PORT=8765
@@ -62,8 +77,8 @@ Project-specific Flutter run settings can live in `.workcell/flutter-config.json
 }
 ```
 
-The bridge updates the same file with runtime `token` and `port` values when it starts. When
-`--with-flutter` starts a bridge, the bridge port is selected from:
+When a bridge starts, Workcell also writes runtime connection details such as `token` and `port` to
+that file. The bridge port is selected from:
 
 1. `--bridge-port`, if supplied.
 2. `.workcell/flutter-config.json`.
@@ -87,13 +102,13 @@ workcell codex run --with-flutter --flutter-project-dir ./gui
 
 This automatically:
 
-1. Starts a Flutter host bridge HTTP server on the selected port.
+1. Starts the host Flutter bridge on the selected port.
 2. Generates a per-session bearer token.
-3. Makes the bridge available to the sandboxed agent.
+3. Makes the bridge available inside the sandbox.
 4. Mounts the bridge log file for troubleshooting.
-5. Cleans up the bridge started by the workcell when the session exits.
+5. Cleans up the bridge started by Workcell when the session exits.
 
-Use `--bridge-port` to select the bridge port for one run:
+Use `--bridge-port` to select a bridge port for one run:
 
 ```bash
 workcell claude run --with-flutter --bridge-port 8765
@@ -101,16 +116,16 @@ workcell opencode run --yolo --with-flutter --bridge-port 8766
 ```
 
 `--with-flutter` and `--with-chrome` cannot be used together. Use `--with-chrome` for Flutter web
-and `--with-flutter` for native/device targets. In Flutter mode, `--port` still exposes a container
-dev-server port to the host:
+and `--with-flutter` for native/device targets. In Flutter mode, `--port` can still expose a
+container dev-server port to the host:
 
 ```bash
 workcell codex run --with-flutter --bridge-port 8766 --port 3000
 ```
 
-## Start the Bridge Separately
+## Start the bridge separately
 
-Start the bridge independently if you want it to keep running across workcell sessions:
+Start the bridge independently if you want it to keep running across Workcell sessions:
 
 ```bash
 # Start using defaults and project-local settings
@@ -122,148 +137,74 @@ workcell start-flutter-bridge --flutter-project-dir ./gui
 ```
 
 Then run the workcell without `--with-flutter`. The launcher writes connection details to
-`.workcell/flutter-config.json`, and future workcell sessions can reuse those connection details.
-The bridge starts without a selected device; the agent can choose one during the session.
+`.workcell/flutter-config.json`, and future sessions can reuse those connection details.
 
-Agents can restart a reachable bridge without host shell access:
+## What agents can do through the bridge
 
-```bash
-flutterctl restart-bridge
+Agents receive detailed bridge workflow guidance through the bundled `flutter-integration` skill.
+At a high level, the bridge supports:
+
+- listing host Flutter devices;
+- launching or attaching to a Flutter app;
+- hot reload and hot restart;
+- reading recent Flutter logs;
+- screenshots for supported targets;
+- limited UI inspection and interaction on supported macOS-hosted targets.
+
+The bridge exposes a fixed-purpose API. It does not provide arbitrary host command execution.
+
+## UI automation and screenshots
+
+UI automation support is intentionally narrow. It is currently focused on macOS hosts targeting iOS
+Simulator and macOS desktop apps. Android, Linux desktop, Windows desktop, physical iOS, Flutter
+web, and non-macOS hosts are not supported by the bridge UI action API.
+
+For reliable agent-driven UI interaction, app code should expose stable Flutter semantics
+identifiers on important controls and containers, for example:
+
+```dart
+Semantics(
+  identifier: 'login_button',
+  child: ElevatedButton(
+    onPressed: signIn,
+    child: const Text('Sign in'),
+  ),
+)
 ```
 
-This authenticated command re-execs the existing host bridge process with the same project, port,
-token, target, and run arguments.
+Screenshots are supported when a Flutter app is running under the bridge. Mobile targets use
+Flutter's device screenshot support. On macOS desktop, screenshots capture only the Flutter app
+window; if the window cannot be found or macOS Screen Recording permission blocks capture, the
+request fails instead of falling back to a full-screen screenshot.
 
-Launch iOS Simulators with the exact device id reported by Flutter:
-
-```bash
-flutterctl devices
-flutterctl launch --device <ios-simulator-uuid>
-```
-
-`--device ios` only works if Flutter reports a device whose name or id matches `ios`; typical
-iOS Simulator devices use CoreSimulator UUIDs. If launch fails, `flutterctl status` reports the
-bridge state and `flutterctl logs` shows the underlying host `flutter run` output.
-
-`flutterctl hot-reload` and `flutterctl hot-restart` are command-send operations. They write `r` or
-`R` to the host Flutter process and return after the command is sent, not after compilation and
-frame rendering are complete. Before screenshots or UI automation, wait briefly or poll for the
-expected UI with `flutterctl wait`.
-
-The bridge checks `.dart_tool/package_config.json` before `launch`, `attach`, `hot-reload`, and
-`hot-restart`. If package roots point to container-only locations or the metadata is missing, it
-runs host-side `flutter pub get` first. This allows agents to alternate between in-container SDK
-commands and host bridge runs without manually deleting `.dart_tool` or `build`.
-
-## UI Automation
-
-The bridge currently supports host Flutter workflows from macOS hosts only. UI automation is scoped
-to macOS desktop apps and iOS Simulator targets on those hosts. macOS desktop automation uses host
-Accessibility and Screen Recording permissions, so the first run may trigger privacy prompts. iOS
-Simulator coordinate taps require the host Simulator window to be visible and unminimized.
-
-Prefer stable semantics identifiers for agent-driven Flutter UI interactions when the app can
-provide them. Use `Semantics(identifier: 'login_button', child: ...)` on controls and important
-containers so selectors are independent of visible copy, localization, and layout changes. Useful
-examples: `login_button`, `email_field`, `settings_tab`, `todo_list`, and `delete_item_0`.
-When building or modifying Flutter UI, add a `Semantics.identifier` to every element that should be
-selectable by automation. A `ValueKey` alone is useful for Flutter widget tests, but it is not the
-automation selector contract for the bridge.
-For macOS desktop automation, ensure the app actually generates a semantics tree. Flutter desktop
-may skip semantics until assistive technology requests it; automation-ready debug builds can force
-generation after `WidgetsFlutterBinding.ensureInitialized()` with a retained
-`SemanticsBinding.instance.ensureSemantics()` handle.
-
-UI automation is currently scoped to iOS Simulator and macOS desktop backends on macOS hosts.
-Android, Linux desktop, Windows desktop, physical iOS, Flutter web, and non-macOS hosts are not
-supported by the Flutter bridge UI action API.
-
-iOS Simulator supports:
-
-- `flutterctl inspect` and `flutterctl wait` with `--key` selectors through Flutter VM-service
-  semantics identifiers. `--text` uses Flutter VM-service inspector text data.
-- `flutterctl tap --x <x> --y <y>` in `simulator-window-points`, relative to
-  `status.ui_automation.screen.simulator_window`.
-- `flutterctl tap --key <key>` through Flutter VM-service semantics identifiers, defaulting to the
-  semantics rect center after mapping it into the visible host Simulator window.
-- `flutterctl tap --text <text>` through Flutter inspector selectors, with widget screenshot
-  matching when available and the same mapped rectangle-center fallback.
-- `flutterctl type "text"` into the currently focused control. The bridge sends host keystrokes to
-  the Simulator, similar to the macOS desktop typing backend.
-- `flutterctl press <key>` for focused key input through the host Simulator process.
-- `flutterctl scroll --move <top|up|down>` as a page-key approximation through host key dispatch.
-  `top` sends `home`, `up` sends `pageup`, and `down` sends `pagedown`. This is not pixel-accurate
-  scrolling.
-- `flutterctl ios-map` as a read-only diagnostic for native screenshot size, Simulator window
-  bounds, host-window screenshot dimensions, sampled device-content matching, host Simulator
-  Accessibility frames when available, Flutter inspector root size, and coordinate estimates.
-
-When multiple iOS Simulators are booted, launch or attach with an explicit device id. The bridge
-uses that selected id for native screenshot probes and prefers the visible Simulator window whose
-title matches the selected Flutter device name.
-
-iOS semantics and inspector rectangles are reported in root `flutter-logical-points`; selector taps
-map them to `simulator-window-points` at action time. For `--key` selectors, the bridge composes
-ancestor semantics offsets so descendants in overlays, dialogs, and bottom sheets are reported in
-the same root coordinate space as top-level controls. Semantics identifiers are preferred because
-their rects reflect Flutter semantics geometry and have proven more reliable for bottom sheets and
-overlays than inspector layout rectangles. Typing requires the intended text field to already be
-focused. After tapping a text field, wait briefly before typing so the iOS keyboard and focused
-input are ready. The keystroke backend avoids the iOS paste permission prompt, but may be less
-suitable for long text or unusual characters than a future paste-based implementation.
-
-On macOS desktop, `flutterctl inspect --key`, `wait --key`, and `tap --key` also use Flutter
-VM-service semantics identifiers. Key selector taps use the matched semantics rect center in
-`app-window-points`. Text selectors continue to use host Accessibility plus Flutter inspector text
-and selected tooltip labels when a VM service is available. If `inspect --key` returns no matches
-and the semantics dump says semantics are not generated, enable semantics in the app or turn on a
-host assistive technology before relying on key selectors.
-
-The current scroll research points to XCTest/XCUI as Apple's supported gesture automation surface:
-`XCUICoordinate` supports swipes, coordinate scrolling, and press-then-drag gestures. Apple's
-`simctl` documentation still points users to `simctl io` for screenshots and video, and the bridge's
-fixed host probes have not found a direct `simctl` scroll or gesture primitive. The current
-`flutterctl scroll` implementation intentionally uses the simpler Simulator page-key behavior; a
-future precise scroll backend should be evaluated as either a minimal XCTest/XCUI helper or a
-constrained host-window drag implementation.
-
-## Screenshots
-
-The bridge supports screenshots for native/device targets when a Flutter app is running under the
-bridge. On iOS Simulator and other mobile targets, screenshots use Flutter's device screenshot
-support. On macOS desktop, screenshots capture only the Flutter app window. If the app window cannot
-be found or macOS Screen Recording permission blocks capture, the request fails instead of falling
-back to a full-screen screenshot.
-
-## How It Works
+## How it works
 
 ```text
 HOST
 
-Flutter Bridge HTTP API, usually 0.0.0.0:8765 with bearer-token auth
+Flutter bridge HTTP API, usually 0.0.0.0:8765 with bearer-token auth
   - flutter run / flutter attach subprocess management
-  - screenshots (`flutter screenshot` for mobile targets; app-window capture for macOS desktop)
+  - screenshots
   - flutter devices
   - hot reload / hot restart
-  - UI automation capability/status and action API
+  - limited UI automation actions
 
-iOS Simulator / Android Emulator / macOS desktop / device
+Flutter SDK, simulators, emulators, desktop apps, or devices
 
 CONTAINER
 
-Sandboxed agent -> Flutter bridge
+Sandboxed agent -> fixed-purpose bridge API
 ```
 
-The host owns Flutter SDK execution for native/device builds, simulators, emulators, desktop
-windows, and OS-level automation permissions. The container owns source edits, in-container
-SDK tooling (tests, analysis, formatting), and calls to the fixed-purpose bridge API.
+The host owns native/device Flutter execution and OS-level automation permissions. The container
+owns source edits, in-container Flutter/Dart tooling, and authenticated calls to the bridge API.
 
 ## Limitations
 
-- One bridge per sandbox/agent. Multiple sandboxes should use distinct bridge ports and run from
-  the corresponding host Flutter project directories.
+- One bridge is intended for one sandbox/agent. Multiple sandboxes should use distinct bridge ports
+  and run from the corresponding host Flutter project directories.
 - macOS is the primary supported host platform.
-- Flutter web is handled by Chrome/CDP integration.
+- Flutter web is handled by Chrome integration, not the Flutter bridge.
 - The bridge operates on a single project directory configured at startup.
 - The bridge does not expose arbitrary host command execution.
 - Concurrent bridge instances need manually configured ports.
@@ -278,9 +219,10 @@ cat /tmp/flutter-bridge.log
 
 Common issues:
 
-- Cannot reach Flutter bridge: start it with `workcell start-flutter-bridge` or
-  `workcell <agent> run --with-flutter`.
-- Bridge is reachable but stale after code changes: run `flutterctl restart-bridge`.
+- Cannot reach Flutter bridge: start the workcell with `--with-flutter` or run
+  `workcell start-flutter-bridge` from the Flutter project directory.
+- Bridge is reachable but stale after Workcell changes: ask the agent to restart the bridge, or
+  restart it from the host.
 - Missing bridge token: when using `--with-flutter`, the token is auto-generated. For a separate
   bridge, start it from the workspace so `.workcell/flutter-config.json` is available.
 - Concurrent sandbox needs a bridge: start a separate bridge on a different port.
@@ -289,5 +231,4 @@ Common issues:
 - Flutter subprocess fails to start: ensure the project compiles and the target device is
   available. Run `flutter doctor -v` on the host.
 - Host bridge `flutter: command not found`: set host `FLUTTER_PATH` in `config.sh`.
-- Container `flutter: command not found`: restart with an updated workcell image; the entrypoint
-  re-asserts `/opt/flutter-sdk/bin` and workcell wrappers on `PATH`.
+- Container `flutter: command not found`: rebuild or update the Workcell image.
