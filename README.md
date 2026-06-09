@@ -69,69 +69,35 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
 
 ## How It Works
 
-- Your current directory is mounted at `/workspaces/<project-name>` inside the container.
-- Workspace-local workcell files for the current project live under `.workcell/`.
-- Pi auth, settings, packages/extensions, and the persisted Pi install prefix live in the Docker
-  volume under `~/.pi/agent/`, with project sessions bind-mounted from `.workcell/sessions/pi/`.
-- OpenCode session history and storage persist in the Docker volume under
-  `~/.local/share/opencode/`.
-- Codex auth, config, history, logs, and session data persist under `~/.codex/`, with project
-  conversation files bind-mounted from `.workcell/sessions/codex/`.
-- Claude session history for the project is stored in `.workcell/sessions/claude/`.
-- Agent settings, credentials, Rust toolchains, Node versions, and language caches persist in the
-  selected agent's Docker volume (`agent-workcell-pi`, `agent-workcell-opencode`,
-  `agent-workcell-codex`, or `agent-workcell-claude`).
-- GPG keys persist in the shared `agent-workcell-gpg` Docker volume.
-- The container runs as a non-root `agent` user.
-- Filesystem access is isolated to the mounted project directory.
-- Host services are reachable from the container through `host.docker.internal`.
-- Dev server ports can be exposed with `--port <port>`.
-- `/opt/agent-context.md` is the image default used to seed persisted context files when they
-  are absent: `~/.pi/agent/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.codex/AGENTS.md`,
-  and `~/.claude/CLAUDE.md`. Existing persisted context files are never overwritten. Default
-  Chrome integration, Flutter integration, and project-management workflow skills are seeded into each
-  harness's global skills directory only when absent; user edits and user-added skills are preserved.
+- Only the directory where you run `workcell <agent> run` is mounted into the container at
+  `/workspaces/<project-name>`; agents do not get access to all host files.
+- Each harness has its own independent persisted Docker volume for auth data, settings, Rust
+  toolchains, Node versions, and language caches.
+- Project-scoped Pi, Codex, and Claude session data lives under `.workcell/sessions/`. OpenCode
+  sessions persist in its harness volume and can be moved through `workcell opencode sessions export`
+  and `workcell opencode sessions import`.
+- GPG keys persist separately in the shared `agent-workcell-gpg` Docker volume.
+- Workcell volumes can be backed up and restored with `workcell volume backup` and
+  `workcell volume restore`.
+- Host services are reachable from the container through `host.docker.internal`; dev-server ports
+  can be exposed to the host with `--port <port>`.
+- Default context and global skills are seeded into each harness only when absent, informing agents
+  about sandbox tools and constraints while preserving user edits. Use `workcell <agent> context`
+  and `workcell <agent> skill` to manage them; an optional shared context repo can be mounted
+  across harnesses and workspaces.
 
 ## Persistence
 
-User-level data is split across per-agent Docker volumes. The selected agent volume is mounted at
-`/home/agent/persist` inside the container, and the shared GPG volume is mounted at
-`/home/agent/persist/.gnupg`.
+Workcell uses two persistence scopes:
 
-Volumes:
+- **Per-harness Docker volumes** store each agent's auth data, settings, context, skills, language
+  toolchains, Node versions, and package caches.
+- **The shared `agent-workcell-gpg` Docker volume** stores GPG signing keys when commit signing is
+  enabled.
 
-- `agent-workcell-pi`
-- `agent-workcell-opencode`
-- `agent-workcell-codex`
-- `agent-workcell-claude`
-- `agent-workcell-gpg` (shared signing keys only)
-
-Important persisted paths include:
-
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, global
-  context, and global skills. Current-project Pi sessions are bind-mounted from `.workcell/sessions/pi/`.
-- `~/.config/opencode/` - OpenCode configuration, global context, and global skills.
-- `~/.local/state/opencode/` - OpenCode local UI state.
-- `~/.local/share/opencode/` - OpenCode auth, logs, database, and storage.
-- `~/.codex/` - Codex auth, config, history, logs, global context, and global skills.
-- `~/.claude/` - Claude Code credentials, settings, global context, and global skills.
-- `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, and installed binaries.
-- `~/.gnupg/` - GPG keys for commit signing when enabled; stored in `agent-workcell-gpg`.
-- `~/.nvm/` - Node.js versions and global npm packages.
-- `~/.flutter/` - Flutter CLI config and version state.
-- `~/.pub-cache/` - Dart pub package cache shared across projects.
-
-Image-owned tool binaries and SDKs, including Flutter under `/opt/flutter-sdk`, Claude Code
-version payloads, OpenCode, the default Pi install under `/opt/pi`, and protobuf CLIs, update with
-the sandbox image. The entrypoint sets up symlinks so each tool still sees its expected home
-directory paths without using stale persisted binary copies. It seeds the default agent context
-and default global skills only when the persisted files are absent, so custom context and skills
-survive restarts and image updates. Pi runs on the active nvm Node at
-runtime. Pi package/extension updates persist under `~/.pi/agent/`; the entrypoint seeds Pi's
-own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update`
-self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi
-copy exists, the sandbox keeps using it and leaves further version upgrades to explicit user-run
-`pi update` commands.
+Image-owned tools and SDKs update with the sandbox image, while user state in Docker volumes is
+preserved across container restarts and image rebuilds. Use `workcell volume backup` and
+`workcell volume restore` to back up or restore persisted workcell data.
 
 > **Security note.** Agent credentials are stored as plaintext inside Docker volumes. Treat
 > `agent-workcell-*` volumes and their backups as sensitive.
@@ -152,11 +118,6 @@ On first run, the launcher creates `.workcell/.gitignore` to keep transient file
 `.env`, `flutter-config.json`, and `artifacts/` out of version control. It is recommended to
 gitignore `.workcell/` in the parent project repository. If you want version control for local
 agent state, initialize a separate Git repository inside `.workcell/`.
-
-### OpenCode session backup
-
-OpenCode stores its live session database in the Docker volume. Export sessions to workspace-local
-JSON files before removing the volume. See [OpenCode sessions](#opencode-sessions).
 
 ## Available Tools
 
@@ -196,6 +157,8 @@ agent-workcell/
 ├── README.md
 ├── docs/
 │   ├── chrome-integration.md
+│   ├── cli.md
+│   ├── context-management.md
 │   ├── flutter-integration.md
 │   └── gpg-setup.md
 ├── docker-compose.yml
@@ -206,25 +169,30 @@ agent-workcell/
 │   ├── run_sandbox.sh
 │   ├── start-chrome-debug.sh
 │   ├── start-flutter-bridge.sh
-│   └── flutter-bridge.py
-└── sandbox/
-    ├── DEFAULT_AGENTS.md
-    ├── default-skills/
-    ├── agent-init/
-    │   ├── claude.sh
-    │   ├── codex.sh
-    │   ├── opencode.sh
-    │   └── pi.sh
-    ├── dockerfiles/
-    │   ├── base.Dockerfile
-    │   ├── claude.Dockerfile
-    │   ├── codex.Dockerfile
-    │   ├── opencode.Dockerfile
-    │   └── pi.Dockerfile
-    ├── entrypoint.sh
-    ├── init-firewall.sh
-    ├── browser-tools/
-    └── flutter-tools/
+│   ├── flutter-bridge.py
+│   └── workcell_env.py
+├── sandbox/
+│   ├── DEFAULT_AGENTS.md
+│   ├── default-skills/
+│   │   ├── chrome-integration/
+│   │   ├── flutter-integration/
+│   │   └── project-management/
+│   ├── agent-init/
+│   │   ├── claude.sh
+│   │   ├── codex.sh
+│   │   ├── opencode.sh
+│   │   └── pi.sh
+│   ├── dockerfiles/
+│   │   ├── base.Dockerfile
+│   │   ├── claude.Dockerfile
+│   │   ├── codex.Dockerfile
+│   │   ├── opencode.Dockerfile
+│   │   └── pi.Dockerfile
+│   ├── entrypoint.sh
+│   ├── init-firewall.sh
+│   ├── browser-tools/
+│   └── flutter-tools/
+└── tests/
 ```
 
 ## License
