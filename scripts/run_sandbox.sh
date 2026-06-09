@@ -161,7 +161,7 @@ if [ ! -e "$workcell_roadmap_file" ]; then
   cat > "$workcell_roadmap_file" <<'EOF'
 # Roadmap
 
-Future direction not yet fully converted into task files. Agents must not modify this file without user approval.
+Future direction not yet fully converted into task files. Agents must not modify this file without user approval, except to remove or update the current roadmap item when completing its corresponding task.
 EOF
 fi
 # Seed project-local ignores once for generated workcell artifacts and runtime config.
