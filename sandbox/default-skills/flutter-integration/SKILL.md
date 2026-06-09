@@ -75,7 +75,7 @@ flutterctl test
 
 If the bridge is unavailable, tell the user they can either run `workcell start-flutter-bridge` on the host from the Flutter project directory or restart the sandbox with `--with-flutter`.
 
-If the bridge is reachable but running stale bridge code, use `flutterctl restart-bridge`. This authenticated command re-execs the existing host bridge process with the same launch settings.
+If the bridge is reachable but running stale bridge code, use `flutterctl restart-bridge`. This authenticated command re-execs the existing host bridge process with the same project, port, token, target, and run arguments.
 
 `--with-flutter` and `--with-chrome` are mutually exclusive. In Flutter mode, `--bridge-port <port>` selects the host Flutter bridge port and `--port <port>` exposes a container dev-server port.
 If the Flutter project lives in a workspace subdirectory, launch with `--flutter-project-dir <dir>`, such as `--flutter-project-dir ./gui`.
@@ -96,7 +96,7 @@ The file may include project-local launch settings such as:
 }
 ```
 
-The bridge preserves those settings when it writes runtime connection details.
+The bridge preserves those settings when it writes runtime connection details. A separately started bridge may have no selected device initially; choose one during the session with `flutterctl devices` and `flutterctl launch --device <id>` or `flutterctl attach --device <id>`.
 
 ## Flutterctl CLI
 
@@ -163,7 +163,7 @@ flutterctl launch --device emulator-5554
 
 iOS Simulators usually need the exact device id shown by `flutterctl devices`, such as a
 CoreSimulator UUID. `--device ios` only works if Flutter reports a device whose name or id matches
-`ios`.
+`ios`. If launch fails, run `flutterctl status` and `flutterctl logs` before changing code; they show the bridge state and underlying host `flutter run` output.
 
 Attach to an app that is already running from a host terminal, Xcode, or another Flutter tool:
 
@@ -228,7 +228,7 @@ Prefer this order for agent-driven interaction:
 5. Coordinate taps only when selectors are unavailable and coordinates are known.
 6. Screenshots when visual layout is ambiguous or after UI changes need visual validation.
 
-Stable `Semantics.identifier` values make automation reliable. Prefer identifiers on important controls and containers such as `login_button`, `email_field`, `settings_tab`, `todo_list`, and repeated row actions like `delete_item_0`.
+Stable `Semantics.identifier` values make automation reliable. Prefer identifiers on important controls and containers such as `login_button`, `email_field`, `settings_tab`, `todo_list`, and repeated row actions like `delete_item_0`. Semantics identifiers are usually more reliable than text or inspector layout rectangles for overlays, dialogs, and bottom sheets because their rectangles come from Flutter semantics geometry.
 
 When building or modifying Flutter UI, add `Semantics(identifier: '<automation_id>', child: ...)` to every element that should be selectable by `flutterctl inspect --key`, `wait --key`, or `tap --key`. A `ValueKey` alone is useful for Flutter widget tests, but it is not the bridge automation selector contract.
 
@@ -242,7 +242,8 @@ On iOS Simulator:
 
 - Screenshots use `flutter screenshot` and capture the device screen.
 - `inspect` and `wait` use Flutter VM-service semantics data for `--key` selectors and inspector data for `--text` selectors when the launched app exposes a VM service.
-- `inspect` rectangles are reported in `flutter-logical-points`.
+- iOS semantics and inspector rectangles are reported in root `flutter-logical-points`.
+- Selector taps map Flutter logical rectangles to `simulator-window-points` at action time. For `--key` selectors, the bridge composes ancestor semantics offsets so descendants in overlays, dialogs, and bottom sheets are reported in the same root coordinate space as top-level controls.
 - `tap --x --y` uses `simulator-window-points`; `x=0,y=0` is the top-left of the visible host Simulator window reported in `status.ui_automation.screen.simulator_window`.
 - Use `flutterctl ios-map` to inspect the current mapping estimate before converting inspected rectangles into coordinate taps.
 - Coordinate taps require the host Simulator window to be visible and unminimized. If `status.ui_automation.screen` reports an error, coordinate taps should be treated as unavailable.
