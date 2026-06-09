@@ -31,6 +31,54 @@ Do not modify `.workcell/ideas.md` or `.workcell/roadmap.md` without user approv
 
 When an item moves to the next stage, remove it from the previous stage so `ideas.md` and `roadmap.md` only describe work yet to be evaluated or implemented. They are not implemented-feature lists; completed work belongs in task directories. The first `roadmap.md` bullet should correspond to the task currently in progress when there is one, and should be removed when that task is completed.
 
+## Project Workcell Layout
+
+Project-specific workcell data lives under `.workcell/`:
+
+- `.workcell/artifacts/` - temporary or heavy artifacts from agent work, such as screenshots, logs, traces, generated previews, and repeated visual captures. Agents may create optional subdirectories such as `screenshots/`, `logs/`, and `mockups/` when that helps organize related files. Put throwaway files here instead of the repo root or task directories.
+- `.workcell/.env` - optional workspace-local environment variables loaded into sandboxed agent sessions. Treat it as secret-bearing and leave it ignored by Git.
+- `.workcell/sessions/` - project-scoped agent session data, organized by harness:
+  - `.workcell/sessions/pi/` - bind-mounted Pi project sessions when running the Pi harness.
+  - `.workcell/sessions/opencode/` - exported OpenCode session backups.
+  - `.workcell/sessions/codex/` - workspace-local Codex conversation files when running the Codex harness.
+  - `.workcell/sessions/claude/` - bind-mounted Claude project sessions when running the Claude harness.
+- `.workcell/ideas.md` - user-approved bullet list of possible future improvements yet to be properly evaluated.
+- `.workcell/roadmap.md` - user-approved bullet list of next-direction items not yet fully converted into tasks.
+- `.workcell/tasks/` - shared task notes for multi-step work and handoffs, organized by canonical status directories.
+- `.workcell/flutter-config.json` - Flutter bridge launch settings and runtime connection details when Flutter integration is used.
+
+Prefer timestamped artifact names in `.workcell/artifacts/` so files sort chronologically and avoid collisions, for example `screenshots/20260429-132400-home-page.png`.
+
+Example `.workcell/` layout:
+
+```text
+.workcell/
+├── .gitignore
+├── .env
+├── artifacts/
+│   ├── screenshots/
+│   ├── logs/
+│   └── mockups/
+├── sessions/
+│   ├── claude/
+│   ├── codex/
+│   ├── opencode/
+│   └── pi/
+├── ideas.md
+├── roadmap.md
+├── tasks/
+│   ├── accepted/
+│   ├── current/
+│   │   └── 20260608-165656-restructure-project-scoped-workcell-dir/
+│   │       ├── task.md
+│   │       ├── log.md
+│   │       └── attachments/
+│   ├── deferred/
+│   ├── dropped/
+│   └── finished/
+└── flutter-config.json
+```
+
 ## Starting Work
 
 Before starting non-trivial work or working on any `.workcell/tasks/` entry:
@@ -77,8 +125,12 @@ Each task directory should also include `log.md`:
   - **CORRECTION** | `<YYYY-MM-DD HH:MM GMT-offset>` | `<author>` | <correction>
 ```
 
+Task directories may also contain an `attachments/` subdirectory for lightweight, task-specific files that help future readers understand, reproduce, or resume the task. Agents should expect task attachments to be committed to version control alongside `task.md` and `log.md`, so keep them intentional, small, and curated. Good candidates include focused test scripts, light mockups, supplementary notes, small fixtures, or other durable task context.
+
+Use `.workcell/artifacts/` for files that should generally not be committed: heavy, noisy, generated, or temporary outputs such as screenshots, traces, large logs, build outputs, generated previews, repeated visual captures, and throwaway scripts. Use best judgment: if a file is durable task evidence or a reusable aid, put it in the task's `attachments/`; if it is transient work output, put it in `.workcell/artifacts/`.
+
 ## Maintenance Rules
 
-Keep task files concise and operational. Record decisions, blockers, ownership boundaries, important commands, verification results, and links to artifacts. Put large logs, screenshots, traces, and generated previews in `.workcell/artifacts/` instead of pasting them into the task file.
+Keep task files concise and operational. Record decisions, blockers, ownership boundaries, important commands, verification results, and links to attachments or artifacts. Put commit-worthy task support files under the task's `attachments/`; put large logs, screenshots, traces, and generated previews in `.workcell/artifacts/` instead of pasting them into the task file or committing them in the task directory.
 
 Keep `Plan` current with succinct notes about what was done and what remains. Add log entries to `log.md` in descending time order, and include the authoring harness/model, such as `codex/gpt-5.5`, when known. If the harness/model is unknown, ask the user; do not infer it from previous log entries. Preserve previous log content. When a correction is needed, add an indented `CORRECTION` entry below the original entry or its previous corrections. Update status, plan checkboxes, and next steps in `task.md` as the task changes. A task directory's status parent must match the `Status` metadata in `task.md`; when changing status, move the task directory and update `task.md` in the same change. When pausing, leave concrete `Next Steps`. When finished, move the task to `finished`, set `Status` to `finished`, clear `Next Steps`, update `Updated`, and summarize the outcome in `log.md`.
