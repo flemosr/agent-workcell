@@ -299,6 +299,21 @@ class SandboxImageSplitTests(unittest.TestCase):
                 / "20260608-165656-restructure-project-scoped-workcell-dir.md"
             )
             task_file.parent.mkdir(parents=True)
+            flat_task_dir = workspace / ".workcell" / "tasks" / "20260607-120000-finished-flat-task"
+            flat_task_dir.mkdir(parents=True)
+            (flat_task_dir / "task.md").write_text(
+                "# Finished Flat Task\n"
+                "\n"
+                "- **Status:** completed\n"
+                "- **Created:** 2026-06-07 12:00 GMT-3\n"
+                "- **Updated:** 2026-06-07 12:30 GMT-3\n"
+                "\n"
+                "## Objective\n"
+                "\n"
+                "Already done.\n",
+                encoding="utf-8",
+            )
+            (flat_task_dir / "log.md").write_text("# Finished Flat Task Log\n", encoding="utf-8")
             task_file.write_text(
                 "# Restructure Project-Scoped Workcell Directory\n"
                 "\n"
@@ -363,18 +378,25 @@ class SandboxImageSplitTests(unittest.TestCase):
                 workspace
                 / ".workcell"
                 / "tasks"
+                / "current"
                 / "20260608-165656-restructure-project-scoped-workcell-dir"
             )
             self.assertFalse(task_file.exists())
             self.assertTrue((task_dir / "task.md").is_file())
             self.assertTrue((task_dir / "log.md").is_file())
-            self.assertIn(
-                "## Objective", (task_dir / "task.md").read_text(encoding="utf-8")
-            )
-            self.assertNotIn(
-                "## Log", (task_dir / "task.md").read_text(encoding="utf-8")
-            )
+            task_text = (task_dir / "task.md").read_text(encoding="utf-8")
+            self.assertIn("- **Status:** current", task_text)
+            self.assertIn("## Objective", task_text)
+            self.assertNotIn("## Log", task_text)
             self.assertIn("Started.", (task_dir / "log.md").read_text(encoding="utf-8"))
+            migrated_flat_task = (
+                workspace / ".workcell" / "tasks" / "finished" / "20260607-120000-finished-flat-task"
+            )
+            self.assertFalse(flat_task_dir.exists())
+            self.assertIn(
+                "- **Status:** finished",
+                (migrated_flat_task / "task.md").read_text(encoding="utf-8"),
+            )
 
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:

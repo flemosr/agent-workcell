@@ -774,10 +774,12 @@ cmd_migrate() {
         echo "  .workcell/codex-sessions    -> .workcell/sessions/codex"
         echo "  .workcell/pi-sessions       -> .workcell/sessions/pi"
         echo ""
-        echo "Moves legacy task files into per-task directories:"
-        echo "  .workcell/tasks/<timestamp>-<slug>.md -> .workcell/tasks/<timestamp>-<slug>/"
+        echo "Moves legacy task files and flat task directories into status directories:"
+        echo "  .workcell/tasks/<timestamp>-<slug>.md -> .workcell/tasks/<status>/<timestamp>-<slug>/"
+        echo "  .workcell/tasks/<timestamp>-<slug>/   -> .workcell/tasks/<status>/<timestamp>-<slug>/"
         echo "    task.md contains task metadata and planning sections"
         echo "    log.md contains the former Log section"
+        echo "    status metadata is normalized to: accepted, current, deferred, dropped, or finished"
         echo ""
         echo "Also moves the older .agent-sessions/claude directory if present and"
         echo "no Claude session destination exists. Existing destinations are never"
@@ -820,6 +822,7 @@ cmd_migrate() {
     local task_result
     task_result=$(python3 - "$workcell_dir/tasks" <<'PY'
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -828,22 +831,57 @@ if not tasks_dir.is_dir():
     print("0 0")
     raise SystemExit(0)
 
+status_dirs = ["accepted", "current", "deferred", "dropped", "finished"]
+status_map = {
+    "todo": "accepted",
+    "pending": "accepted",
+    "accepted": "accepted",
+    "doing": "current",
+    "in_progress": "current",
+    "in-progress": "current",
+    "current": "current",
+    "blocked": "deferred",
+    "deferred": "deferred",
+    "cancelled": "dropped",
+    "canceled": "dropped",
+    "dropped": "dropped",
+    "completed": "finished",
+    "complete": "finished",
+    "done": "finished",
+    "finished": "finished",
+}
 pattern = re.compile(r"^\d{8}-\d{6}-.+\.md$")
 section_re = re.compile(r"^##\s+(.+?)\s*$")
+status_re = re.compile(r"^(\s*-\s+\*\*Status:\*\*\s*)(\S+)(.*)$", re.MULTILINE)
 keep_sections = ["Objective", "Context", "Plan", "Next Steps", "Dependencies", "Notes"]
 moved = 0
 failed = 0
 
-for source in sorted(tasks_dir.glob("*.md")):
-    if not pattern.match(source.name):
-        continue
-    dest = source.with_suffix("")
+for name in status_dirs:
+    (tasks_dir / name).mkdir(exist_ok=True)
+
+
+def normalized_status(text, default="accepted"):
+    match = status_re.search(text)
+    if not match:
+        return default
+    return status_map.get(match.group(2).strip().lower(), default)
+
+
+def rewrite_status(text, status):
+    if status_re.search(text):
+        return status_re.sub(rf"\g<1>{status}\g<3>", text, count=1)
+    return text
+
+
+def split_legacy_task_file(source):
+    text = source.read_text(encoding="utf-8")
+    status = normalized_status(text)
+    dest = tasks_dir / status / source.with_suffix("").name
     if dest.exists():
         print(f"Conflict: cannot migrate task file because destination exists: {dest}", file=sys.stderr)
-        failed = 1
-        continue
+        return False
 
-    text = source.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
     first_section = next((i for i, line in enumerate(lines) if section_re.match(line)), len(lines))
     preamble = lines[:first_section]
@@ -882,9 +920,35 @@ for source in sorted(tasks_dir.glob("*.md")):
         log_lines.append("No log entries yet.\n")
 
     dest.mkdir()
-    (dest / "task.md").write_text("".join(task_lines).rstrip() + "\n", encoding="utf-8")
+    task_text = rewrite_status("".join(task_lines).rstrip() + "\n", status)
+    (dest / "task.md").write_text(task_text, encoding="utf-8")
     (dest / "log.md").write_text("".join(log_lines).rstrip() + "\n", encoding="utf-8")
     source.unlink()
+    print(f"Moved {source} -> {dest}/")
+    return True
+
+
+for source in sorted(tasks_dir.glob("*.md")):
+    if not pattern.match(source.name):
+        continue
+    if split_legacy_task_file(source):
+        moved += 1
+    else:
+        failed = 1
+
+for source in sorted(p for p in tasks_dir.iterdir() if p.is_dir() and p.name not in status_dirs):
+    task_file = source / "task.md"
+    if not task_file.is_file():
+        continue
+    text = task_file.read_text(encoding="utf-8")
+    status = normalized_status(text)
+    dest = tasks_dir / status / source.name
+    if dest.exists():
+        print(f"Conflict: cannot migrate task directory because destination exists: {dest}", file=sys.stderr)
+        failed = 1
+        continue
+    task_file.write_text(rewrite_status(text, status), encoding="utf-8")
+    shutil.move(str(source), str(dest))
     print(f"Moved {source} -> {dest}/")
     moved += 1
 
