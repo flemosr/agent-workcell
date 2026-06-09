@@ -3,21 +3,15 @@
 An opinionated, containerized environment for running TUI coding agents in YOLO mode, with
 Chrome and Flutter integrations, selective persistence, and isolated GPG-signed commits.
 
-Supports [Pi](https://pi.dev/), [OpenCode](https://opencode.ai/),
-[Codex](https://github.com/openai/codex), and [Claude Code](https://claude.ai/code), selectable per
-launch. It is geared toward Rust, Python, TypeScript, and Dart/Flutter development. A global context
-file is seeded into each agent config on first use so the agent is aware of the sandbox's
-capabilities and constraints; persisted user edits are preserved, with optional mounting of a
-user-managed shared context repo across harnesses and workspaces.
-
-## Documentation
-
-- [Context management](docs/context-management.md) - default context seeding, persistence,
-  shared context repos, and global skills.
-- [GPG setup](docs/gpg-setup.md) - verified Git commits from inside the workcell.
-- [Chrome integration](docs/chrome-integration.md) - host Chrome control for web development.
-- [Flutter integration](docs/flutter-integration.md) - in-container SDK and host bridge for
-  native/device Flutter work.
+- Supports [Pi](https://pi.dev/), [OpenCode](https://opencode.ai/),
+  [Codex](https://github.com/openai/codex), and [Claude Code](https://claude.ai/code), selectable
+  per launch.
+- Geared toward Rust, Python, TypeScript, and Dart/Flutter development.
+- Seeds global context into each agent config on first use so the agent is aware of the sandbox's
+  capabilities and constraints, while preserving persisted user edits.
+- Optionally mounts a user-managed shared context repo across harnesses and workspaces.
+- Includes project-management-oriented features for workflows that span multiple models or agent
+  harnesses.
 
 ## Prerequisites
 
@@ -48,217 +42,30 @@ source ~/.zshrc
 
 ### 2. Run an agent
 
-Run the workcell with a selected agent to build its sandbox image on demand:
+Run the workcell with `pi`, `opencode`, `codex`, or `claude` to build the selected sandbox image
+on demand:
 
 ```bash
-workcell opencode run
+workcell <pi|opencode|codex|claude> run
 ```
 
-See [Run Agents](#run-agents) below for the other agent commands. Each harness has its own native
-authentication flow when credentials are needed.
+Each harness has its own native authentication flow when credentials are needed. Run
+`workcell --help` or see the [CLI reference](docs/cli.md) for more commands and options.
 
 ### 3. Configure optional integrations
 
-Copy the config template before enabling optional integrations:
+See the documentation links below for optional Chrome, Flutter, and GPG setup.
 
-```bash
-cp config.template.sh config.sh
-```
+## Documentation
 
-Then follow the focused setup guide you need:
-
-- [Chrome integration](docs/chrome-integration.md)
-- [Flutter integration](docs/flutter-integration.md)
-- [GPG setup](docs/gpg-setup.md)
-
-`config.sh` is gitignored so personal paths, ports, and identities are not committed.
-
-## Command Reference
-
-### Build
-
-```bash
-# Build all agent images
-workcell build
-
-# Or build one agent image plus the shared base
-workcell pi build
-```
-
-`workcell build` runs `docker compose build` from the workcell repository root, so it works even
-when you invoke `workcell` from another directory, and builds all four agent images plus the
-shared base. To build a single agent, use the harness subcommand form:
-`workcell <agent> build` where agent is `pi`, `opencode`, `codex`, or `claude`.
-
-### Run Agents
-
-Navigate to any project directory and run:
-
-```bash
-# Normal mode
-workcell pi run  # Pi does not use permission prompts by default
-workcell opencode run
-workcell codex run
-workcell claude run
-
-# YOLO mode (no permission prompts)
-workcell opencode run --yolo
-workcell codex run --yolo
-workcell claude run --yolo
-
-# Firewalled mode (restricted network access)
-workcell codex run --firewalled
-
-# With a prompt
-workcell claude run --yolo -- -p "fix the tests"
-
-# Pass agent-specific arguments after --
-workcell pi run -- -p "summarize the repo"
-workcell opencode run -- run "summarize the repo"
-workcell codex run -- "fix the tests"
-workcell claude run -- --resume
-```
-
-The agent is the first positional argument and is required: `pi`, `opencode`, `codex`, or
-`claude`. Each agent uses its own sandbox image and persistent Docker volume, plus a shared GPG
-volume. If the selected image is missing, `workcell <agent> run` builds that agent image and the
-shared base automatically.
-
-`--with-chrome` and `--with-flutter` are mutually exclusive. `--port` exposes container dev
-servers to the host in all modes. In Flutter mode, use `--bridge-port` to select the host Flutter
-bridge port. If the Flutter project is in a workspace subdirectory, pass
-`--flutter-project-dir ./gui`.
-
-`--yolo` maps to each agent's native bypass where one exists:
-
-- **pi**: ignored because Pi does not ask for permissions by default; the container is the
-  permission boundary
-- **opencode**: `{"permission":"allow"}` injected through `OPENCODE_CONFIG_CONTENT`
-- **codex**: `--dangerously-bypass-approvals-and-sandbox`
-- **claude**: `--dangerously-skip-permissions`
-
-Running `workcell` or `workcell <agent>` without a subcommand exits with a usage error instead of
-choosing an agent implicitly.
-
-```bash
-workcell codex run --yolo
-```
-
-See [Integrations](#integrations) for Chrome, Flutter, and port examples.
-
-### Integrations
-
-```bash
-# Chrome enabled for web development
-workcell pi run --with-chrome
-workcell codex run --yolo --with-chrome --port 3000
-
-# Expose container dev-server ports to the host
-workcell opencode run --port 3000
-workcell codex run --port 3000 --port 5173
-
-# Start Chrome independently on the host
-workcell start-chrome
-workcell start-chrome --restart
-workcell start-chrome --port 9333 --profile "Profile 1"
-
-# Flutter native/device bridge
-workcell pi run --with-flutter
-workcell codex run --with-flutter --bridge-port 8765
-workcell codex run --with-flutter --flutter-project-dir ./gui
-workcell codex run --with-flutter --bridge-port 8766 --port 3000
-
-# Start the Flutter bridge independently on the host
-workcell start-flutter-bridge
-workcell start-flutter-bridge --port 8766 --project ~/my-flutter-app
-workcell start-flutter-bridge --flutter-project-dir ./gui
-```
-
-See [Chrome integration](docs/chrome-integration.md) and
-[Flutter integration](docs/flutter-integration.md) for setup details.
-
-### Settings, Context, and Skills
-
-```bash
-workcell pi settings
-workcell opencode settings
-workcell codex settings
-workcell claude settings
-
-workcell pi context open
-workcell opencode context open
-workcell codex context open
-workcell claude context open
-workcell pi context restore
-
-workcell pi skill list
-workcell opencode skill list
-workcell codex skill list
-workcell claude skill list
-workcell pi skill open chrome-integration
-workcell pi skill restore chrome-integration
-```
-
-The `settings` commands open an agent's config file in `vi` inside the workcell Docker volume.
-The `context` commands manage the in-effect global context source, which is either a persisted
-harness-volume `workcell-context.md` file seeded from the image default or, when configured, a
-shared repo `GLOBAL_AGENTS.md`. The `skill` commands manage global skills from persisted
-harness-volume sources plus optional shared repo skills. See [Context management](docs/context-management.md)
-for default seeding, persistence, shared context repo mounting, and skill precedence details.
-
-### GPG Keys
-
-```bash
-workcell gpg new
-workcell gpg export --file my-key-backup.asc
-workcell gpg import --file my-key-backup.asc
-workcell gpg revoke --file revoke.asc
-workcell gpg erase
-```
-
-See [GPG setup](docs/gpg-setup.md) for key setup, backup, and rotation guidance.
-
-### OpenCode Sessions
-
-```bash
-workcell opencode sessions export
-workcell opencode sessions import
-```
-
-These commands export and import OpenCode sessions between the Docker volume and
-`.workcell/sessions/opencode/`.
-
-### Project Workcell Migration
-
-```bash
-workcell migrate
-```
-
-This temporary command migrates legacy project session directories from
-`.workcell/<harness>-sessions/` to `.workcell/sessions/<harness>/`, converts timestamped
-`.workcell/tasks/*.md` task files into task directories with `task.md` plus `log.md`, and moves
-flat task directories under status directories. Run it once in existing projects created with the
-older layout.
-
-### Volume Management
-
-```bash
-# Open a shell in a specific volume
-workcell volume shell codex
-workcell volume shell gpg
-
-# Backup all workcell volumes
-workcell volume backup --file agent-workcell-bkp.tgz
-
-# Restore all workcell volumes from backup
-workcell volume restore --file agent-workcell-bkp.tgz
-
-# Remove a specific volume scope, or all scopes
-workcell volume rm codex
-workcell volume rm all
-```
-
-Volume commands affect the persisted user data described below.
+- [CLI reference](docs/cli.md) - command examples for running agents, integrations, settings,
+  contexts, skills, migrations, and volumes.
+- [Context management](docs/context-management.md) - default context seeding, persistence,
+  shared context repos, and global skills.
+- [GPG setup](docs/gpg-setup.md) - verified Git commits from inside the workcell.
+- [Chrome integration](docs/chrome-integration.md) - host Chrome control for web development.
+- [Flutter integration](docs/flutter-integration.md) - in-container SDK and host bridge for
+  native/device Flutter work.
 
 ## How It Works
 
