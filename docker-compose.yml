@@ -1,8 +1,8 @@
 services:
   agent-workcell-base:
     build:
-      context: sandbox/
-      dockerfile: dockerfiles/base.Dockerfile
+      context: .
+      dockerfile: sandbox/dockerfiles/base.Dockerfile
     image: local/agent-workcell-base
 
   agent-workcell-pi:

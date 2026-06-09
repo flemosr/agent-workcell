@@ -116,11 +116,11 @@ RUN python3 -m venv ~/.local/python-venv && \
 
 # Copy local wrapper tools after network-installed agents so wrapper edits do
 # not invalidate the OpenCode or Codex install layers.
-COPY --chown=agent:agent browser-tools/ /home/agent/.local/browser-tools/
+COPY --chown=agent:agent sandbox/browser-tools/ /home/agent/.local/browser-tools/
 RUN chmod +x /home/agent/.local/browser-tools/browser.sh && \
     ln -sf /home/agent/.local/browser-tools/browser.sh /home/agent/.local/bin/browser
 
-COPY --chown=agent:agent flutter-tools/ /home/agent/.local/flutter-tools/
+COPY --chown=agent:agent sandbox/flutter-tools/ /home/agent/.local/flutter-tools/
 RUN chmod +x /home/agent/.local/flutter-tools/flutterctl.sh \
              /home/agent/.local/flutter-tools/flutter.sh \
              /home/agent/.local/flutter-tools/dart.sh \
@@ -206,18 +206,21 @@ ENV PATH="/home/agent/.local/python-venv/bin:/home/agent/.local/bin:/opt/flutter
 ENV BASH_ENV="/etc/profile.d/workcell-nvm.sh"
 
 ENV WORKCELL_IMAGE_AGENT=""
-COPY init-firewall.sh /opt/init-firewall.sh
-COPY entrypoint.sh /opt/entrypoint.sh
-COPY workcell-context-lib.sh /opt/workcell-context-lib.sh
+COPY sandbox/init-firewall.sh /opt/init-firewall.sh
+COPY sandbox/entrypoint.sh /opt/entrypoint.sh
+COPY sandbox/workcell-context-lib.sh /opt/workcell-context-lib.sh
 RUN chmod +x /opt/init-firewall.sh /opt/entrypoint.sh /opt/workcell-context-lib.sh
 
 # Copy agent context files. Entrypoint seeds the main context and default skills
 # into agent config only when absent.
-COPY DEFAULT_AGENTS.md /opt/agent-context.md
-COPY default-skills/ /opt/agent-default-skills/
+COPY sandbox/DEFAULT_AGENTS.md /opt/agent-context.md
+COPY sandbox/default-skills/ /opt/agent-default-skills/
+COPY docs/ /opt/workcell-docs/
 RUN chmod 0644 /opt/agent-context.md \
     && find /opt/agent-default-skills -type d -exec chmod 0755 {} + \
-    && find /opt/agent-default-skills -type f -exec chmod 0644 {} +
+    && find /opt/agent-default-skills -type f -exec chmod 0644 {} + \
+    && find /opt/workcell-docs -type d -exec chmod 0755 {} + \
+    && find /opt/workcell-docs -type f -exec chmod 0644 {} +
 
 # Run as root so entrypoint can configure the firewall; drops to agent user after.
 WORKDIR /workspaces
