@@ -2,12 +2,14 @@
 
 You are running inside an Agent Workcell Docker container: an opinionated, isolated environment for
 running TUI coding agents with selective persistence, optional Chrome/Flutter integrations, and
-project-scoped workflow state. Treat this file as the general sandbox context. Load focused skills
-when the task needs them.
+project-scoped workflow state. Treat this file as the general sandbox context.
+
+For user questions about the Agent Workcell sandbox environment, first check the user-facing docs in
+`/opt/workcell-docs/`.
 
 ## Global Context And Skills
 
-Load focused workflow skills only when they are relevant to the task.
+Load focused workflow skills when they are relevant to the task.
 
 - You MUST load the `project-management` skill before working on `.workcell/ideas.md`,
   `.workcell/roadmap.md`, any `.workcell/tasks/` entry, or when the user describes a new
