@@ -1,6 +1,9 @@
 # Agent Workcell Context
 
-You are running inside an Agent Workcell Docker container. Treat this file as the general sandbox context. Load the focused docs only when the task needs them.
+You are running inside an Agent Workcell Docker container: an opinionated, isolated environment for
+running TUI coding agents with selective persistence, optional Chrome/Flutter integrations, and
+project-scoped workflow state. Treat this file as the general sandbox context. Load focused skills
+when the task needs them.
 
 ## Global Context And Skills
 
@@ -44,41 +47,14 @@ create them in the selected harness's persisted source directory:
 
 ## Persistence
 
-Two kinds of data persist between sessions:
+The workspace directory is bind-mounted from the host. Harness state, credentials, settings,
+conversation/session data, language package caches, and installed user tools persist for the
+selected agent harness. Do not assume other harnesses' persisted state or binaries are present.
 
-1. **Workspace data:** the mounted project directory, including `.workcell/`.
-2. **User data:** Docker volume data under `~/persist/`, symlinked into expected home paths.
+Treat `.workcell/.env` as secret-bearing if present. Flutter bridge runtime settings may appear in
+`.workcell/flutter-config.json` when Flutter integration is used.
 
-Project-specific workcell data lives under `.workcell/`. Load the `project-management` skill before working with `.workcell/ideas.md`, `.workcell/roadmap.md`, or `.workcell/tasks/`; that skill contains the detailed layout and artifact-placement rules.
-
-Treat `.workcell/.env` as secret-bearing if present. Flutter bridge runtime settings may appear in `.workcell/flutter-config.json` when Flutter integration is used.
-
-Important persisted user paths:
-
-- `~/.nvm/` - Node.js versions and global npm packages for the selected agent volume.
-- `~/.rustup/` and `~/.cargo/` - Rust toolchains, registry cache, installed binaries, and config for the selected agent volume.
-- `~/.gnupg/` - GPG keys for commit signing when enabled; this is the explicitly shared GPG volume mounted into every agent image.
-- `~/.pub-cache/` - Dart pub package cache for the selected agent volume.
-- `~/.flutter/` - Flutter CLI config and version state for the selected agent volume.
-
-Each agent harness runs in its own image with its own persisted Docker volume, so other harnesses'
-global state paths and binaries are intentionally absent. Depending on the selected harness, the
-available persisted harness path is one of:
-
-- `~/.pi/agent/` - Pi settings, auth, packages/extensions, persisted Pi install prefix, and global context (`AGENTS.md`); current-project Pi sessions are bind-mounted from `.workcell/sessions/pi/`.
-- `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` - OpenCode config, global context (`AGENTS.md`), auth, sessions, logs, storage, and local UI state.
-- `~/.codex/` - Codex config, auth, history, logs, and global context (`AGENTS.md`); project conversation files are bind-mounted from `.workcell/sessions/codex/`.
-- `~/.claude/` - Claude Code credentials, settings, project sessions, and global context (`CLAUDE.md`).
-
-Harness-native context paths are symlinks to the in-effect source: mounted repo
-`/opt/workcell-context/GLOBAL_AGENTS.md` when present, otherwise the harness's persisted
-`workcell-context.md`. Harness-native skill paths are symlinks to an ephemeral merged view; real
-persisted skills live in `workcell-skills` source directories. Codex global skills use
-`~/.agents/skills`, with persisted sources in `~/.agents/workcell-skills`.
-
-Installed Node versions, global npm packages, Rust toolchains, and package caches persist across container restarts for the selected agent volume. Image-owned SDKs and the selected agent binary update with that agent's sandbox image. The image default context is seeded into the persisted harness context source file only when that file is absent; existing custom context is never overwritten. Pi package/extension updates persist under `~/.pi/agent/` only in the Pi harness; the entrypoint seeds Pi's own install prefix under `~/.pi/agent/self/` from the image on first run, so native `pi update` self-updates write to the persisted volume instead of ephemeral `/opt/pi`. Once a persisted Pi copy exists, the Pi sandbox keeps using it and leaves further version upgrades to explicit user-run `pi update` commands.
-
-## Ports And Integrations
+## Exposed Ports
 
 Check exposed container ports with:
 
@@ -87,12 +63,6 @@ echo "$EXPOSED_PORTS"
 ```
 
 If `$EXPOSED_PORTS` is set, dev servers on those ports are reachable from the host at `localhost:<port>`. If a needed port is not exposed, tell the user they can restart the sandbox with `--port <port>`.
-
-`--with-chrome` and `--with-flutter` are mutually exclusive:
-
-- Chrome mode uses `--port` to expose container dev-server ports to host Chrome.
-- Flutter mode uses `--bridge-port` to select the host Flutter bridge port; `--port` still exposes container dev-server ports.
-- Flutter mode uses `--flutter-project-dir <dir>` when the Flutter project is in a workspace subdirectory such as `./gui`.
 
 ## Network Restrictions
 
