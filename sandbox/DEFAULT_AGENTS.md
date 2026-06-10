@@ -42,6 +42,7 @@ create them in the selected harness's persisted source directory:
 ## Host And Sandbox Boundaries
 
 - Use `host.docker.internal` instead of `localhost` when connecting from the container to services running on the host.
+- For `browser sandbox ...`, `localhost` means inside the container; for `browser host ...`, `localhost` means the host and container dev servers need exposed ports.
 - Your current project directory is bind-mounted from the host. File changes in the workspace persist automatically.
 - The container runs as a non-root `agent` user for normal agent commands.
 - Filesystem access is scoped to the mounted workspace and persisted user data.
@@ -94,7 +95,7 @@ When the firewall is active, external network access is limited to essential age
 | Node.js | `nvm`, `npm`, `npx` |
 | Agent harness | Only the selected harness CLI is installed in this image: `pi`, `opencode`, `codex`, or `claude` |
 | Python | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
-| Browser | `browser` CLI for Chrome automation; use the `chrome-integration` skill before browser/web work |
+| Browser | `browser` CLI with `sandbox` headless Chromium and explicit `host` Chrome modes; use the `chrome-integration` skill before browser/web work |
 | Flutter | `flutter` and `dart` for tests, analysis, formatting, and pub; `flutterctl` for the host bridge (launch, hot-reload, screenshots); use the `flutter-integration` skill before native Flutter work |
 | Protobuf | `protoc`, `buf`, `protoc-gen-dart`, `protoc-gen-prost`, `grpcurl` |
 | Database | `psql`; connect to host databases through `host.docker.internal` |
