@@ -20,7 +20,8 @@ Chrome and Flutter integrations, selective persistence, and isolated GPG-signed 
 
 Optional integrations have their own host requirements:
 
-- Chrome integration requires Google Chrome and `socat`.
+- Sandbox-headless browser automation is included in the workcell image.
+- Host Chrome integration requires Google Chrome and `socat`.
 - Flutter bridge integration requires the Flutter SDK and at least one configured target on the host.
 - GPG signing requires `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, and `GPG_SIGNING=true` in `config.sh`.
 
@@ -65,7 +66,7 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
 - [Persistence](docs/persistence.md) - host workspace data, per-harness volumes, `.workcell/`,
   shared GPG storage, and backups.
 - [GPG setup](docs/gpg-setup.md) - verified Git commits from inside the workcell.
-- [Chrome integration](docs/chrome-integration.md) - host Chrome control for web development.
+- [Chrome integration](docs/chrome-integration.md) - sandbox-headless browsing and explicit host Chrome control.
 - [Flutter integration](docs/flutter-integration.md) - in-container SDK and host bridge for
   native/device Flutter work.
 
@@ -127,7 +128,7 @@ agent state, initialize a separate Git repository inside `.workcell/`.
 | **Node.js** | `nvm`, `npm`, `npx` |
 | **Agents** | `pi`, `opencode`, `codex`, `claude` |
 | **Python** | `pyright`, `ruff`, `playwright`, `matplotlib`, `numpy` |
-| **Browser** | Chrome automation support |
+| **Browser** | `browser` CLI with sandbox-headless Chromium and optional host Chrome control |
 | **Flutter SDK** | `flutter`, `dart` — tests, analysis, formatting, pub (in-container, no host setup) |
 | **Flutter Bridge** | `flutterctl` — launch, hot-reload, screenshots, and macOS-hosted macOS/iOS Simulator UI automation via host bridge |
 | **Protobuf** | `protoc`, `buf`, `protoc-gen-dart`, `protoc-gen-prost`, `grpcurl` |
