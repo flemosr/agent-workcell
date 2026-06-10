@@ -165,6 +165,9 @@ class BrowserToolTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(text, "Heading")
         fake_page.evaluate.assert_awaited_once()
+        evaluate_script = fake_page.evaluate.await_args.args[0]
+        self.assertIn(".replace(/\\n{3,}/g, '\\n\\n')", evaluate_script)
+        self.assertNotIn(".replace(/\n", evaluate_script)
         self.assertEqual(fake_page.evaluate.await_args.args[1], {"selector": "main"})
 
     async def test_links_command_prints_json(self):

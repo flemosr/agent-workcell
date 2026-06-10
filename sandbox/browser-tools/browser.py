@@ -460,7 +460,7 @@ class Browser:
                 return (element.innerText || element.textContent || '')
                     .replace(/\u00a0/g, ' ')
                     .replace(/[ \t]+/g, ' ')
-                    .replace(/\n{3,}/g, '\n\n')
+                    .replace(/\\n{3,}/g, '\\n\\n')
                     .trim();
             }
             """,
