@@ -49,9 +49,12 @@ The agent is the first positional argument and is required: `pi`, `opencode`, `c
 volume. If the selected image is missing, `workcell <agent> run` builds that agent image and the
 shared base automatically.
 
-`--with-chrome` and `--with-flutter` are mutually exclusive. `--port` exposes container dev
-servers to the host in all modes. In Flutter mode, use `--bridge-port` to select the host Flutter
-bridge port. If the Flutter project is in a workspace subdirectory, pass
+`--with-chrome` and `--with-flutter` are mutually exclusive. Sandbox-headless browser commands
+(`browser sandbox ...`) are available inside the image and do not require `--with-chrome`.
+`--with-chrome` enables explicit host Chrome workflows (`browser host ...`). `--port` exposes
+container dev servers to the host in all modes; it is required for host Chrome to reach container
+servers, but not for sandbox-headless browsing. In Flutter mode, use `--bridge-port` to select the
+host Flutter bridge port. If the Flutter project is in a workspace subdirectory, pass
 `--flutter-project-dir ./gui`.
 
 `--yolo` maps to each agent's native bypass where one exists:
@@ -74,7 +77,10 @@ See [Integrations](#integrations) for Chrome, Flutter, and port examples.
 ## Integrations
 
 ```bash
-# Chrome enabled for web development
+# Sandbox-headless browsing is available by default inside agents
+workcell pi run
+
+# Host Chrome enabled for user-visible web development/profile workflows
 workcell pi run --with-chrome
 workcell codex run --yolo --with-chrome --port 3000
 
@@ -99,8 +105,8 @@ workcell start-flutter-bridge --port 8766 --project ~/my-flutter-app
 workcell start-flutter-bridge --flutter-project-dir ./gui
 ```
 
-See [Chrome integration](chrome-integration.md) and [Flutter integration](flutter-integration.md)
-for setup details.
+See [Chrome integration](chrome-integration.md) for `browser sandbox ...` and `browser host ...`
+usage, and [Flutter integration](flutter-integration.md) for Flutter setup details.
 
 ## Settings, context, and skills
 
