@@ -95,7 +95,29 @@ Task directory names use UTC timestamp prefixes and live under their matching st
 .workcell/tasks/<status>/YYYYMMDD-HHMMSS-brief-descriptive-slug/
 ```
 
-Inside task files, use local time for logs and metadata. Check the `TZ` environment variable to determine the configured local timezone, then write the timezone as a compact GMT offset, such as `GMT-3`, to keep entries short.
+Inside task files, use local time for logs and metadata. Determine the current local log time with:
+
+```bash
+date +'%Y-%m-%d %H:%M GMT%z' | sed -E 's/GMT([+-])0?([0-9]{1,2})00$/GMT\1\2/; s/GMT([+-])0?([0-9]{1,2})([0-9]{2})$/GMT\1\2:\3/'
+```
+
+This uses the configured local timezone and formats the timezone as a compact GMT offset, such as `GMT-3`, to keep entries short.
+
+## Author Tag
+
+Before creating or updating any `log.md`, determine the author tag in `<harness>/<model>` form. Examples include `pi/gpt-5.5`, `codex/gpt-5.5`, `claude/opus-4.8`, and `opencode/kimi-k2.6`; use the actual current harness and model rather than choosing from these examples.
+
+- Use environment/configuration only when it clearly identifies both harness and model.
+- In the Pi harness, when project Pi sessions are available, inspect the latest
+  `.workcell/sessions/pi/*.jsonl` entry for the current model before asking the user. Prefer the
+  latest assistant message's `provider` and `model`; otherwise use the latest `model_change` entry's
+  `provider` and `modelId`.
+- If either harness or model remains unknown, ask the user for the author tag before writing log
+  entries.
+- Do not write placeholder tags such as `unknown`, `pi/unknown`, or inferred model names unless the
+  user explicitly instructs you to use that value.
+- Reuse the confirmed author tag for subsequent log entries in the same session unless the harness or
+  model changes.
 
 ## Task Directory Structure
 
@@ -133,4 +155,6 @@ Use `.workcell/artifacts/` for files that should generally not be committed: hea
 
 Keep task files concise and operational. Record decisions, blockers, ownership boundaries, important commands, verification results, and links to attachments or artifacts. Put commit-worthy task support files under the task's `attachments/`; put large logs, screenshots, traces, and generated previews in `.workcell/artifacts/` instead of pasting them into the task file or committing them in the task directory.
 
-Keep `Plan` current with succinct notes about what was done and what remains. Add log entries to `log.md` in descending time order, and include the authoring harness/model, such as `codex/gpt-5.5`, when known. If the harness/model is unknown, ask the user; do not infer it from previous log entries. Preserve previous log content. When a correction is needed, add an indented `CORRECTION` entry below the original entry or its previous corrections. Update status, plan checkboxes, and next steps in `task.md` as the task changes. A task directory's status parent must match the `Status` metadata in `task.md`; when changing status, move the task directory and update `task.md` in the same change. When pausing, leave concrete `Next Steps`. Only mark a task as `finished` after the user approves completion. When finishing an approved task, move the task to `finished`, set `Status` to `finished`, clear `Next Steps`, update `Updated`, summarize the outcome in `log.md`, and remove or update the corresponding current `roadmap.md` item if there is one.
+Before the first `log.md` write in a session, confirm the author tag if it is not already known.
+
+Keep `Plan` current with succinct notes about what was done and what remains. Add log entries to `log.md` in descending time order, using the confirmed author tag. Preserve previous log content. When a correction is needed, add an indented `CORRECTION` entry below the original entry or its previous corrections. Update status, plan checkboxes, and next steps in `task.md` as the task changes. A task directory's status parent must match the `Status` metadata in `task.md`; when changing status, move the task directory and update `task.md` in the same change. When pausing, leave concrete `Next Steps`. Only mark a task as `finished` after the user approves completion. When finishing an approved task, move the task to `finished`, set `Status` to `finished`, clear `Next Steps`, update `Updated`, summarize the outcome in `log.md`, and remove or update the corresponding current `roadmap.md` item if there is one.
