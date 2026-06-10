@@ -1,15 +1,7 @@
 #!/bin/bash
 # Browser control CLI wrapper
-# Usage: browser <command> [args]
-#
-# Commands:
-#   test                    - Test connection to Chrome
-#   goto <url>              - Navigate to URL
-#   screenshot [-o path]    - Take screenshot
-#   click <selector>        - Click an element
-#   fill <selector> <text>  - Fill a form field
-#   console                 - Get console logs
-#   info                    - Get page info
+# Usage: browser sandbox <command> [args]
+#        browser host <command> [args]
 
 VENV_PATH="$HOME/.local/python-venv"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
