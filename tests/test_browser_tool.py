@@ -1,4 +1,8 @@
+import argparse
+import contextlib
 import importlib.util
+import io
+import json
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -130,6 +134,84 @@ class BrowserToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(status["running"])
         self.assertEqual(status["pid"], 1234)
         self.assertEqual(status["executable"], "/usr/bin/chromium")
+
+    async def test_get_links_extracts_visible_link_metadata(self):
+        browser = self.module.Browser.sandbox(auto_start=False)
+        fake_page = mock.AsyncMock()
+        fake_page.evaluate.return_value = [
+            {
+                "href": "https://example.com/",
+                "text": "Example",
+                "title": "",
+                "target": "",
+                "ariaLabel": "",
+            }
+        ]
+        browser._page = fake_page
+
+        links = await browser.get_links()
+
+        self.assertEqual(links[0]["href"], "https://example.com/")
+        fake_page.evaluate.assert_awaited_once()
+        self.assertEqual(fake_page.evaluate.await_args.args[1], {"visibleOnly": True})
+
+    async def test_get_page_text_uses_inner_text_and_enforces_selector(self):
+        browser = self.module.Browser.sandbox(auto_start=False)
+        fake_page = mock.AsyncMock()
+        fake_page.evaluate.return_value = "Heading\n\nBody text"
+        browser._page = fake_page
+
+        text = await browser.get_page_text("main", max_chars=7)
+
+        self.assertEqual(text, "Heading")
+        fake_page.evaluate.assert_awaited_once()
+        self.assertEqual(fake_page.evaluate.await_args.args[1], {"selector": "main"})
+
+    async def test_links_command_prints_json(self):
+        class FakeBrowser:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def get_links(self, visible_only=True):
+                self.visible_only = visible_only
+                return [{"href": "https://example.com/", "text": "Example"}]
+
+        fake_browser = FakeBrowser()
+        args = argparse.Namespace(command="links", json=True, all=False)
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            await self.module._run_browser_command(args, fake_browser)
+
+        self.assertTrue(fake_browser.visible_only)
+        self.assertEqual(json.loads(output.getvalue()), [{"href": "https://example.com/", "text": "Example"}])
+
+    async def test_text_command_prints_page_text(self):
+        class FakeBrowser:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def get_page_text(self, selector, max_chars=None):
+                self.selector = selector
+                self.max_chars = max_chars
+                return "Hello from the page"
+
+        fake_browser = FakeBrowser()
+        args = argparse.Namespace(command="text", selector="main", max_chars=500)
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            await self.module._run_browser_command(args, fake_browser)
+
+        self.assertEqual(fake_browser.selector, "main")
+        self.assertEqual(fake_browser.max_chars, 500)
+        self.assertEqual(output.getvalue(), "Hello from the page\n")
 
 
 if __name__ == "__main__":

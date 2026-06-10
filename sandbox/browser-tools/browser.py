@@ -423,11 +423,54 @@ class Browser:
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
 
     async def get_all_links(self) -> list:
+        return await self.get_links(visible_only=False)
+
+    async def get_links(self, visible_only: bool = True) -> list:
         page = self._require_page()
-        return await page.evaluate("""
-            () => Array.from(document.querySelectorAll('a[href]'))
-                .map(a => ({href: a.href, text: a.textContent.trim()}))
-        """)
+        return await page.evaluate(
+            """
+            ({visibleOnly}) => Array.from(document.querySelectorAll('a[href]'))
+                .filter((a) => {
+                    if (!visibleOnly) return true;
+                    const style = window.getComputedStyle(a);
+                    const rect = a.getBoundingClientRect();
+                    return style.visibility !== 'hidden'
+                        && style.display !== 'none'
+                        && rect.width > 0
+                        && rect.height > 0;
+                })
+                .map((a) => ({
+                    href: a.href,
+                    text: (a.innerText || a.textContent || '').trim(),
+                    title: a.getAttribute('title') || '',
+                    target: a.getAttribute('target') || '',
+                    ariaLabel: a.getAttribute('aria-label') || '',
+                }))
+            """,
+            {"visibleOnly": visible_only},
+        )
+
+    async def get_page_text(self, selector: str = "body", max_chars: int | None = None) -> str:
+        page = self._require_page()
+        text = await page.evaluate(
+            """
+            ({selector}) => {
+                const element = document.querySelector(selector);
+                if (!element) return null;
+                return (element.innerText || element.textContent || '')
+                    .replace(/\u00a0/g, ' ')
+                    .replace(/[ \t]+/g, ' ')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+            }
+            """,
+            {"selector": selector},
+        )
+        if text is None:
+            raise RuntimeError(f"Element not found: {selector}")
+        if max_chars is not None and max_chars >= 0:
+            return text[:max_chars]
+        return text
 
     async def wait_for_network_idle(self, timeout: int = 30000):
         page = self._require_page()
@@ -452,6 +495,18 @@ def _add_browser_commands(subparsers: argparse._SubParsersAction) -> None:
     subparsers.add_parser("console", help="Get console logs")
     subparsers.add_parser("info", help="Get page info")
     subparsers.add_parser("test", help="Test browser connection")
+
+    links_parser = subparsers.add_parser("links", help="List links on the current page")
+    links_parser.add_argument("--json", "-j", action="store_true", help="Output links as JSON")
+    links_parser.add_argument("--all", action="store_true", help="Include hidden links")
+
+    text_parser = subparsers.add_parser(
+        "text",
+        aliases=["content"],
+        help="Print visible text from the current page or a selector",
+    )
+    text_parser.add_argument("selector", nargs="?", default="body", help="CSS selector (default: body)")
+    text_parser.add_argument("--max-chars", type=int, default=20000, help="Maximum characters to print (default: 20000)")
 
     wait_parser = subparsers.add_parser("wait", help="Wait for an element to appear")
     wait_parser.add_argument("selector", help="CSS selector to wait for")
@@ -498,6 +553,19 @@ async def _run_browser_command(args: argparse.Namespace, browser: Browser) -> No
         elif args.command == "info":
             info = await browser.get_page_info()
             print(json.dumps(info, indent=2))
+
+        elif args.command == "links":
+            links = await browser.get_links(visible_only=not args.all)
+            if args.json:
+                print(json.dumps(links, indent=2))
+            else:
+                for index, link in enumerate(links, start=1):
+                    label = link.get("text") or link.get("ariaLabel") or link.get("title") or "[no text]"
+                    print(f"{index}. {label} -> {link.get('href', '')}")
+
+        elif args.command in ("text", "content"):
+            text = await browser.get_page_text(args.selector, max_chars=args.max_chars)
+            print(text)
 
         elif args.command == "wait":
             await browser.wait_for(args.selector, timeout=args.timeout)
