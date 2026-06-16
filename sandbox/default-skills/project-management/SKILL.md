@@ -108,10 +108,10 @@ This uses the configured local timezone and formats the timezone as a compact GM
 Before creating or updating any `log.md`, determine the author tag in `<harness>/<model>` form. Examples include `pi/gpt-5.5`, `codex/gpt-5.5`, `claude/opus-4.8`, and `opencode/kimi-k2.6`; use the actual current harness and model rather than choosing from these examples.
 
 - Use environment/configuration only when it clearly identifies both harness and model.
-- In the Pi harness, when project Pi sessions are available, inspect the latest
-  `.workcell/sessions/pi/*.jsonl` entry for the current model before asking the user. Prefer the
-  latest assistant message's `provider` and `model`; otherwise use the latest `model_change` entry's
-  `provider` and `modelId`.
+- In the Pi harness, when project Pi sessions are available, inspect the last
+  `.workcell/sessions/pi/*.jsonl` file for the current model before asking the user. Pi appends
+  new entries to the end of the file, so read from the bottom. Prefer the last assistant message's
+  `provider` and `model`; otherwise use the last `model_change` entry's `provider` and `modelId`.
 - If either harness or model remains unknown, ask the user for the author tag before writing log
   entries.
 - Do not write placeholder tags such as `unknown`, `pi/unknown`, or inferred model names unless the
