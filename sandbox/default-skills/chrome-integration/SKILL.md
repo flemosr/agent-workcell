@@ -1,11 +1,11 @@
 ---
 name: chrome-integration
-description: Use for browser-based web development, visual UI checks, container dev servers, host Chrome, sandbox-headless browsing, and the browser CLI inside Agent Workcell sandboxes.
+description: Use for opening website links via sandbox-headless browsing, browser-based web development, visual UI checks, and host Chrome access inside Agent Workcell sandboxes.
 ---
 
 # Chrome Integration Agent Context
 
-Use this document when a task involves browser-based web development, visual UI verification, container dev servers, arbitrary web links, or the `browser` CLI.
+Use this document when a task involves opening arbitrary web links, sandbox-headless browsing, the `browser` CLI, browser-based web development, visual UI verification, or container dev servers.
 
 ## Browser Model
 
