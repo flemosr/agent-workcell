@@ -598,6 +598,35 @@ class SandboxImageSplitTests(unittest.TestCase):
             "persisted Codex standalone install exists but has no executable", script
         )
 
+    def test_claude_init_seeds_persisted_native_install_without_replacing_it(self):
+        script = (REPO_ROOT / "sandbox" / "agent-init" / "claude.sh").read_text(
+            encoding="utf-8"
+        )
+        seed_guard = 'if [ -z "$persisted_claude_version" ]; then'
+        seed_copy = 'cp -an "$claude_template"/. "$claude_install"/'
+
+        self.assertIn(
+            'claude_install="/home/agent/persist/.local/share/claude"', script
+        )
+        self.assertIn('claude_template="/opt/claude-code"', script)
+        self.assertIn(
+            'claude_template="/opt/claude-versions-template"', script
+        )
+        self.assertEqual(script.count(seed_copy), 1)
+        self.assertLess(script.index(seed_guard), script.index(seed_copy))
+        self.assertIn(
+            'claude_selector="$claude_install/.workcell-current-version"', script
+        )
+        self.assertIn(
+            'ln -sfn "$claude_install" /home/agent/.local/share/claude', script
+        )
+        self.assertIn(
+            'ln -sfn "$claude_executable" /home/agent/.local/bin/claude', script
+        )
+        self.assertIn(
+            "no Claude Code executable is available to initialize", script
+        )
+
     def test_agent_context_init_uses_shared_context_lib_and_workcell_sources(self):
         expected = {
             "claude.sh": (
