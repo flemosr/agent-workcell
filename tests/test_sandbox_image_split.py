@@ -545,6 +545,59 @@ class SandboxImageSplitTests(unittest.TestCase):
             'ln -sfn "/home/agent/persist/$pair" "/home/agent/$pair"', script
         )
 
+    def test_codex_image_builds_standalone_install_template(self):
+        dockerfile = (
+            REPO_ROOT / "sandbox" / "dockerfiles" / "codex.Dockerfile"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "/opt/codex-template/packages/standalone/releases", dockerfile
+        )
+        self.assertIn(
+            'codex_release_dir="/opt/codex-template/packages/standalone/'
+            'releases/${codex_release_name}"',
+            dockerfile,
+        )
+        self.assertIn(
+            'install -m 0755 "/tmp/codex-${CODEX_ARCH}" '
+            '"$codex_release_dir/codex"',
+            dockerfile,
+        )
+        self.assertIn(
+            'ln -s "releases/$codex_release_name" '
+            "/opt/codex-template/packages/standalone/current",
+            dockerfile,
+        )
+        self.assertNotIn("/home/agent/.local/bin/codex", dockerfile)
+
+    def test_codex_init_seeds_only_missing_standalone_install(self):
+        script = (REPO_ROOT / "sandbox" / "agent-init" / "codex.sh").read_text(
+            encoding="utf-8"
+        )
+        existing_guard = (
+            'if [ -e "$codex_standalone" ] || [ -L "$codex_standalone" ]; then'
+        )
+        seed_copy = 'cp -a "$codex_template" "$codex_packages"/'
+
+        self.assertIn(
+            'codex_standalone="$codex_packages/standalone"', script
+        )
+        self.assertIn(
+            'codex_executable="$codex_standalone/current/bin/codex"', script
+        )
+        self.assertIn(
+            'codex_executable="$codex_standalone/current/codex"', script
+        )
+        self.assertIn(existing_guard, script)
+        self.assertEqual(script.count(seed_copy), 1)
+        self.assertLess(script.index(existing_guard), script.index(seed_copy))
+        self.assertIn(
+            'ln -sfn "$codex_executable" /home/agent/.local/bin/codex', script
+        )
+        self.assertIn(
+            "persisted Codex standalone install exists but has no executable", script
+        )
+
     def test_agent_context_init_uses_shared_context_lib_and_workcell_sources(self):
         expected = {
             "claude.sh": (
