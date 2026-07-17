@@ -74,8 +74,8 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
 
 - Only the directory where you run `workcell <agent> run` is mounted into the container at
   `/workspaces/<project-name>`; agents do not get access to all host files.
-- Each harness has its own independent persisted Docker volume for auth data, settings, Rust
-  toolchains, Node versions, and language caches.
+- Each harness has its own independent persisted Docker volume for its CLI install, auth data,
+  settings, Rust toolchains, Node versions, and language caches.
 - Project-scoped Pi, Codex, and Claude session data lives under `.workcell/sessions/`. OpenCode
   sessions persist in its harness volume and can be moved through `workcell opencode sessions export`
   and `workcell opencode sessions import`.
@@ -93,8 +93,10 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
 
 Workcell bind-mounts the host workspace and persists Workcell-managed user state in one Docker
 volume per agent harness plus a shared GPG volume. Project-scoped `.workcell/` data lives in the
-host workspace. Image-owned tools and SDKs update with the sandbox image, while user state in Docker
-volumes is preserved across container restarts and image rebuilds.
+host workspace. Most image-owned tools and SDKs update with the sandbox image. Harness CLI installs
+are a deliberate exception: Workcell seeds them into their harness volume, and
+`workcell <agent> update` updates the persisted install so it survives container restarts and image
+rebuilds.
 
 Use `workcell volume backup` and `workcell volume restore` to back up or restore persisted Docker
 volume data. See [Persistence](docs/persistence.md) for the full persistence model, including what

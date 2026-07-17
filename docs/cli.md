@@ -15,6 +15,40 @@ when you invoke `workcell` from another directory, and builds all four agent ima
 shared base. To build a single agent, use the harness subcommand form:
 `workcell <agent> build` where agent is `pi`, `opencode`, `codex`, or `claude`.
 
+## Update harnesses
+
+```bash
+workcell pi update
+workcell opencode update
+workcell codex update
+workcell claude update
+```
+
+Each command delegates release selection and installation to the harness's native updater:
+
+| Workcell command | Native command |
+|------------------|----------------|
+| `workcell pi update` | `pi update --self` |
+| `workcell opencode update` | `opencode upgrade --method curl` |
+| `workcell codex update` | `codex update` |
+| `workcell claude update` | `claude update` |
+
+Update commands do not accept a version argument. "Latest" means the newest release allowed by the
+native updater's policy rather than an unconditional latest release. In particular,
+`workcell claude update` respects Claude Code's configured update channel, minimum version, and
+managed version bounds.
+
+The update runs in a short-lived container with the selected harness volume and an empty temporary
+GPG home; it does not expose the shared GPG volume, current workspace, or project `.workcell/` data.
+If the selected image is missing, Workcell builds the shared base and that harness image first. An
+existing image is used without rebuilding it on every update.
+
+Harness installs are stored in their per-harness volumes, so the updated executable remains selected
+across container restarts and image rebuilds. After upgrading from a Workcell version that predates
+volume-backed harness installs, rebuild each existing harness image once with
+`workcell <agent> build`; existing harness-volume state is migrated non-destructively when the new
+image starts. See [Persistence](persistence.md) for install paths, precedence, and backup behavior.
+
 ## Run agents
 
 Navigate to any project directory and run:

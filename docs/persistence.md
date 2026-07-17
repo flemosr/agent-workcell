@@ -1,8 +1,9 @@
 # Persistence
 
 Agent Workcell bind-mounts the host workspace and stores Workcell-managed user state in one Docker
-volume per agent harness plus a shared GPG volume. Tools and SDKs baked into Workcell images are not
-user state; they update when the sandbox image is rebuilt.
+volume per agent harness plus a shared GPG volume. Most tools and SDKs baked into Workcell images are
+not user state and update when the sandbox image is rebuilt. Harness CLI installs are a deliberate
+exception: they are seeded into the corresponding harness volume so native updates persist.
 
 ## Host workspace
 
@@ -60,25 +61,44 @@ Harness-specific persisted paths include:
 | Harness | Persisted paths and notable contents |
 |---------|--------------------------------------|
 | Pi | `~/.pi/agent/` for Pi settings, auth, packages/extensions, context, skills, and the persisted Pi self install at `~/.pi/agent/self/`. Project Pi sessions live under `.workcell/sessions/pi/`. |
-| OpenCode | `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` for settings, auth, logs, sessions, context, and skills. OpenCode project sessions can be exported/imported through `.workcell/sessions/opencode/`. |
-| Codex | `~/.codex/` for Codex config, auth, history, logs, and context; `~/.agents/` for global skills. Project Codex sessions live under `.workcell/sessions/codex/`. |
-| Claude | `~/.claude/` and `~/.claude.json` for Claude Code credentials, settings, context, skills, and state. Project Claude sessions live under `.workcell/sessions/claude/`. |
+| OpenCode | `~/.opencode/` for the persisted CLI install; `~/.config/opencode/`, `~/.local/share/opencode/`, and `~/.local/state/opencode/` for settings, auth, logs, sessions, context, and skills. OpenCode project sessions can be exported/imported through `.workcell/sessions/opencode/`. |
+| Codex | `~/.codex/packages/standalone/` for the persisted CLI releases and current-release link; the rest of `~/.codex/` for config, auth, history, logs, and context; `~/.agents/` for global skills. Project Codex sessions live under `.workcell/sessions/codex/`. |
+| Claude | `~/.local/share/claude/versions/` for persisted CLI versions and `~/.local/share/claude/.workcell-current-version` for Workcell's selected-version record; `~/.claude/` and `~/.claude.json` for credentials, settings, context, skills, and state. Project Claude sessions live under `.workcell/sessions/claude/`. |
 
 Because volumes are per harness, do not assume state from Pi exists in Codex, OpenCode, or Claude,
 and vice versa.
 
-## Image-baked and user-managed tools
+## Image-baked tools and volume-backed harness installs
 
 Tools and SDKs baked into Workcell images can change when images are rebuilt. User-managed tool
 state under persisted home paths survives container restarts and image rebuilds. For example, Node
 versions under `~/.nvm/`, Cargo-installed binaries under `~/.cargo/bin`, and activated Dart packages
 under `~/.pub-cache/bin` belong to the selected harness volume.
 
-Pi is a special case: on first run, Workcell seeds Pi's install prefix into
-`~/.pi/agent/self/`, and the sandbox runs that persisted copy. Native `pi update` self-updates write
-to the persisted Pi volume instead of the image-baked `/opt/pi`. Other harness CLI binaries
-generally come from the Workcell image; their configuration or package data persists only when it is
-stored under persisted home paths.
+All four harness CLI installs are also volume-backed:
+
+| Harness | Persistent install root | Native update command |
+|---------|-------------------------|-----------------------|
+| Pi | `~/.pi/agent/self/` | `pi update --self` |
+| OpenCode | `~/.opencode/` | `opencode upgrade --method curl` |
+| Codex | `~/.codex/packages/standalone/` | `codex update` |
+| Claude | `~/.local/share/claude/` | `claude update` |
+
+On first use, Workcell copies the image-provided harness install into the persistent root only when a
+valid persisted executable is absent. After that, the persisted install is authoritative: container
+restarts and image rebuilds restore the launcher from the volume and do not replace a valid install
+with the image template. Use `workcell <agent> update` to ask the native updater for the newest
+policy-allowed release. Update commands do not accept a version argument.
+
+Claude Code can retain multiple installed versions, including a newer binary after a release-channel
+downgrade. Workcell therefore records the launcher selected by a successful `claude update` in
+`~/.local/share/claude/.workcell-current-version` and restores that version on restart instead of
+blindly selecting the highest installed version.
+
+When upgrading an existing Workcell checkout from the older image-owned harness layout, rebuild each
+existing harness image once with `workcell <agent> build` to acquire the persistence wiring. Existing
+volume state is preserved, and missing persistent installs are seeded non-destructively when the
+rebuilt image first starts.
 
 ## Project-scoped `.workcell/` data
 
@@ -107,6 +127,8 @@ agent-workcell-gpg
 
 When a sandbox or helper command needs GPG access, this volume is mounted at the expected GPG home
 path for that operation. It is shared by all harnesses so commits can use the same signing identity.
+Harness update containers do not need signing keys and use an empty temporary GPG home instead of
+mounting this volume.
 
 ## Shared context repo
 
@@ -132,9 +154,14 @@ workcell volume restore --file agent-workcell-backup.tgz
 workcell volume rm <pi|opencode|codex|claude|gpg|all>
 ```
 
-`volume backup` and `volume restore` cover the per-harness volumes and the shared GPG volume. They
-do not back up host workspace files, `.workcell/`, or a configured shared context repo; back those
-up with normal host filesystem or Git workflows.
+`volume backup` and `volume restore` cover the per-harness volumes—including their harness CLI
+installs—and the shared GPG volume. They do not back up host workspace files, `.workcell/`, or a
+configured shared context repo; back those up with normal host filesystem or Git workflows.
+
+Removing a harness volume removes its persisted CLI install together with that harness's credentials,
+settings, caches, and other volume state. The next run or update recreates the volume and seeds the
+CLI install from the current image. Removing `all` does this for every harness and also removes the
+shared GPG volume.
 
 ## Security notes
 
