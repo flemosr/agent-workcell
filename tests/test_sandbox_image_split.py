@@ -81,6 +81,99 @@ class SandboxImageSplitTests(unittest.TestCase):
                     run_line.endswith(f"\tlocal/agent-workcell-{agent}\t--version")
                 )
 
+    def test_cli_update_uses_native_command_and_isolated_persistent_volume(self):
+        expected_args = {
+            "pi": ["update", "--self"],
+            "opencode": ["upgrade", "--method", "curl"],
+            "codex": ["update"],
+            "claude": ["update"],
+        }
+        for agent, native_args in expected_args.items():
+            with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
+                workspace = Path(temp_dir)
+                env, docker_log = self.fake_docker_env(workspace)
+                subprocess.run(
+                    [str(CLI), agent, "update"],
+                    cwd=workspace,
+                    env=env,
+                    check=True,
+                )
+                docker_output = docker_log.read_text()
+                run_line = next(
+                    line
+                    for line in docker_output.splitlines()
+                    if line.startswith("DOCKER\trun\t--rm\t--init\t")
+                )
+                self.assertNotIn("DOCKER\tcompose\tbuild", docker_output)
+                self.assertIn(
+                    f"\t-v\tagent-workcell-{agent}:/home/agent/persist\t",
+                    f"{run_line}\t",
+                )
+                self.assertIn(
+                    "\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t",
+                    f"{run_line}\t",
+                )
+                self.assertIn(f"\t-e\tAGENT_CLI={agent}\t", f"{run_line}\t")
+                expected_suffix = "\t".join(
+                    [f"local/agent-workcell-{agent}", *native_args]
+                )
+                self.assertTrue(run_line.endswith(f"\t{expected_suffix}"))
+                self.assertEqual(
+                    "\t-e\tWORKCELL_CLAUDE_UPDATE=1\t" in f"{run_line}\t",
+                    agent == "claude",
+                )
+                self.assertNotIn(str(workspace), run_line)
+                self.assertNotIn("/workspaces/", run_line)
+                self.assertNotIn("WORKCELL_CONTEXT", run_line)
+                self.assertNotIn("ENABLE_FIREWALL", run_line)
+
+    def test_cli_update_builds_selected_image_when_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            env, docker_log = self.fake_docker_env(
+                workspace, image_inspect_missing=True
+            )
+            subprocess.run(
+                [str(CLI), "claude", "update"],
+                cwd=workspace,
+                env=env,
+                check=True,
+            )
+            lines = docker_log.read_text().splitlines()
+            self.assertIn("DOCKER\timage\tinspect\tlocal/agent-workcell-claude", lines)
+            self.assertIn("DOCKER\tcompose\tbuild\tagent-workcell-base", lines)
+            self.assertIn("DOCKER\tcompose\tbuild\tagent-workcell-claude", lines)
+            self.assertNotIn("agent-workcell-codex", "\n".join(lines))
+            self.assertTrue(
+                any(
+                    line.startswith("DOCKER\trun\t--rm\t--init\t")
+                    for line in lines
+                )
+            )
+
+    def test_cli_update_help_lists_native_command_without_docker(self):
+        expected = {
+            "pi": "pi update --self",
+            "opencode": "opencode upgrade --method curl",
+            "codex": "codex update",
+            "claude": "claude update",
+        }
+        for agent, native_command in expected.items():
+            with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
+                workspace = Path(temp_dir)
+                env, docker_log = self.fake_docker_env(workspace)
+                result = subprocess.run(
+                    [str(CLI), agent, "update", "--help"],
+                    cwd=workspace,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                )
+                self.assertIn(f"workcell {agent} update", result.stdout)
+                self.assertIn(native_command, result.stdout)
+                self.assertFalse(docker_log.exists())
+
     def test_cli_run_builds_target_image_only_when_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -432,6 +525,7 @@ class SandboxImageSplitTests(unittest.TestCase):
     def test_top_level_agent_scoped_commands_show_helpful_error(self):
         for command, example in [
             ("run", "workcell pi run"),
+            ("update", "workcell pi update"),
             ("settings", "workcell pi settings"),
             ("context", "workcell pi context open"),
             ("skill", "workcell pi skill list"),
@@ -473,6 +567,8 @@ class SandboxImageSplitTests(unittest.TestCase):
 
     def test_cli_argless_commands_reject_unexpected_args(self):
         commands = [
+            ["pi", "update", "extra"],
+            ["pi", "update", "--help", "extra"],
             ["pi", "settings", "extra"],
             ["pi", "context", "open", "extra"],
             ["pi", "context", "restore", "extra"],
@@ -514,6 +610,49 @@ class SandboxImageSplitTests(unittest.TestCase):
         self.assertLess(
             entrypoint.index("image/agent mismatch"),
             entrypoint.index("workcell-agent-init.sh"),
+        )
+
+    def test_claude_update_records_only_a_valid_persisted_native_version(self):
+        entrypoint = (REPO_ROOT / "sandbox" / "entrypoint.sh").read_text(
+            encoding="utf-8"
+        )
+        update_guard = 'if [[ "${WORKCELL_CLAUDE_UPDATE:-}" == "1" ]]; then'
+        selector_move = 'mv -f "$claude_selector_tmp" "$claude_selector"'
+
+        self.assertIn(update_guard, entrypoint)
+        self.assertIn(
+            "WORKCELL_CLAUDE_UPDATE requires the 'claude update' command",
+            entrypoint,
+        )
+        self.assertIn(
+            'claude_versions_root="/home/agent/persist/.local/share/claude/versions"',
+            entrypoint,
+        )
+        self.assertIn(
+            'claude_selected=$(readlink -f /home/agent/.local/bin/claude',
+            entrypoint,
+        )
+        self.assertIn('"$claude_versions_root"/*)', entrypoint)
+        self.assertIn('"$claude_selected_version" == */*', entrypoint)
+        self.assertIn(
+            'claude_selector="/home/agent/persist/.local/share/claude/'
+            '.workcell-current-version"',
+            entrypoint,
+        )
+        self.assertIn(selector_move, entrypoint)
+        self.assertLess(
+            entrypoint.index(update_guard), entrypoint.index(selector_move)
+        )
+
+    def test_pi_init_launches_the_persisted_self_install(self):
+        script = (REPO_ROOT / "sandbox" / "agent-init" / "pi.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            'pi_self_prefix="/home/agent/persist/.pi/agent/self"', script
+        )
+        self.assertIn(
+            'ln -sfn "$pi_self_prefix/bin/pi" /home/agent/.local/bin/pi', script
         )
 
     def test_opencode_init_seeds_persisted_install_without_replacing_it(self):

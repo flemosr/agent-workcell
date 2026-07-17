@@ -5,6 +5,7 @@
 #   workcell <agent> run [options]    Run an agent in the current directory
 #                                          (agent: pi | opencode | codex | claude)
 #   workcell <agent> build [args]     Build/rebuild one agent sandbox image
+#   workcell <agent> update           Update an agent using its native updater
 #   workcell <agent> settings         Open an agent's settings/config in vi
 #   workcell <agent> context open     Open an agent's global context file in vi
 #   workcell <agent> context restore  Restore an agent's context from image default
@@ -94,6 +95,7 @@ Agent commands:
   <agent> run       Run an agent in the current directory
                     agent: pi | opencode | codex | claude
   <agent> build     Build/rebuild one agent sandbox image
+  <agent> update    Update an agent using its native updater
   <agent> settings  Open an agent's settings/config in vi
   <agent> context   Open or restore an agent's global context file
   <agent> skill     Manage an agent's global skills
@@ -124,6 +126,10 @@ Examples:
   workcell codex run --yolo
   workcell claude run --yolo --with-chrome --port 3000
   workcell pi build --no-cache
+  workcell pi update
+  workcell opencode update
+  workcell codex update
+  workcell claude update
   workcell build
   workcell start-chrome
   workcell start-chrome --restart
@@ -167,6 +173,7 @@ Usage:
 Subcommands:
   run        Run $agent in the current directory
   build      Build/rebuild the $agent sandbox image
+  update     Update $agent using its native updater
   settings   Open $agent settings/config in vi
   context    Open or restore $agent global context
   skill      Manage $agent global skills
@@ -182,6 +189,7 @@ Examples:
   workcell $agent run --yolo
   workcell $agent run --yolo --with-chrome --port 3000
   workcell $agent build --no-cache
+  workcell $agent update
   workcell $agent settings
   workcell $agent context open
   workcell $agent context restore
@@ -302,6 +310,28 @@ reject_extra_args() {
         echo "Usage: $usage"
         exit 1
     fi
+}
+
+show_update_help() {
+    local agent="$1"
+    local native_command
+    case "$agent" in
+        pi) native_command="pi update --self" ;;
+        opencode) native_command="opencode upgrade --method curl" ;;
+        codex) native_command="codex update" ;;
+        claude) native_command="claude update" ;;
+    esac
+    cat << EOF
+Update the $agent harness in its persistent Workcell volume
+
+Usage:
+  workcell $agent update
+
+Runs:
+  $native_command
+
+The native updater selects the release. Version arguments are not accepted.
+EOF
 }
 
 show_build_help() {
@@ -566,6 +596,45 @@ cmd_harness_run() {
 
     ensure_docker_running
     exec "$SCRIPT_DIR/scripts/run_sandbox.sh" "$agent" "$@"
+}
+
+cmd_harness_update() {
+    local agent="$1"
+    shift
+
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        reject_extra_args "workcell $agent update" "${@:2}"
+        show_update_help "$agent"
+        exit 0
+    fi
+    reject_extra_args "workcell $agent update" "$@"
+
+    local update_volume="$(agent_volume_name "$agent")"
+    local update_image="$(agent_image_name "$agent")"
+    local update_args=()
+    local update_env=()
+    case "$agent" in
+        pi) update_args=(update --self) ;;
+        opencode) update_args=(upgrade --method curl) ;;
+        codex) update_args=(update) ;;
+        claude)
+            update_args=(update)
+            update_env=(-e WORKCELL_CLAUDE_UPDATE=1)
+            ;;
+    esac
+
+    ensure_docker_running
+    if ! docker image inspect "$update_image" >/dev/null 2>&1; then
+        echo "Image $update_image not found; building it..."
+        (cd "$SCRIPT_DIR" && docker compose build agent-workcell-base && docker compose build "agent-workcell-$agent")
+    fi
+
+    docker run --rm --init \
+        -v "${update_volume}:/home/agent/persist" \
+        -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
+        -e "AGENT_CLI=$agent" \
+        "${update_env[@]}" \
+        "$update_image" "${update_args[@]}"
 }
 
 cmd_harness_build() {
@@ -1102,6 +1171,9 @@ case "$command" in
             build)
                 cmd_harness_build "$agent" "$@"
                 ;;
+            update)
+                cmd_harness_update "$agent" "$@"
+                ;;
             settings)
                 cmd_harness_settings "$agent" "$@"
                 ;;
@@ -1156,11 +1228,12 @@ case "$command" in
         ;;
 
     # ── Global commands ──────────────────────────────────────────────────
-    run|settings|context|skill)
+    run|update|settings|context|skill)
         echo "Error: '$command' must be scoped to an agent"
         echo "Usage: workcell <pi|opencode|codex|claude> $command${2:+ ...}"
         case "$command" in
             run) echo "Example: workcell pi run" ;;
+            update) echo "Example: workcell pi update" ;;
             settings) echo "Example: workcell pi settings" ;;
             context) echo "Example: workcell pi context open" ;;
             skill) echo "Example: workcell pi skill list" ;;

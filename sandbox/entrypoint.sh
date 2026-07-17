@@ -152,6 +152,44 @@ fi
 
 echo
 
+if [[ "${WORKCELL_CLAUDE_UPDATE:-}" == "1" ]]; then
+  if [[ "$AGENT_CLI" != "claude" || "$#" -ne 1 || "${1:-}" != "update" ]]; then
+    echo "Error: WORKCELL_CLAUDE_UPDATE requires the 'claude update' command" >&2
+    exit 1
+  fi
+
+  if [[ "$(id -u)" == "0" ]]; then
+    runuser -m -u agent -- \
+      env HOME=/home/agent USER=agent LOGNAME=agent PATH="$PATH" "$AGENT_CLI" "$@"
+  else
+    "$AGENT_CLI" "$@"
+  fi
+
+  claude_versions_root="/home/agent/persist/.local/share/claude/versions"
+  claude_selected=$(readlink -f /home/agent/.local/bin/claude 2>/dev/null || true)
+  case "$claude_selected" in
+    "$claude_versions_root"/*) ;;
+    *)
+      echo "Error: Claude updater selected an executable outside the persistent versions directory" >&2
+      exit 1
+      ;;
+  esac
+  claude_selected_version=${claude_selected#"$claude_versions_root"/}
+  if [[ -z "$claude_selected_version" || "$claude_selected_version" == */* || ! -x "$claude_selected" ]]; then
+    echo "Error: Claude updater did not select a valid persistent native version" >&2
+    exit 1
+  fi
+
+  claude_selector="/home/agent/persist/.local/share/claude/.workcell-current-version"
+  claude_selector_tmp="${claude_selector}.tmp.$$"
+  trap 'rm -f "$claude_selector_tmp"' EXIT
+  printf '%s\n' "$claude_selected_version" > "$claude_selector_tmp"
+  chown agent:agent "$claude_selector_tmp" 2>/dev/null || true
+  mv -f "$claude_selector_tmp" "$claude_selector"
+  trap - EXIT
+  exit 0
+fi
+
 if [[ "$(id -u)" == "0" ]]; then
   exec runuser -m -u agent -- \
     env HOME=/home/agent USER=agent LOGNAME=agent PATH="$PATH" "$AGENT_CLI" "$@"
