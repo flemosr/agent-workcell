@@ -516,6 +516,35 @@ class SandboxImageSplitTests(unittest.TestCase):
             entrypoint.index("workcell-agent-init.sh"),
         )
 
+    def test_opencode_init_seeds_persisted_install_without_replacing_it(self):
+        script = (REPO_ROOT / "sandbox" / "agent-init" / "opencode.sh").read_text(
+            encoding="utf-8"
+        )
+        seed_guard = 'if [ ! -x "$opencode_install/bin/opencode" ]; then'
+        seed_copy = 'cp -a "$opencode_template"/. "$opencode_install"/'
+
+        self.assertIn('opencode_install="/home/agent/persist/.opencode"', script)
+        self.assertEqual(script.count(seed_guard), 1)
+        self.assertEqual(script.count(seed_copy), 1)
+        self.assertLess(script.index(seed_guard), script.index(seed_copy))
+        self.assertIn(
+            'ln -sfn "$opencode_install" /home/agent/.opencode', script
+        )
+        self.assertIn(
+            'ln -sfn "$opencode_install/bin/opencode" '
+            "/home/agent/.local/bin/opencode",
+            script,
+        )
+        for persisted_state_dir in [
+            "/home/agent/persist/.local/share/opencode",
+            "/home/agent/persist/.local/state/opencode",
+            "/home/agent/persist/.config/opencode",
+        ]:
+            self.assertIn(persisted_state_dir, script)
+        self.assertIn(
+            'ln -sfn "/home/agent/persist/$pair" "/home/agent/$pair"', script
+        )
+
     def test_agent_context_init_uses_shared_context_lib_and_workcell_sources(self):
         expected = {
             "claude.sh": (
