@@ -5,7 +5,7 @@ RUN mkdir -p /opt/opencode-template && chown agent:agent /opt/opencode-template
 
 USER agent
 WORKDIR /home/agent
-ARG OPENCODE_VERSION=1.15.0
+ARG OPENCODE_VERSION=1.18.3
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
         amd64) OPENCODE_ARCH="x64" ;; \
