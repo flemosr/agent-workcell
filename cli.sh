@@ -631,7 +631,7 @@ cmd_harness_update() {
 
     docker run --rm --init \
         -v "${update_volume}:/home/agent/persist" \
-        -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/home/agent/persist/.gnupg" \
+        --tmpfs /home/agent/persist/.gnupg:rw,noexec,nosuid,nodev,size=64k,mode=0700 \
         -e "AGENT_CLI=$agent" \
         "${update_env[@]}" \
         "$update_image" "${update_args[@]}"

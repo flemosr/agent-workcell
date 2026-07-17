@@ -110,9 +110,11 @@ class SandboxImageSplitTests(unittest.TestCase):
                     f"{run_line}\t",
                 )
                 self.assertIn(
-                    "\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t",
+                    "\t--tmpfs\t/home/agent/persist/.gnupg:"
+                    "rw,noexec,nosuid,nodev,size=64k,mode=0700\t",
                     f"{run_line}\t",
                 )
+                self.assertNotIn("agent-workcell-gpg", run_line)
                 self.assertIn(f"\t-e\tAGENT_CLI={agent}\t", f"{run_line}\t")
                 expected_suffix = "\t".join(
                     [f"local/agent-workcell-{agent}", *native_args]
