@@ -50,7 +50,7 @@ RUN useradd -m -s /bin/bash agent \
 # The late /opt/flutter-sdk alias gives runtime code a stable path without
 # invalidating this expensive layer when the persistence wiring changes.
 # amd64: official tarball; arm64: git clone (no prebuilt arm64 Linux tarball available).
-ARG FLUTTER_VERSION=3.41.9
+ARG FLUTTER_VERSION=3.47.4
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
         mkdir -p /opt/flutter-sdk-template && \
