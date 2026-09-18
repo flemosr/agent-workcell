@@ -801,6 +801,23 @@ class SandboxImageSplitTests(unittest.TestCase):
                 for token in tokens:
                     self.assertIn(token, script)
 
+    def test_pi_notification_extension_is_packaged_only_in_pi_image(self):
+        dockerfiles = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in (REPO_ROOT / "sandbox" / "dockerfiles").glob("*.Dockerfile")
+        }
+        copy_instruction = (
+            "COPY pi-extensions/terminal-notify.ts "
+            "/opt/workcell/pi-extensions/terminal-notify.ts"
+        )
+
+        self.assertIn(copy_instruction, dockerfiles["pi.Dockerfile"])
+        for name, content in dockerfiles.items():
+            if name != "pi.Dockerfile":
+                with self.subTest(dockerfile=name):
+                    self.assertNotIn("terminal-notify.ts", content)
+                    self.assertNotIn("pi-extensions", content)
+
     def test_agent_installers_are_not_in_base_dockerfile(self):
         base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(
             encoding="utf-8"
