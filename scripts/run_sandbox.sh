@@ -231,18 +231,30 @@ if [ -f "$workcell_env_file" ]; then
   while IFS= read -r env_entry; do
     [ -n "$env_entry" ] || continue
     case "$env_entry" in
-      WORKCELL_CONTEXT_REPO=*) continue ;;
+      WORKCELL_CONTEXT_REPO=*|WORKCELL_PI_NOTIFICATIONS=*|CMUX_*=*) continue ;;
     esac
     workcell_env_args+=(-e "$env_entry")
   done <<< "$workcell_env_entries"
 fi
 
+# Capture cmux identity only from the launch environment. config.sh controls
+# notification opt-in but must not manufacture terminal identity.
+workcell_cmux_surface_id="${CMUX_SURFACE_ID:-}"
+workcell_cmux_panel_id="${CMUX_PANEL_ID:-}"
+
 # Source config.sh if it exists (required for Chrome integration and optional
-# Workcell context repo). WORKCELL_CONTEXT_REPO is intentionally read only from
+# Workcell integrations). WORKCELL_CONTEXT_REPO is intentionally read only from
 # config.sh, not from the shell environment or .workcell/.env.
 WORKCELL_CONTEXT_REPO=""
 if [ -f "$REPO_ROOT/config.sh" ]; then
   source "$REPO_ROOT/config.sh"
+fi
+
+pi_notification_args=()
+if [ "$agent_cli" = "pi" ] \
+  && [ "${WORKCELL_PI_NOTIFICATIONS:-}" = "enabled" ] \
+  && { [ -n "$workcell_cmux_surface_id" ] || [ -n "$workcell_cmux_panel_id" ]; }; then
+  pi_notification_args=(--extension /opt/workcell/pi-extensions/terminal-notify.ts)
 fi
 
 context_repo_mount_args=()
@@ -652,7 +664,7 @@ if ! docker image inspect "$WORKCELL_IMAGE_NAME" >/dev/null 2>&1; then
   (cd "$REPO_ROOT" && docker compose build agent-workcell-base && docker compose build "agent-workcell-${agent_cli}")
 fi
 
-docker run -d "${docker_args[@]}" "$WORKCELL_IMAGE_NAME" $yolo_flag "${args[@]}" >/dev/null
+docker run -d "${docker_args[@]}" "$WORKCELL_IMAGE_NAME" $yolo_flag "${pi_notification_args[@]}" "${args[@]}" >/dev/null
 
 # Spawn watchdog immune to SIGHUP. Tests with fake Docker can disable this to
 # avoid leaving background loops after temporary fake command directories vanish.

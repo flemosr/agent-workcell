@@ -18,6 +18,11 @@
 # auto-detects the host timezone and sets TZ for container-local logs and commits.
 # TZ="America/Los_Angeles"
 #
+# Notify through cmux when an interactive Pi run settles and is ready for input.
+# cmux must also be detected in the launch environment. Remove this assignment or
+# change its value to disable notifications.
+WORKCELL_PI_NOTIFICATIONS=enabled
+#
 # REQUIRED: Create a dedicated Chrome profile for agent-driven browser work:
 #   1. Open Chrome and click your profile icon (top-right)
 #   2. Click "Add" to create a new profile named "Agent"
