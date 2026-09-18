@@ -142,6 +142,73 @@ workcell start-flutter-bridge --flutter-project-dir ./gui
 See [Chrome integration](chrome-integration.md) for `browser sandbox ...` and `browser host ...`
 usage, and [Flutter integration](flutter-integration.md) for Flutter setup details.
 
+## Pi completion notifications in cmux
+
+Workcell can notify cmux when an interactive Pi run has fully settled and is ready for input. This
+uses cmux's OSC 777 terminal notification protocol over the existing Docker TTY; it does not mount a
+cmux socket, forward `CMUX_*` variables, or run a host bridge.
+
+Two conditions must be true at launch:
+
+1. The effective host-side setting is exactly `WORKCELL_PI_NOTIFICATIONS=enabled`.
+2. cmux supplied a nonempty `CMUX_SURFACE_ID`, or the legacy `CMUX_PANEL_ID`, to the shell launching
+   Workcell.
+
+`config.template.sh` enables the feature, so new configurations copied from it opt in. Existing
+`config.sh` files are not changed automatically; add the setting manually:
+
+```bash
+# config.sh
+WORKCELL_PI_NOTIFICATIONS=enabled
+```
+
+Without an assignment in `config.sh`, the host environment can opt in for one launch:
+
+```bash
+WORKCELL_PI_NOTIFICATIONS=enabled workcell pi run
+```
+
+Repository-root `config.sh` takes precedence over an inherited host value. Unset, empty, and every
+value other than the exact lowercase word `enabled` disable the feature. To disable it when the
+template assignment is present, remove that assignment or change its value, for example:
+
+```bash
+WORKCELL_PI_NOTIFICATIONS=disabled
+```
+
+`.workcell/.env` cannot enable this host launch policy. Workcell also filters
+`WORKCELL_PI_NOTIFICATIONS` and `CMUX_*` entries from that file rather than forwarding them into the
+container.
+
+When enabled, Workcell explicitly adds its image-owned extension with `--extension`; Pi's
+`--no-extensions` option disables discovery but does not disable this explicit extension. The
+extension emits the fixed `Pi` / `Ready for input` notification only for TUI mode with a terminal and
+an idle agent. It listens to Pi's `agent_settled` event, so the notification means "ready for input,"
+not "the task succeeded." Print (`-p`), JSON, and RPC modes emit no notification.
+
+cmux controls whether a focused pane shows a banner and how unread or pane-attention indicators are
+displayed. If no notification appears:
+
+- confirm the launch shell has `CMUX_SURFACE_ID` or `CMUX_PANEL_ID` and that the effective setting is
+  exactly `enabled`;
+- rebuild the Pi image with `workcell pi build` so it contains the Workcell extension;
+- update older persisted Pi installs with `workcell pi update`; this integration is tested with Pi
+  0.85.1 and requires `agent_settled` plus extension context modes;
+- check cmux notification preferences, preferably while the Pi pane is unfocused; and
+- disable either Workcell's setting or any user-installed notification extension if notifications
+  appear twice.
+
+To check cmux's OSC handling independently, run this in a host cmux shell and switch to another pane
+during the delay:
+
+```bash
+sleep 3; printf '\033]777;notify;Pi;Ready for input\a'
+```
+
+This host check does not cover Docker's attached TTY; complete that path with a real interactive Pi
+prompt. Pi's `!` user-shell subprocesses capture output and do not have a writable direct path to the
+container TTY, so they are not a valid transport probe.
+
 ## Settings, context, and skills
 
 ```bash

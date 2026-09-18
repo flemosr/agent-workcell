@@ -84,6 +84,14 @@ All four harness CLI installs are also volume-backed:
 | Codex | `~/.codex/packages/standalone/` | `codex update` |
 | Claude | `~/.local/share/claude/` | `claude update` |
 
+The optional Pi-to-cmux notification adapter is different from the Pi CLI install. Workcell owns the
+adapter in the Pi image at `/opt/workcell/pi-extensions/terminal-notify.ts` and passes it explicitly
+at launch when enabled; it is not copied into `~/.pi/agent/extensions/` and does not modify Pi
+settings. Pulling adapter changes therefore requires `workcell pi build`. Rebuilding does not replace
+the volume-backed Pi executable, so run `workcell pi update` separately if the persisted Pi version
+lacks the extension APIs required by the adapter. Volume backups include the persisted Pi install and
+user extensions, but not this image-owned adapter.
+
 On first use, Workcell copies the image-provided harness install into the persistent root only when a
 valid persisted executable is absent. After that, the persisted install is authoritative: container
 restarts and image rebuilds restore the launcher from the volume and do not replace a valid install

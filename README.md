@@ -61,6 +61,8 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
 
 - [CLI reference](docs/cli.md) - command examples for running agents, integrations, settings,
   contexts, skills, migrations, and volumes.
+- [Pi notifications in cmux](docs/cli.md#pi-completion-notifications-in-cmux) - optional
+  ready-for-input notifications over the existing terminal connection.
 - [Context management](docs/context-management.md) - default context seeding, shared context repos,
   and global skills.
 - [Persistence](docs/persistence.md) - host workspace data, per-harness volumes, `.workcell/`,
