@@ -84,13 +84,19 @@ All four harness CLI installs are also volume-backed:
 | Codex | `~/.codex/packages/standalone/` | `codex update` |
 | Claude | `~/.local/share/claude/` | `claude update` |
 
-The optional Pi-to-cmux notification adapter is different from the Pi CLI install. Workcell owns the
-adapter in the Pi image at `/opt/workcell/pi-extensions/terminal-notify.ts` and passes it explicitly
-at launch when enabled; it is not copied into `~/.pi/agent/extensions/` and does not modify Pi
-settings. Pulling adapter changes therefore requires `workcell pi build`. Rebuilding does not replace
+Workcell's bundled Pi extensions are different from the Pi CLI install. The Pi image owns:
+
+- `/opt/workcell/pi-extensions/compact-session.ts` — the default self-compaction entrypoint;
+- `/opt/workcell/pi-extensions/compact-session-runtime.ts` — its sibling runtime helper; and
+- `/opt/workcell/pi-extensions/terminal-notify.ts` — the optional cmux notification adapter.
+
+The launcher explicitly loads the compaction entrypoint on Pi runs and the notification adapter only
+when enabled. These files are not copied into `~/.pi/agent/extensions/` and do not modify Pi settings.
+Pulling changes to them requires `workcell pi build` and a new container. Rebuilding does not replace
 the volume-backed Pi executable, so run `workcell pi update` separately if the persisted Pi version
-lacks the extension APIs required by the adapter. Volume backups include the persisted Pi install and
-user extensions, but not this image-owned adapter.
+lacks the required extension APIs. Volume backups include the persisted Pi install and user
+extensions, but not these image-owned files. See [Pi self-compaction](pi-self-compaction.md) for the
+tool's behavior, tested version, disabling, and acceptance checks.
 
 On first use, Workcell copies the image-provided harness install into the persistent root only when a
 valid persisted executable is absent. After that, the persisted install is authoritative: container
