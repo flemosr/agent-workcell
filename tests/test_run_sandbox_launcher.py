@@ -6,6 +6,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUN_SANDBOX = REPO_ROOT / "scripts" / "run_sandbox.sh"
+PI_COMPACTION_EXTENSION = "/opt/workcell/pi-extensions/compact-session.ts"
+PI_COMPACTION_ARGS = ["--extension", PI_COMPACTION_EXTENSION]
 PI_NOTIFICATION_EXTENSION = "/opt/workcell/pi-extensions/terminal-notify.ts"
 
 
@@ -41,7 +43,8 @@ class RunSandboxLauncherTests(unittest.TestCase):
             "#!/bin/bash\n"
             "printf 'DOCKER' >> \"$DOCKER_LOG\"\n"
             "for arg in \"$@\"; do printf '\\t%s' \"$arg\" >> \"$DOCKER_LOG\"; done\n"
-            "printf '\\n' >> \"$DOCKER_LOG\"\n",
+            "printf '\\n' >> \"$DOCKER_LOG\"\n"
+            'if [ "${1:-}" = run ]; then printf \'%s\\0\' "$@" > "$DOCKER_RUN_ARGS_LOG"; fi\n',
             encoding="utf-8",
         )
         fake_docker.chmod(0o755)
@@ -56,6 +59,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
         env = os.environ.copy()
         env["DOCKER_LOG"] = str(docker_log)
+        env["DOCKER_RUN_ARGS_LOG"] = str(workspace / "docker-run-args.bin")
         env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
         env["WORKCELL_TEST_SKIP_WATCHDOG"] = "1"
         for name in [
@@ -69,7 +73,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             env.update(extra_env)
 
         subprocess.run(
-            [str(RUN_SANDBOX), agent, "--", *(agent_args or ["status"])],
+            [str(RUN_SANDBOX), agent, "--", *(agent_args if agent_args is not None else ["status"])],
             cwd=workspace,
             env=env,
             check=True,
@@ -89,6 +93,70 @@ class RunSandboxLauncherTests(unittest.TestCase):
         run_args = self.docker_run_args(docker_log)
         image_index = run_args.index(f"local/agent-workcell-{agent}")
         return run_args[image_index + 1 :]
+
+    def test_pi_compaction_extension_is_default_for_bare_launch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            docker_log = self.run_with_fake_docker(workspace, agent="pi", agent_args=[])
+
+            launched_args = self.launched_agent_args(docker_log, "pi")
+            self.assertEqual(launched_args, PI_COMPACTION_ARGS)
+            self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
+            self.assertNotIn(PI_NOTIFICATION_EXTENSION, launched_args)
+
+    def test_pi_compaction_preserves_native_selection_and_mode_options(self):
+        for notification_enabled in [False, True]:
+            for user_args in [
+                ["--exclude-tools", "compact_session"],
+                ["-xt", "compact_session"],
+                ["--tools", "read,bash"],
+                ["--tools", "read,bash,compact_session"],
+                ["--tools", "read,compact_session", "--exclude-tools", "compact_session"],
+                ["--no-tools"], ["-nt"], ["--no-builtin-tools"], ["-nbt"],
+                ["--no-extensions"], ["-ne"],
+                ["--print", "prompt with spaces"], ["-p", "prompt with spaces"],
+                ["--mode", "json", "prompt with spaces"], ["--mode", "rpc"],
+            ]:
+                with (
+                    self.subTest(notifications=notification_enabled, user_args=user_args),
+                    tempfile.TemporaryDirectory() as temp_dir,
+                ):
+                    workspace = Path(temp_dir)
+                    docker_log = self.run_with_fake_docker(
+                        workspace, agent="pi", agent_args=user_args,
+                        extra_env={
+                            "WORKCELL_PI_NOTIFICATIONS": "enabled" if notification_enabled else "disabled",
+                            "CMUX_SURFACE_ID": "surface-1",
+                        },
+                    )
+                    optional = ["--extension", PI_NOTIFICATION_EXTENSION] if notification_enabled else []
+                    self.assertEqual(
+                        self.launched_agent_args(docker_log, "pi"),
+                        [*PI_COMPACTION_ARGS, *optional, *user_args],
+                    )
+
+    def test_pi_extensions_preserve_exact_user_argument_vector(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_args = [
+                "--extension", "/tmp/user extension.ts", "--no-extensions", "--",
+                "prompt with spaces\nand a tab\tand unicode: café", "", "--port", "1234",
+                str(workspace / "path with spaces"),
+            ]
+            self.run_with_fake_docker(
+                workspace, agent="pi", agent_args=user_args,
+                extra_env={"WORKCELL_PI_NOTIFICATIONS": "enabled", "CMUX_SURFACE_ID": "surface-1"},
+            )
+            # NUL framing, unlike the human-readable log, preserves tabs/newlines/empty arguments.
+            run_args = (workspace / "docker-run-args.bin").read_bytes().decode().split("\0")[:-1]
+            image_index = run_args.index("local/agent-workcell-pi")
+            launched_args = run_args[image_index + 1:]
+            self.assertEqual(
+                launched_args,
+                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *user_args],
+            )
+            self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
+            self.assertEqual(launched_args.count(PI_NOTIFICATION_EXTENSION), 1)
 
     def test_pi_agent_is_passed_to_docker_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -125,7 +193,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
             self.assertEqual(
                 self.launched_agent_args(docker_log, "pi"),
-                ["--extension", PI_NOTIFICATION_EXTENSION, "status"],
+                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             )
             run_args = self.docker_run_args(docker_log)
             self.assertFalse(any("CMUX_" in arg for arg in run_args))
@@ -146,7 +214,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
             self.assertEqual(
                 self.launched_agent_args(docker_log, "pi"),
-                ["--extension", PI_NOTIFICATION_EXTENSION, "status"],
+                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             )
 
     def test_pi_notifications_require_cmux_identity(self):
@@ -162,7 +230,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     extra_env={"WORKCELL_PI_NOTIFICATIONS": "enabled", **cmux_env},
                 )
 
-                self.assertEqual(self.launched_agent_args(docker_log, "pi"), ["status"])
+                self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
 
     def test_pi_notifications_require_exact_enabled_value(self):
         for value in [None, "", "disabled", "1", "ENABLED"]:
@@ -180,15 +248,15 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     extra_env=extra_env,
                 )
 
-                self.assertEqual(self.launched_agent_args(docker_log, "pi"), ["status"])
+                self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
 
     def test_pi_notification_config_overrides_host_setting(self):
         cases = [
-            ("enabled", "disabled", ["status"]),
+            ("enabled", "disabled", [*PI_COMPACTION_ARGS, "status"]),
             (
                 "disabled",
                 "enabled",
-                ["--extension", PI_NOTIFICATION_EXTENSION, "status"],
+                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             ),
         ]
         for host_value, config_value, expected in cases:
@@ -219,7 +287,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
             docker_log = self.run_with_fake_docker(workspace, agent="pi")
 
-            self.assertEqual(self.launched_agent_args(docker_log, "pi"), ["status"])
+            self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
 
     def test_pi_notifications_do_not_change_other_harnesses(self):
         for agent in ["opencode", "codex", "claude"]:
@@ -262,8 +330,9 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
             self.assertEqual(
                 launched_args,
-                ["--extension", PI_NOTIFICATION_EXTENSION, *user_args],
+                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *user_args],
             )
+            self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
             self.assertEqual(launched_args.count(PI_NOTIFICATION_EXTENSION), 1)
 
     def test_pi_notification_extension_preserves_noninteractive_mode_arguments(self):
@@ -289,7 +358,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
                 self.assertEqual(
                     self.launched_agent_args(docker_log, "pi"),
-                    ["--extension", PI_NOTIFICATION_EXTENSION, *agent_args],
+                    [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *agent_args],
                 )
 
     def test_cmux_env_file_entries_are_not_forwarded_or_used_for_detection(self):
@@ -306,7 +375,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
             run_args = self.docker_run_args(docker_log)
 
-            self.assertEqual(self.launched_agent_args(docker_log, "pi"), ["status"])
+            self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
             self.assertFalse(any("CMUX_" in arg for arg in run_args))
             self.assertIn("CUSTOM=value", run_args)
             self.assertFalse(any("cmux.sock" in arg for arg in run_args))
@@ -322,7 +391,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
             run_args = self.docker_run_args(docker_log)
 
-            self.assertEqual(self.launched_agent_args(docker_log, "pi"), ["status"])
+            self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
             self.assertFalse(
                 any("WORKCELL_PI_NOTIFICATIONS" in arg for arg in run_args)
             )

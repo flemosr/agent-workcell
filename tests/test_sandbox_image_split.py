@@ -1,8 +1,12 @@
+import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+
+from test_pi_compaction_lifecycle import CASES, RUNNER, pi_package_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "cli.sh"
@@ -49,6 +53,8 @@ class SandboxImageSplitTests(unittest.TestCase):
         env["DOCKER_LOG"] = str(docker_log)
         env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
         env["WORKCELL_TEST_SKIP_WATCHDOG"] = "1"
+        for name in ["WORKCELL_PI_NOTIFICATIONS", "CMUX_SURFACE_ID", "CMUX_PANEL_ID"]:
+            env.pop(name, None)
         if image_inspect_missing:
             env["IMAGE_INSPECT_MISSING"] = "1"
         return env, docker_log
@@ -77,9 +83,12 @@ class SandboxImageSplitTests(unittest.TestCase):
                     "\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t",
                     f"{run_line}\t",
                 )
-                self.assertTrue(
-                    run_line.endswith(f"\tlocal/agent-workcell-{agent}\t--version")
-                )
+                run_args = run_line.split("\t")[1:]
+                image_index = run_args.index(f"local/agent-workcell-{agent}")
+                expected = ["--version"]
+                if agent == "pi":
+                    expected = ["--extension", "/opt/workcell/pi-extensions/compact-session.ts", *expected]
+                self.assertEqual(run_args[image_index + 1:], expected)
 
     def test_cli_update_uses_native_command_and_isolated_persistent_volume(self):
         expected_args = {
@@ -800,6 +809,49 @@ class SandboxImageSplitTests(unittest.TestCase):
                 self.assertIn("wc_prepare_all", script)
                 for token in tokens:
                     self.assertIn(token, script)
+
+    def test_pi_compaction_files_are_packaged_only_in_pi_image(self):
+        dockerfiles = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in (REPO_ROOT / "sandbox" / "dockerfiles").glob("*.Dockerfile")
+        }
+        for filename in ["compact-session.ts", "compact-session-runtime.ts"]:
+            with self.subTest(filename=filename):
+                copy_instruction = f"COPY pi-extensions/{filename} /opt/workcell/pi-extensions/{filename}"
+                self.assertEqual(dockerfiles["pi.Dockerfile"].count(copy_instruction), 1)
+                self.assertTrue((REPO_ROOT / "sandbox" / "pi-extensions" / filename).is_file())
+                for name, content in dockerfiles.items():
+                    if name != "pi.Dockerfile":
+                        self.assertNotIn(filename, content)
+                        self.assertNotIn("pi-extensions", content)
+
+    def test_pi_packaged_extensions_load_without_user_resources(self):
+        package = pi_package_root()
+        if package is None:
+            self.skipTest("Pi SDK unavailable; packaged extension acceptance requires Pi or PI_TEST_PACKAGE_ROOT")
+        dockerfile = (REPO_ROOT / "sandbox" / "dockerfiles" / "pi.Dockerfile").read_text()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_root = Path(temp_dir) / "image with spaces"
+            # Reproduce the image's extension COPY layout outside the project; this is not a Docker build.
+            for line in dockerfile.splitlines():
+                if line.startswith("COPY pi-extensions/"):
+                    _, source, destination = line.split()
+                    target = image_root / destination.lstrip("/")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(REPO_ROOT / "sandbox" / source, target)
+            extensions = image_root / "opt" / "workcell" / "pi-extensions"
+            result = subprocess.run(
+                ["node", "--experimental-import-meta-resolve", str(RUNNER), str(package),
+                 str(extensions / "compact-session.ts"), str(extensions / "terminal-notify.ts")],
+                cwd=REPO_ROOT, text=True, capture_output=True, timeout=120, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["passed"], payload)
+            self.assertEqual({report["name"] for report in payload["reports"]}, set(CASES))
+            for report in payload["reports"]:
+                with self.subTest(case=report["name"], pi_version=payload["packageVersion"]):
+                    self.assertTrue(report["passed"], report)
 
     def test_pi_notification_extension_is_packaged_only_in_pi_image(self):
         dockerfiles = {

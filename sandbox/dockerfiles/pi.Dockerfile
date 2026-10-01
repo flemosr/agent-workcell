@@ -17,6 +17,8 @@ RUN ln -sfn /opt/pi-template /opt/pi \
     && ln -sfn /opt/pi/bin/pi /home/agent/.local/bin/pi \
     && chown -h agent:agent /opt/pi /home/agent/.local/bin/pi
 COPY agent-init/pi.sh /opt/workcell-agent-init.sh
+COPY pi-extensions/compact-session.ts /opt/workcell/pi-extensions/compact-session.ts
+COPY pi-extensions/compact-session-runtime.ts /opt/workcell/pi-extensions/compact-session-runtime.ts
 COPY pi-extensions/terminal-notify.ts /opt/workcell/pi-extensions/terminal-notify.ts
 RUN chmod +x /opt/workcell-agent-init.sh
 ENV WORKCELL_IMAGE_AGENT=pi
