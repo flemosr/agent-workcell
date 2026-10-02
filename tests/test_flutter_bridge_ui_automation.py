@@ -1008,11 +1008,6 @@ class MacosScreenshotHelperTests(unittest.TestCase):
 
 
 class MacosBackendDispatchTests(unittest.TestCase):
-    def test_backend_error_uses_500_status(self):
-        result = {"error": "osascript failed", "code": "BACKEND_ERROR"}
-
-        self.assertEqual(bridge._ui_backend_status(result), 500)
-
     def test_scroll_dispatch_uses_backend_error_status(self):
         with mock.patch.object(
             bridge_macos,

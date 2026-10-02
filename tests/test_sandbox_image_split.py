@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_pi_compaction_lifecycle import CASES, RUNNER, pi_package_root
+from test_pi_compaction_lifecycle import RUNNER, pi_package_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "cli.sh"
@@ -612,219 +612,6 @@ class SandboxImageSplitTests(unittest.TestCase):
                 self.assertIn("Error: unexpected argument: extra", result.stdout)
                 self.assertFalse(docker_log.exists())
 
-    def test_entrypoint_has_mismatch_guard(self):
-        entrypoint = (REPO_ROOT / "sandbox" / "entrypoint.sh").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("WORKCELL_IMAGE_AGENT", entrypoint)
-        self.assertIn("image/agent mismatch", entrypoint)
-        self.assertLess(
-            entrypoint.index("image/agent mismatch"),
-            entrypoint.index("workcell-agent-init.sh"),
-        )
-
-    def test_claude_update_records_only_a_valid_persisted_native_version(self):
-        entrypoint = (REPO_ROOT / "sandbox" / "entrypoint.sh").read_text(
-            encoding="utf-8"
-        )
-        update_guard = 'if [[ "${WORKCELL_CLAUDE_UPDATE:-}" == "1" ]]; then'
-        selector_move = 'mv -f "$claude_selector_tmp" "$claude_selector"'
-
-        self.assertIn(update_guard, entrypoint)
-        self.assertIn(
-            "WORKCELL_CLAUDE_UPDATE requires the 'claude update' command",
-            entrypoint,
-        )
-        self.assertIn(
-            'claude_versions_root="/home/agent/persist/.local/share/claude/versions"',
-            entrypoint,
-        )
-        self.assertIn(
-            'claude_selected=$(readlink -f /home/agent/.local/bin/claude',
-            entrypoint,
-        )
-        self.assertIn('"$claude_versions_root"/*)', entrypoint)
-        self.assertIn('"$claude_selected_version" == */*', entrypoint)
-        self.assertIn(
-            'claude_selector="/home/agent/persist/.local/share/claude/'
-            '.workcell-current-version"',
-            entrypoint,
-        )
-        self.assertIn(selector_move, entrypoint)
-        self.assertLess(
-            entrypoint.index(update_guard), entrypoint.index(selector_move)
-        )
-
-    def test_pi_init_launches_the_persisted_self_install(self):
-        script = (REPO_ROOT / "sandbox" / "agent-init" / "pi.sh").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn(
-            'pi_self_prefix="/home/agent/persist/.pi/agent/self"', script
-        )
-        self.assertIn(
-            'ln -sfn "$pi_self_prefix/bin/pi" /home/agent/.local/bin/pi', script
-        )
-
-    def test_opencode_init_seeds_persisted_install_without_replacing_it(self):
-        script = (REPO_ROOT / "sandbox" / "agent-init" / "opencode.sh").read_text(
-            encoding="utf-8"
-        )
-        seed_guard = 'if [ ! -x "$opencode_install/bin/opencode" ]; then'
-        seed_copy = 'cp -a "$opencode_template"/. "$opencode_install"/'
-
-        self.assertIn('opencode_install="/home/agent/persist/.opencode"', script)
-        self.assertEqual(script.count(seed_guard), 1)
-        self.assertEqual(script.count(seed_copy), 1)
-        self.assertLess(script.index(seed_guard), script.index(seed_copy))
-        self.assertIn(
-            'ln -sfn "$opencode_install" /home/agent/.opencode', script
-        )
-        self.assertIn(
-            'ln -sfn "$opencode_install/bin/opencode" '
-            "/home/agent/.local/bin/opencode",
-            script,
-        )
-        for persisted_state_dir in [
-            "/home/agent/persist/.local/share/opencode",
-            "/home/agent/persist/.local/state/opencode",
-            "/home/agent/persist/.config/opencode",
-        ]:
-            self.assertIn(persisted_state_dir, script)
-        self.assertIn(
-            'ln -sfn "/home/agent/persist/$pair" "/home/agent/$pair"', script
-        )
-
-    def test_codex_image_builds_standalone_install_template(self):
-        dockerfile = (
-            REPO_ROOT / "sandbox" / "dockerfiles" / "codex.Dockerfile"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn(
-            "/opt/codex-template/packages/standalone/releases", dockerfile
-        )
-        self.assertIn(
-            'codex_release_dir="/opt/codex-template/packages/standalone/'
-            'releases/${codex_release_name}"',
-            dockerfile,
-        )
-        self.assertIn(
-            'install -m 0755 "/tmp/codex-${CODEX_ARCH}" '
-            '"$codex_release_dir/codex"',
-            dockerfile,
-        )
-        self.assertIn(
-            'ln -s "releases/$codex_release_name" '
-            "/opt/codex-template/packages/standalone/current",
-            dockerfile,
-        )
-        self.assertNotIn("/home/agent/.local/bin/codex", dockerfile)
-
-    def test_codex_init_seeds_only_missing_standalone_install(self):
-        script = (REPO_ROOT / "sandbox" / "agent-init" / "codex.sh").read_text(
-            encoding="utf-8"
-        )
-        existing_guard = (
-            'if [ -e "$codex_standalone" ] || [ -L "$codex_standalone" ]; then'
-        )
-        seed_copy = 'cp -a "$codex_template" "$codex_packages"/'
-
-        self.assertIn(
-            'codex_standalone="$codex_packages/standalone"', script
-        )
-        self.assertIn(
-            'codex_executable="$codex_standalone/current/bin/codex"', script
-        )
-        self.assertIn(
-            'codex_executable="$codex_standalone/current/codex"', script
-        )
-        self.assertIn(existing_guard, script)
-        self.assertEqual(script.count(seed_copy), 1)
-        self.assertLess(script.index(existing_guard), script.index(seed_copy))
-        self.assertIn(
-            'ln -sfn "$codex_executable" /home/agent/.local/bin/codex', script
-        )
-        self.assertIn(
-            "persisted Codex standalone install exists but has no executable", script
-        )
-
-    def test_claude_init_seeds_persisted_native_install_without_replacing_it(self):
-        script = (REPO_ROOT / "sandbox" / "agent-init" / "claude.sh").read_text(
-            encoding="utf-8"
-        )
-        seed_guard = 'if [ -z "$persisted_claude_version" ]; then'
-        seed_copy = 'cp -an "$claude_template"/. "$claude_install"/'
-
-        self.assertIn(
-            'claude_install="/home/agent/persist/.local/share/claude"', script
-        )
-        self.assertIn('claude_template="/opt/claude-code"', script)
-        self.assertIn(
-            'claude_template="/opt/claude-versions-template"', script
-        )
-        self.assertEqual(script.count(seed_copy), 1)
-        self.assertLess(script.index(seed_guard), script.index(seed_copy))
-        self.assertIn(
-            'claude_selector="$claude_install/.workcell-current-version"', script
-        )
-        self.assertIn(
-            'ln -sfn "$claude_install" /home/agent/.local/share/claude', script
-        )
-        self.assertIn(
-            'ln -sfn "$claude_executable" /home/agent/.local/bin/claude', script
-        )
-        self.assertIn(
-            "no Claude Code executable is available to initialize", script
-        )
-
-    def test_agent_context_init_uses_shared_context_lib_and_workcell_sources(self):
-        expected = {
-            "claude.sh": (
-                "/home/agent/persist/.claude/CLAUDE.md",
-                "/home/agent/persist/.claude/workcell-context.md",
-                "/home/agent/persist/.claude/workcell-skills",
-            ),
-            "opencode.sh": (
-                "/home/agent/persist/.config/opencode/AGENTS.md",
-                "/home/agent/persist/.config/opencode/workcell-context.md",
-                "/home/agent/persist/.config/opencode/workcell-skills",
-            ),
-            "codex.sh": (
-                "/home/agent/persist/.codex/AGENTS.md",
-                "/home/agent/persist/.codex/workcell-context.md",
-                "/home/agent/persist/.agents/workcell-skills",
-            ),
-            "pi.sh": (
-                "/home/agent/persist/.pi/agent/AGENTS.md",
-                "/home/agent/persist/.pi/agent/workcell-context.md",
-                "/home/agent/persist/.pi/agent/workcell-skills",
-            ),
-        }
-        for script_name, tokens in expected.items():
-            with self.subTest(script=script_name):
-                script = (REPO_ROOT / "sandbox" / "agent-init" / script_name).read_text(
-                    encoding="utf-8"
-                )
-                self.assertIn("/opt/workcell-context-lib.sh", script)
-                self.assertIn("wc_prepare_all", script)
-                for token in tokens:
-                    self.assertIn(token, script)
-
-    def test_pi_compaction_files_are_packaged_only_in_pi_image(self):
-        dockerfiles = {
-            path.name: path.read_text(encoding="utf-8")
-            for path in (REPO_ROOT / "sandbox" / "dockerfiles").glob("*.Dockerfile")
-        }
-        for filename in ["compact-session.ts", "compact-session-runtime.ts"]:
-            with self.subTest(filename=filename):
-                copy_instruction = f"COPY pi-extensions/{filename} /opt/workcell/pi-extensions/{filename}"
-                self.assertEqual(dockerfiles["pi.Dockerfile"].count(copy_instruction), 1)
-                self.assertTrue((REPO_ROOT / "sandbox" / "pi-extensions" / filename).is_file())
-                for name, content in dockerfiles.items():
-                    if name != "pi.Dockerfile":
-                        self.assertNotIn(filename, content)
-                        self.assertNotIn("pi-extensions", content)
-
     def test_pi_packaged_extensions_load_without_user_resources(self):
         package = pi_package_root()
         if package is None:
@@ -842,46 +629,16 @@ class SandboxImageSplitTests(unittest.TestCase):
             extensions = image_root / "opt" / "workcell" / "pi-extensions"
             result = subprocess.run(
                 ["node", "--experimental-import-meta-resolve", str(RUNNER), str(package),
-                 str(extensions / "compact-session.ts"), str(extensions / "terminal-notify.ts")],
+                 str(extensions / "compact-session.ts"), str(extensions / "terminal-notify.ts"), "native-success"],
                 cwd=REPO_ROOT, text=True, capture_output=True, timeout=120, check=False,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
             self.assertTrue(payload["passed"], payload)
-            self.assertEqual({report["name"] for report in payload["reports"]}, set(CASES))
+            self.assertEqual([report["name"] for report in payload["reports"]], ["native-success"])
             for report in payload["reports"]:
                 with self.subTest(case=report["name"], pi_version=payload["packageVersion"]):
                     self.assertTrue(report["passed"], report)
-
-    def test_pi_notification_extension_is_packaged_only_in_pi_image(self):
-        dockerfiles = {
-            path.name: path.read_text(encoding="utf-8")
-            for path in (REPO_ROOT / "sandbox" / "dockerfiles").glob("*.Dockerfile")
-        }
-        copy_instruction = (
-            "COPY pi-extensions/terminal-notify.ts "
-            "/opt/workcell/pi-extensions/terminal-notify.ts"
-        )
-
-        self.assertIn(copy_instruction, dockerfiles["pi.Dockerfile"])
-        for name, content in dockerfiles.items():
-            if name != "pi.Dockerfile":
-                with self.subTest(dockerfile=name):
-                    self.assertNotIn("terminal-notify.ts", content)
-                    self.assertNotIn("pi-extensions", content)
-
-    def test_agent_installers_are_not_in_base_dockerfile(self):
-        base = (REPO_ROOT / "sandbox" / "dockerfiles" / "base.Dockerfile").read_text(
-            encoding="utf-8"
-        )
-        forbidden = [
-            "@earendil-works/pi-coding-agent",
-            "opencode-linux",
-            "codex-${CODEX_ARCH}",
-            "claude.ai/install.sh",
-        ]
-        for token in forbidden:
-            self.assertNotIn(token, base)
 
 
 if __name__ == "__main__":

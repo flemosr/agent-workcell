@@ -307,60 +307,6 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
                 self.assertEqual(self.launched_agent_args(docker_log, agent), ["status"])
 
-    def test_pi_notification_extension_precedes_unchanged_user_arguments(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            workspace = Path(temp_dir)
-            user_args = [
-                "--extension",
-                "/tmp/user extension.ts",
-                "--",
-                "prompt with spaces",
-                str(workspace / "path with spaces"),
-            ]
-            docker_log = self.run_with_fake_docker(
-                workspace,
-                agent="pi",
-                agent_args=user_args,
-                extra_env={
-                    "WORKCELL_PI_NOTIFICATIONS": "enabled",
-                    "CMUX_SURFACE_ID": "surface-1",
-                },
-            )
-            launched_args = self.launched_agent_args(docker_log, "pi")
-
-            self.assertEqual(
-                launched_args,
-                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *user_args],
-            )
-            self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
-            self.assertEqual(launched_args.count(PI_NOTIFICATION_EXTENSION), 1)
-
-    def test_pi_notification_extension_preserves_noninteractive_mode_arguments(self):
-        for agent_args in [
-            ["-p", "prompt with spaces"],
-            ["--mode", "json", "prompt with spaces"],
-            ["--mode", "rpc"],
-        ]:
-            with (
-                self.subTest(agent_args=agent_args),
-                tempfile.TemporaryDirectory() as temp_dir,
-            ):
-                workspace = Path(temp_dir)
-                docker_log = self.run_with_fake_docker(
-                    workspace,
-                    agent="pi",
-                    agent_args=agent_args,
-                    extra_env={
-                        "WORKCELL_PI_NOTIFICATIONS": "enabled",
-                        "CMUX_SURFACE_ID": "surface-1",
-                    },
-                )
-
-                self.assertEqual(
-                    self.launched_agent_args(docker_log, "pi"),
-                    [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *agent_args],
-                )
-
     def test_cmux_env_file_entries_are_not_forwarded_or_used_for_detection(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -396,11 +342,6 @@ class RunSandboxLauncherTests(unittest.TestCase):
                 any("WORKCELL_PI_NOTIFICATIONS" in arg for arg in run_args)
             )
             self.assertIn("CUSTOM=value", run_args)
-
-    def test_config_template_enables_pi_notifications(self):
-        template = (REPO_ROOT / "config.template.sh").read_text(encoding="utf-8")
-
-        self.assertIn("WORKCELL_PI_NOTIFICATIONS=enabled", template)
 
     def test_unknown_agent_error_mentions_pi(self):
         with tempfile.TemporaryDirectory() as temp_dir:

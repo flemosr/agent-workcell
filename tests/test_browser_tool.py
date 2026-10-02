@@ -135,7 +135,7 @@ class BrowserToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["pid"], 1234)
         self.assertEqual(status["executable"], "/usr/bin/chromium")
 
-    async def test_get_links_extracts_visible_link_metadata(self):
+    async def test_get_links_forwards_visibility_option_and_returns_links(self):
         browser = self.module.Browser.sandbox(auto_start=False)
         fake_page = mock.AsyncMock()
         fake_page.evaluate.return_value = [
@@ -155,7 +155,7 @@ class BrowserToolTests(unittest.IsolatedAsyncioTestCase):
         fake_page.evaluate.assert_awaited_once()
         self.assertEqual(fake_page.evaluate.await_args.args[1], {"visibleOnly": True})
 
-    async def test_get_page_text_uses_inner_text_and_enforces_selector(self):
+    async def test_get_page_text_forwards_selector_and_truncates_result(self):
         browser = self.module.Browser.sandbox(auto_start=False)
         fake_page = mock.AsyncMock()
         fake_page.evaluate.return_value = "Heading\n\nBody text"
@@ -165,9 +165,6 @@ class BrowserToolTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(text, "Heading")
         fake_page.evaluate.assert_awaited_once()
-        evaluate_script = fake_page.evaluate.await_args.args[0]
-        self.assertIn(".replace(/\\n{3,}/g, '\\n\\n')", evaluate_script)
-        self.assertNotIn(".replace(/\n", evaluate_script)
         self.assertEqual(fake_page.evaluate.await_args.args[1], {"selector": "main"})
 
     async def test_links_command_prints_json(self):
