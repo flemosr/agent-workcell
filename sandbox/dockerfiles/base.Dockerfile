@@ -93,7 +93,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 
 # Install nvm and Node.js LTS directly into /opt/nvm-template; symlink home dir so
 # $NVM_DIR (/home/agent/.nvm) resolves correctly during the build.
-ARG NVM_VERSION=0.40.4
+ARG NVM_VERSION=0.40.8
 ENV NVM_DIR="/home/agent/.nvm"
 RUN ln -sf /opt/nvm-template /home/agent/.nvm \
     && curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash \
