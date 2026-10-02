@@ -12,7 +12,15 @@ wc_prepare_all
 wc_chown_persisted_context
 wc_chown_persisted_skills
 
+# Native update selectors resolve through this home alias.
+[ -d /home/agent/.codex ] && [ ! -L /home/agent/.codex ] && rm -rf /home/agent/.codex
+ln -sfn /home/agent/persist/.codex /home/agent/.codex
+
 codex_packages="/home/agent/persist/.codex/packages"
+# The native daemon creates a sibling package next to the standalone CLI.
+mkdir -p "$codex_packages"
+chown agent:agent "$codex_packages"
+
 codex_standalone="$codex_packages/standalone"
 codex_template="/opt/codex-template/packages/standalone"
 codex_executable="$codex_standalone/current/bin/codex"
@@ -29,7 +37,6 @@ if [ ! -x "$codex_executable" ]; then
     return 1
   fi
   echo "Initializing Codex in persistent volume..."
-  mkdir -p "$codex_packages"
   cp -a "$codex_template" "$codex_packages"/
   chown -R agent:agent "$codex_standalone"
   codex_executable="$codex_standalone/current/bin/codex"
@@ -38,8 +45,6 @@ if [ ! -x "$codex_executable" ]; then
   fi
 fi
 
-[ -d /home/agent/.codex ] && [ ! -L /home/agent/.codex ] && rm -rf /home/agent/.codex
-ln -sfn /home/agent/persist/.codex /home/agent/.codex
 [ -d /home/agent/.agents ] && [ ! -L /home/agent/.agents ] && rm -rf /home/agent/.agents
 ln -sfn /home/agent/persist/.agents /home/agent/.agents
 mkdir -p /home/agent/.local/bin
