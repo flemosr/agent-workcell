@@ -171,7 +171,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     rm -rf /tmp/protoc /tmp/protoc.zip /tmp/grpcurl.tar.gz /tmp/grpcurl
 
 USER agent
-ARG PROTOC_PLUGIN_VERSION=25.0.0
+ARG PROTOC_PLUGIN_VERSION=25.1.0
 RUN PUB_CACHE=/opt/pub-cache-template \
     /opt/flutter-sdk-template/bin/dart pub global activate protoc_plugin "${PROTOC_PLUGIN_VERSION}" \
     && ln -sf /opt/pub-cache-template /home/agent/.pub-cache \
