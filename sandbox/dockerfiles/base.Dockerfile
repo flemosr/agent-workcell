@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-ARG YQ_VERSION=4.53.2
+ARG YQ_VERSION=4.54.1
 RUN ARCH=$(dpkg --print-architecture) && \
     curl --http1.1 --retry 5 --retry-delay 5 --retry-all-errors -fsSL \
         "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_${ARCH}" \
