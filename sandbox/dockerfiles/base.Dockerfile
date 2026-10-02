@@ -145,7 +145,7 @@ RUN ln -sfn /opt/flutter-sdk-template /opt/flutter-sdk \
 # not invalidate expensive Flutter, Rust, Node, Python, or agent install layers.
 ARG PROTOC_VERSION=36.2
 ARG BUF_VERSION=1.73.0
-ARG GRPCURL_VERSION=1.9.3
+ARG GRPCURL_VERSION=1.9.4
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
         amd64) PROTOC_ARCH="x86_64"; BUF_ARCH="x86_64"; GRPCURL_ARCH="x86_64" ;; \
