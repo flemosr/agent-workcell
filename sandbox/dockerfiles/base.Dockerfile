@@ -144,7 +144,7 @@ RUN ln -sfn /opt/flutter-sdk-template /opt/flutter-sdk \
 # Install release-binary protobuf CLIs and generators late so version bumps do
 # not invalidate expensive Flutter, Rust, Node, Python, or agent install layers.
 ARG PROTOC_VERSION=36.2
-ARG BUF_VERSION=1.69.0
+ARG BUF_VERSION=1.73.0
 ARG GRPCURL_VERSION=1.9.3
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
