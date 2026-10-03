@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import pathlib
 import struct
@@ -36,6 +37,42 @@ package_config_guard = load_module(
 
 def subprocess_result(returncode=0, stdout="", stderr=""):
     return mock.Mock(returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def ios_device(device_id="8F0F", name="iPhone 15"):
+    return {
+        "id": device_id,
+        "name": name,
+        "targetPlatform": "ios",
+        "emulator": True,
+        "sdk": "iOS 17 Simulator",
+    }
+
+
+def simulator_window(x, y, width, height):
+    return {
+        "window_id": 42,
+        "pid": 123,
+        "owner_name": "Simulator",
+        "name": "iPhone 17",
+        "bounds": {"x": x, "y": y, "width": width, "height": height},
+    }
+
+
+def logical_snapshot(width, height, elements, **metadata):
+    return {
+        "coordinate_space": "flutter-logical-points",
+        "root_size": {"width": width, "height": height},
+        "elements": elements,
+        **metadata,
+    }
+
+
+def content_match_result(rect, **metadata):
+    return {
+        "best_match": {"simulator_window_rect_estimate": dict(rect)},
+        **metadata,
+    }
 
 
 class PackageConfigGuardTests(unittest.TestCase):
@@ -98,50 +135,29 @@ class PackageConfigGuardTests(unittest.TestCase):
 
 
 class UiAutomationCapabilityTests(unittest.TestCase):
-    def test_classifies_ios_simulator(self):
-        target = bridge.classify_device(
-            "8F0F",
-            {
-                "id": "8F0F",
-                "name": "iPhone 15",
-                "targetPlatform": "ios",
-                "emulator": True,
-                "sdk": "iOS 17 Simulator",
-            },
-        )
-
-        self.assertEqual(target["backend"], "ios-simulator")
-        self.assertEqual(target["target_platform"], "ios")
-        self.assertEqual(target["device_kind"], "simulator")
-
-    def test_classifies_macos_desktop(self):
-        target = bridge.classify_device(
-            "macos",
-            {
-                "id": "macos",
-                "name": "macOS",
-                "targetPlatform": "darwin",
-                "emulator": False,
-            },
-        )
-
-        self.assertEqual(target["backend"], "macos-desktop")
-        self.assertEqual(target["target_platform"], "macos")
-        self.assertEqual(target["device_kind"], "desktop")
-
-    def test_classifies_android_as_unsupported(self):
-        target = bridge.classify_device(
-            "emulator-5554",
-            {
-                "id": "emulator-5554",
-                "name": "Android SDK built for arm64",
-                "targetPlatform": "android-arm64",
-                "emulator": True,
-            },
-        )
-
-        self.assertEqual(target["backend"], "unsupported")
-        self.assertEqual(target["target_platform"], "android")
+    def test_classifies_devices(self):
+        cases = [
+            ("classifies_ios_simulator", ios_device(), {
+                "backend": "ios-simulator", "target_platform": "ios",
+                "device_kind": "simulator",
+            }),
+            ("classifies_macos_desktop", {
+                "id": "macos", "name": "macOS",
+                "targetPlatform": "darwin", "emulator": False,
+            }, {
+                "backend": "macos-desktop", "target_platform": "macos",
+                "device_kind": "desktop",
+            }),
+            ("classifies_android_as_unsupported", {
+                "id": "emulator-5554", "name": "Android SDK built for arm64",
+                "targetPlatform": "android-arm64", "emulator": True,
+            }, {"backend": "unsupported", "target_platform": "android"}),
+        ]
+        for name, metadata, expected in cases:
+            with self.subTest(case=name):
+                target = bridge.classify_device(metadata["id"], metadata)
+                for field, value in expected.items():
+                    self.assertEqual(target[field], value)
 
     def test_status_reports_no_app_running(self):
         target = bridge.classify_device(
@@ -222,16 +238,7 @@ class UiAutomationCapabilityTests(unittest.TestCase):
         self.assertIn("macOS Screen Recording permission", status["requires"])
 
     def test_screenshot_status_reports_ios_mobile_capture(self):
-        target = bridge.classify_device(
-            "8F0F",
-            {
-                "id": "8F0F",
-                "name": "iPhone 15",
-                "targetPlatform": "ios",
-                "emulator": True,
-                "sdk": "iOS 17 Simulator",
-            },
-        )
+        target = bridge.classify_device("8F0F", ios_device())
 
         status = bridge.build_screenshot_status(
             bridge_status="running",
@@ -246,16 +253,7 @@ class UiAutomationCapabilityTests(unittest.TestCase):
         self.assertEqual(status["scope"], "device-screen")
 
     def test_status_reports_ios_inspect_and_wait_capabilities(self):
-        target = bridge.classify_device(
-            "8F0F",
-            {
-                "id": "8F0F",
-                "name": "iPhone 15",
-                "targetPlatform": "ios",
-                "emulator": True,
-                "sdk": "iOS 17 Simulator",
-            },
-        )
+        target = bridge.classify_device("8F0F", ios_device())
 
         status = bridge.build_ui_automation_status(
             bridge_status="running",
@@ -322,16 +320,7 @@ class UiAutomationCapabilityTests(unittest.TestCase):
         )
 
     def test_ios_screen_error_disables_coordinate_tap_capability(self):
-        target = bridge.classify_device(
-            "8F0F",
-            {
-                "id": "8F0F",
-                "name": "iPhone 15",
-                "targetPlatform": "ios",
-                "emulator": True,
-                "sdk": "iOS 17 Simulator",
-            },
-        )
+        target = bridge.classify_device("8F0F", ios_device())
         status = bridge.build_ui_automation_status(
             bridge_status="running",
             has_process=True,
@@ -354,16 +343,7 @@ class UiAutomationCapabilityTests(unittest.TestCase):
         self.assertTrue(status["actions"]["wait"]["supported"])
 
     def test_ios_missing_osascript_disables_type_press_and_scroll(self):
-        target = bridge.classify_device(
-            "8F0F",
-            {
-                "id": "8F0F",
-                "name": "iPhone 15",
-                "targetPlatform": "ios",
-                "emulator": True,
-                "sdk": "iOS 17 Simulator",
-            },
-        )
+        target = bridge.classify_device("8F0F", ios_device())
         status = bridge.build_ui_automation_status(
             bridge_status="running",
             has_process=True,
@@ -384,16 +364,7 @@ class UiAutomationCapabilityTests(unittest.TestCase):
         self.assertTrue(status["actions"]["wait"]["supported"])
 
     def test_ios_missing_screencapture_disables_selector_taps_only(self):
-        target = bridge.classify_device(
-            "8F0F",
-            {
-                "id": "8F0F",
-                "name": "iPhone 15",
-                "targetPlatform": "ios",
-                "emulator": True,
-                "sdk": "iOS 17 Simulator",
-            },
-        )
+        target = bridge.classify_device("8F0F", ios_device())
         status = bridge.build_ui_automation_status(
             bridge_status="running",
             has_process=True,
@@ -414,16 +385,7 @@ class UiAutomationCapabilityTests(unittest.TestCase):
         self.assertTrue(status["actions"]["wait"]["supported"])
 
     def test_status_reports_ios_actions_unverified_without_xcrun(self):
-        target = bridge.classify_device(
-            "8F0F",
-            {
-                "id": "8F0F",
-                "name": "iPhone 15",
-                "targetPlatform": "ios",
-                "emulator": True,
-                "sdk": "iOS 17 Simulator",
-            },
-        )
+        target = bridge.classify_device("8F0F", ios_device())
 
         status = bridge.build_ui_automation_status(
             bridge_status="running",
@@ -775,24 +737,12 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         )
 
     def test_ios_coordinate_map_reports_mapping_estimates(self):
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
-        inspector = {
+        window = simulator_window(100, 200, 456, 972)
+        inspector = logical_snapshot(402, 874, [{
+            "key": "new_item_button",
+            "rect": {"x": 16, "y": 134, "w": 282, "h": 56},
             "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [
-                {
-                    "key": "new_item_button",
-                    "rect": {"x": 16, "y": 134, "w": 282, "h": 56},
-                    "coordinate_space": "flutter-logical-points",
-                }
-            ],
-        }
+        }])
         screenshot = {
             "returncode": 0,
             "image": {"width": 1206, "height": 2622, "size_bytes": 123},
@@ -805,22 +755,19 @@ class MacosScreenshotHelperTests(unittest.TestCase):
                     bridge_ios, "_run_simctl_screenshot_probe",
                     return_value=screenshot,
                 ), mock.patch.object(
+                    bridge_ios, "_run_screencapture_window_probe", return_value={},
+                ), mock.patch.object(
+                    bridge_ios, "_ios_simulator_accessibility_snapshot", return_value={},
+                ), mock.patch.object(
                     bridge_ios, "_flutter_inspector_snapshot",
                     return_value=(inspector, None),
                 ), mock.patch.object(
                     bridge_ios,
                     "_ios_host_window_content_match_probe",
-                    return_value={
-                        "available": True,
-                        "best_match": {
-                            "simulator_window_rect_estimate": {
-                                "x": 34,
-                                "y": 70,
-                                "w": 393,
-                                "h": 854,
-                            }
-                        },
-                    },
+                    return_value=content_match_result(
+                        {"x": 34, "y": 70, "w": 393, "h": 854},
+                        available=True,
+                    ),
                 ):
             result = bridge.ios_coordinate_map(
                 "http://127.0.0.1:123/abc=/",
@@ -873,11 +820,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         )
 
     def test_ios_coordinate_map_reports_logical_to_native_without_window(self):
-        inspector = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [],
-        }
+        inspector = logical_snapshot(402, 874, [])
         screenshot = {
             "returncode": 0,
             "image": {"width": 1206, "height": 2622, "size_bytes": 123},
@@ -889,6 +832,10 @@ class MacosScreenshotHelperTests(unittest.TestCase):
                 ), mock.patch.object(
                     bridge_ios, "_run_simctl_screenshot_probe",
                     return_value=screenshot,
+                ), mock.patch.object(
+                    bridge_ios, "_run_screencapture_window_probe", return_value={},
+                ), mock.patch.object(
+                    bridge_ios, "_ios_simulator_accessibility_snapshot", return_value={},
                 ), mock.patch.object(
                     bridge_ios, "_flutter_inspector_snapshot",
                     return_value=(inspector, None),
@@ -909,13 +856,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         )
 
     def test_ios_simulator_accessibility_snapshot_reports_local_frames(self):
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
+        window = simulator_window(100, 200, 456, 972)
         stdout = (
             "AXWindow\t\tiPhone 17\t\t\ttrue\t100\t200\t456\t972\n"
             "AXGroup\t\tLCD\t\t\t\t105\t270\t446\t902\n"
@@ -942,13 +883,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         )
 
     def test_ios_simulator_accessibility_snapshot_reports_unframed_sample(self):
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
+        window = simulator_window(100, 200, 456, 972)
         stdout = "AXGroup\t\tContainer\t\t\t\t\t\t\t\n"
         with mock.patch.object(
             bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
@@ -965,13 +900,7 @@ class MacosScreenshotHelperTests(unittest.TestCase):
         self.assertEqual(result["unframed_sample"][0]["label"], "Container")
 
     def test_screencapture_window_probe_reports_image_dimensions(self):
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
+        window = simulator_window(100, 200, 456, 972)
 
         def fake_run_probe(command, timeout=8):
             output_path = command[-1]
@@ -1008,6 +937,11 @@ class MacosScreenshotHelperTests(unittest.TestCase):
 
 
 class MacosBackendDispatchTests(unittest.TestCase):
+    def setUp(self):
+        cache_patch = mock.patch.dict(bridge._ios_tap_snapshot_cache, clear=True)
+        cache_patch.start()
+        self.addCleanup(cache_patch.stop)
+
     def test_scroll_dispatch_uses_backend_error_status(self):
         with mock.patch.object(
             bridge_macos,
@@ -1479,24 +1413,20 @@ SemanticsNode#0
 
     def test_inspect_filters_by_semantics_identifier(self):
         window = {"window_id": 4, "bounds": (100, 200, 300, 400)}
-        semantics_snapshot = {
+        semantics_snapshot = logical_snapshot(300, 360, [{
+            "type": "flutter_semantics",
+            "text": "",
+            "key": "add_item_button",
+            "label": "",
+            "description": "SemanticsNode#4",
+            "value": "",
+            "role": "",
+            "subrole": "",
+            "enabled": None,
+            "rect": {"x": 1, "y": 2, "w": 3, "h": 4},
             "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 300, "height": 360},
-            "elements": [{
-                "type": "flutter_semantics",
-                "text": "",
-                "key": "add_item_button",
-                "label": "",
-                "description": "SemanticsNode#4",
-                "value": "",
-                "role": "",
-                "subrole": "",
-                "enabled": None,
-                "rect": {"x": 1, "y": 2, "w": 3, "h": 4},
-                "coordinate_space": "flutter-logical-points",
-                "source": "flutter-semantics",
-            }],
-        }
+            "source": "flutter-semantics",
+        }])
         with mock.patch.object(
             bridge_macos, "_macos_get_app_window_info", return_value=(window, None)
         ), mock.patch.object(
@@ -1776,36 +1706,18 @@ SemanticsNode#0
         self.assertEqual(result["code"], "BACKEND_ERROR")
 
     def test_ios_tap_key_prefers_semantics_identifier_rect(self):
-        semantics_snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [{
-                "key": "task_title_field",
-                "semantics_identifier": "task_title_field",
-                "type": "flutter_semantics",
-                "enabled": True,
-                "rect": {"x": 22, "y": 576, "w": 358, "h": 56},
-                "source": "flutter-semantics",
-            }],
-        }
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
-        content_match = {
-            "score_mean_abs_rgb": 3.68,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 28,
-                    "y": 64,
-                    "w": 401,
-                    "h": 872,
-                }
-            },
-        }
+        semantics_snapshot = logical_snapshot(402, 874, [{
+            "key": "task_title_field",
+            "semantics_identifier": "task_title_field",
+            "type": "flutter_semantics",
+            "enabled": True,
+            "rect": {"x": 22, "y": 576, "w": 358, "h": 56},
+            "source": "flutter-semantics",
+        }])
+        window = simulator_window(100, 200, 456, 972)
+        content_match = content_match_result(
+            {"x": 28, "y": 64, "w": 401, "h": 872}, score_mean_abs_rgb=3.68,
+        )
 
         with mock.patch.object(
             bridge_ios,
@@ -1846,11 +1758,7 @@ SemanticsNode#0
         self.assertEqual(result["element"]["source"], "flutter-semantics")
 
     def test_ios_inspect_key_does_not_fall_back_to_inspector_value_key(self):
-        semantics_snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [],
-        }
+        semantics_snapshot = logical_snapshot(402, 874, [])
 
         with mock.patch.object(
             bridge_ios,
@@ -1869,11 +1777,7 @@ SemanticsNode#0
         self.assertEqual(result["method"], "flutter-semantics")
 
     def test_ios_tap_key_does_not_fall_back_to_inspector_value_key(self):
-        semantics_snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [],
-        }
+        semantics_snapshot = logical_snapshot(402, 874, [])
 
         with mock.patch.object(
             bridge_ios,
@@ -1895,41 +1799,16 @@ SemanticsNode#0
         self.assertEqual(result["key"], "legacy_value_key")
 
     def test_ios_tap_text_uses_matched_content_rect_when_image_unavailable(self):
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
-        snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [
-                {
-                    "text": "New item",
-                    "type": "flutter_widget",
-                    "enabled": True,
-                    "rect": {
-                        "x": 16,
-                        "y": 134,
-                        "w": 282.7955207824707,
-                        "h": 56,
-                    },
-                }
-            ],
-        }
-        content_match = {
-            "score_mean_abs_rgb": 3.68,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 18,
-                    "y": 60,
-                    "w": 401,
-                    "h": 872,
-                }
-            },
-        }
+        window = simulator_window(100, 200, 456, 972)
+        snapshot = logical_snapshot(402, 874, [{
+            "text": "New item",
+            "type": "flutter_widget",
+            "enabled": True,
+            "rect": {"x": 16, "y": 134, "w": 282.7955207824707, "h": 56},
+        }])
+        content_match = content_match_result(
+            {"x": 18, "y": 60, "w": 401, "h": 872}, score_mean_abs_rgb=3.68,
+        )
         with mock.patch.object(
             bridge_ios,
             "_flutter_inspector_snapshot",
@@ -1977,52 +1856,22 @@ SemanticsNode#0
         self.assertEqual(result["inspector_snapshot"], "live")
 
     def test_ios_tap_key_retries_poor_content_match(self):
-        snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [
-                {
-                    "key": "new_task_fab",
-                    "type": "flutter_semantics",
-                    "enabled": True,
-                    "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
-                    "source": "flutter-semantics",
-                }
-            ],
-        }
-        poor_match = {
-            "score_mean_abs_rgb": 15.65,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 32,
-                    "y": 154,
-                    "w": 350,
-                    "h": 760,
-                }
-            },
-        }
-        good_match = {
-            "score_mean_abs_rgb": 4.9,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 28,
-                    "y": 64,
-                    "w": 401,
-                    "h": 872,
-                }
-            },
-        }
-        small_match = {
-            "score_mean_abs_rgb": 1.0,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 32,
-                    "y": 154,
-                    "w": 350,
-                    "h": 760,
-                }
-            },
-        }
+        snapshot = logical_snapshot(402, 874, [{
+            "key": "new_task_fab",
+            "type": "flutter_semantics",
+            "enabled": True,
+            "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
+            "source": "flutter-semantics",
+        }])
+        poor_match = content_match_result(
+            {"x": 32, "y": 154, "w": 350, "h": 760}, score_mean_abs_rgb=15.65,
+        )
+        good_match = content_match_result(
+            {"x": 28, "y": 64, "w": 401, "h": 872}, score_mean_abs_rgb=4.9,
+        )
+        small_match = content_match_result(
+            {"x": 32, "y": 154, "w": 350, "h": 760}, score_mean_abs_rgb=1.0,
+        )
         with mock.patch.object(
             bridge_ios,
             "_flutter_semantics_snapshot",
@@ -2038,7 +1887,7 @@ SemanticsNode#0
             side_effect=[poor_match, small_match, good_match],
         ) as content_match, mock.patch.object(
             bridge.time, "sleep"
-        ) as sleep, mock.patch.object(
+        ), mock.patch.object(
             bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
         ) as tap:
             result = bridge._ios_tap_selector(
@@ -2050,8 +1899,6 @@ SemanticsNode#0
             )
 
         self.assertEqual(content_match.call_count, 3)
-        self.assertEqual(sleep.call_count, 2)
-        sleep.assert_called_with(0.2)
         x, y = tap.call_args.args[:2]
         self.assertAlmostEqual(x, 376.1318407960199, places=3)
         self.assertAlmostEqual(y, 847.2036613272311, places=3)
@@ -2061,30 +1908,16 @@ SemanticsNode#0
         )
 
     def test_ios_tap_key_falls_back_to_full_window_for_implausible_match(self):
-        snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [
-                {
-                    "key": "new_task_fab",
-                    "type": "flutter_semantics",
-                    "enabled": True,
-                    "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
-                    "source": "flutter-semantics",
-                }
-            ],
-        }
-        small_match = {
-            "score_mean_abs_rgb": 15.65,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 32,
-                    "y": 154,
-                    "w": 350,
-                    "h": 760,
-                }
-            },
-        }
+        snapshot = logical_snapshot(402, 874, [{
+            "key": "new_task_fab",
+            "type": "flutter_semantics",
+            "enabled": True,
+            "rect": {"x": 318, "y": 754, "w": 62, "h": 62},
+            "source": "flutter-semantics",
+        }])
+        small_match = content_match_result(
+            {"x": 32, "y": 154, "w": 350, "h": 760}, score_mean_abs_rgb=15.65,
+        )
         with mock.patch.object(
             bridge_ios,
             "_flutter_semantics_snapshot",
@@ -2098,6 +1931,8 @@ SemanticsNode#0
             bridge_ios,
             "_ios_host_window_content_match_probe",
             return_value=small_match,
+        ), mock.patch.object(
+            bridge.time, "sleep"
         ), mock.patch.object(
             bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
         ) as tap:
@@ -2117,51 +1952,95 @@ SemanticsNode#0
             "flutter-semantics-identifier-rect-center-full-window-fallback",
         )
 
-    def test_ios_tap_text_field_uses_widget_screenshot_match(self):
-        snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 50, "height": 100},
-            "isolate_id": "isolates/1",
-            "elements": [
-                {
-                    "text": "Task title",
-                    "type": "flutter_widget",
-                    "widget_type": "SynthTextField",
-                    "enabled": True,
-                    "value_id": "field-1",
-                    "rect": {"x": 2, "y": 8, "w": 4, "h": 2},
-                }
-            ],
-        }
+    def test_ios_tap_text_uses_widget_screenshot_match(self):
         native_pixels = bytearray([255] * 100 * 200 * 3)
         for yy in range(20):
             for xx in range(40):
                 i = ((120 + yy) * 100 + 30 + xx) * 3
                 native_pixels[i:i + 3] = bytes((12, 90, 180))
         native = {
-            "width": 100,
-            "height": 200,
-            "pixels": bytes(native_pixels),
+            "width": 100, "height": 200, "pixels": bytes(native_pixels),
         }
         widget = {
-            "width": 40,
-            "height": 20,
+            "width": 40, "height": 20,
             "pixels": bytes((12, 90, 180) * 40 * 20),
         }
-        content_match = {
-            "score_mean_abs_rgb": 1.2,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 0,
-                    "y": 0,
-                    "w": 50,
-                    "h": 100,
-                }
-            },
+        for name, widget_metadata in [
+            ("text_field", {"widget_type": "SynthTextField"}),
+            ("untyped_widget", {}),
+        ]:
+            with self.subTest(case=name):
+                snapshot = logical_snapshot(50, 100, [{
+                    "text": "Task title",
+                    "type": "flutter_widget",
+                    "enabled": True,
+                    "value_id": "field-1",
+                    "rect": {"x": 2, "y": 8, "w": 4, "h": 2},
+                    **widget_metadata,
+                }], isolate_id="isolates/1")
+                content_match = content_match_result(
+                    {"x": 0, "y": 0, "w": 50, "h": 100}, score_mean_abs_rgb=1.2,
+                )
+                with mock.patch.object(
+                    bridge_ios, "_flutter_inspector_snapshot",
+                    return_value=(snapshot, None),
+                ), mock.patch.object(
+                    bridge.shutil, "which", return_value="/usr/bin/xcrun"
+                ), mock.patch.object(
+                    bridge_ios, "_ios_first_simulator_window",
+                    return_value=({"bounds": {"width": 60, "height": 120}}, None),
+                ), mock.patch.object(
+                    bridge_ios, "_ios_host_window_content_match_probe",
+                    return_value=content_match,
+                ), mock.patch.object(
+                    bridge_ios, "_run_simctl_screenshot_image",
+                    return_value=(native, None),
+                ), mock.patch.object(
+                    bridge_ios, "_flutter_inspector_widget_screenshot",
+                    return_value=(widget, None),
+                ), mock.patch.object(
+                    bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
+                ) as tap:
+                    result = bridge._ios_tap_selector(
+                        "text", "Task title",
+                        vm_service_url="http://127.0.0.1:123/abc=/",
+                        device_id="8F0F", device_name="iPhone 17",
+                    )
+
+                tap.assert_called_once()
+                x, y = tap.call_args.args[:2]
+                self.assertGreaterEqual(x, 24)
+                self.assertLessEqual(x, 26)
+                self.assertGreaterEqual(y, 64)
+                self.assertLessEqual(y, 66)
+                self.assertEqual(
+                    result["method"], "flutter-inspector-widget-screenshot-match"
+                )
+                self.assertEqual(result["text"], "Task title")
+                self.assertEqual(
+                    result["element_image_match"]["coordinate_space"],
+                    "native-device-pixels",
+                )
+
+    def test_ios_tap_text_field_falls_back_when_widget_match_is_poor(self):
+        snapshot = logical_snapshot(50, 100, [{
+            "text": "Task title",
+            "type": "flutter_widget",
+            "widget_type": "SynthTextField",
+            "enabled": True,
+            "value_id": "field-1",
+            "rect": {"x": 2, "y": 8, "w": 4, "h": 2},
+        }], isolate_id="isolates/1")
+        content_match = content_match_result(
+            {"x": 10, "y": 20, "w": 50, "h": 100}, score_mean_abs_rgb=4.9,
+        )
+        poor_element_match = {
+            "x": 30, "y": 120, "w": 8, "h": 4,
+            "score_mean_abs_rgb": 164.97,
+            "coordinate_space": "native-device-pixels",
         }
         with mock.patch.object(
-            bridge_ios,
-            "_flutter_inspector_snapshot",
+            bridge_ios, "_flutter_inspector_snapshot",
             return_value=(snapshot, None),
         ), mock.patch.object(
             bridge.shutil, "which", return_value="/usr/bin/xcrun"
@@ -2169,264 +2048,84 @@ SemanticsNode#0
             bridge_ios, "_ios_first_simulator_window",
             return_value=({"bounds": {"width": 60, "height": 120}}, None),
         ), mock.patch.object(
-            bridge_ios,
-            "_ios_host_window_content_match_probe",
+            bridge_ios, "_ios_host_window_content_match_probe",
             return_value=content_match,
         ), mock.patch.object(
             bridge_ios, "_run_simctl_screenshot_image",
-            return_value=(native, None),
+            return_value=({"width": 100, "height": 200, "pixels": b""}, None),
         ), mock.patch.object(
             bridge_ios, "_flutter_inspector_widget_screenshot",
-            return_value=(widget, None),
+            return_value=({"width": 8, "height": 4, "pixels": b""}, None),
+        ), mock.patch.object(
+            bridge_ios, "_image_template_match", return_value=poor_element_match,
         ), mock.patch.object(
             bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
         ) as tap:
             result = bridge._ios_tap_selector(
-                "text",
-                "Task title",
+                "text", "Task title",
                 vm_service_url="http://127.0.0.1:123/abc=/",
-                device_id="8F0F",
-                device_name="iPhone 17",
+                device_id="8F0F", device_name="iPhone 17",
             )
 
-        tap.assert_called_once()
-        x, y = tap.call_args.args[:2]
-        self.assertGreaterEqual(x, 24)
-        self.assertLessEqual(x, 26)
-        self.assertGreaterEqual(y, 64)
-        self.assertLessEqual(y, 66)
-        self.assertEqual(
-            result["method"], "flutter-inspector-widget-screenshot-match"
-        )
+        # Logical center (4, 9), unit scale, content origin (10, 20).
+        tap.assert_called_once_with(14.0, 29.0, device_name="iPhone 17")
+        self.assertEqual(result["action"], "tap")
         self.assertEqual(result["text"], "Task title")
+        self.assertEqual(result["method"], "flutter-inspector-rect-center")
+        self.assertNotIn("element_image_match", result)
+        self.assertEqual(
+            result["element_image_match_error"]["code"], "BACKEND_ERROR"
+        )
 
-    def test_ios_tap_text_field_falls_back_when_widget_match_is_poor(self):
-        snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "isolate_id": "isolates/1",
-            "elements": [
-                {
-                    "text": "Task title",
-                    "type": "flutter_widget",
-                    "widget_type": "SynthTextField",
-                    "enabled": True,
-                    "value_id": "field-1",
-                    "rect": {"x": 22, "y": 89, "w": 358, "h": 56},
-                }
-            ],
-        }
-        content_match = {
-            "score_mean_abs_rgb": 4.9,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 28,
-                    "y": 62,
-                    "w": 401,
-                    "h": 872,
-                }
-            },
-        }
-        poor_element_match = {
-            "x": 75,
-            "y": 2299,
-            "w": 1074,
-            "h": 168,
-            "score_mean_abs_rgb": 164.97,
-            "coordinate_space": "native-device-pixels",
+    def test_ios_tap_selector_uses_recent_cached_snapshot_after_timeout(self):
+        cache_key = ("http://127.0.0.1:123/abc=/", "8F0F")
+        snapshot = logical_snapshot(402, 874, [{
+            "text": "Add item",
+            "type": "button",
+            "enabled": True,
+            "rect": {"x": 310.8, "y": 138, "w": 75.2, "h": 48},
+        }])
+        content_match = content_match_result(
+            {"x": 18, "y": 60, "w": 401, "h": 872}, score_mean_abs_rgb=3.68,
+        )
+        bridge._ios_tap_snapshot_cache[cache_key] = {
+            "timestamp": time.time(),
+            "snapshot": snapshot,
         }
         with mock.patch.object(
             bridge_ios,
             "_flutter_inspector_snapshot",
-            return_value=(snapshot, None),
+            return_value=(
+                None,
+                {"error": "timed out", "code": "BACKEND_ERROR"},
+            ),
         ), mock.patch.object(
             bridge.shutil, "which", return_value="/usr/bin/xcrun"
         ), mock.patch.object(
-            bridge_ios, "_ios_first_simulator_window",
+            bridge_ios,
+            "_ios_first_simulator_window",
             return_value=({"bounds": {"width": 456, "height": 972}}, None),
         ), mock.patch.object(
             bridge_ios,
             "_ios_host_window_content_match_probe",
             return_value=content_match,
         ), mock.patch.object(
-            bridge_ios, "_run_simctl_screenshot_image",
-            return_value=({"width": 1206, "height": 2622, "pixels": b""}, None),
-        ), mock.patch.object(
-            bridge_ios, "_flutter_inspector_widget_screenshot",
-            return_value=({"width": 1074, "height": 168, "pixels": b""}, None),
-        ), mock.patch.object(
             bridge_ios,
-            "_image_template_match",
-            return_value=poor_element_match,
-        ), mock.patch.object(
-            bridge_ios, "_ios_tap_coordinates"
-        ) as tap:
-            result = bridge._ios_tap_selector(
-                "text",
-                "Task title",
-                vm_service_url="http://127.0.0.1:123/abc=/",
-                device_id="8F0F",
-                device_name="iPhone 17",
-            )
-
-        tap.assert_called_once()
-        self.assertEqual(result["action"], "tap")
-        self.assertEqual(result["text"], "Task title")
-        self.assertEqual(
-            result["element_image_match_error"]["code"], "BACKEND_ERROR"
-        )
-
-    def test_ios_tap_text_selector_can_use_widget_screenshot_match(self):
-        snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 50, "height": 100},
-            "isolate_id": "isolates/1",
-            "elements": [
-                {
-                    "text": "Task title",
-                    "type": "flutter_widget",
-                    "enabled": True,
-                    "value_id": "field-1",
-                    "rect": {"x": 2, "y": 8, "w": 4, "h": 2},
-                }
-            ],
-        }
-        native_pixels = bytearray([255] * 100 * 200 * 3)
-        for yy in range(20):
-            for xx in range(40):
-                i = ((120 + yy) * 100 + 30 + xx) * 3
-                native_pixels[i:i + 3] = bytes((12, 90, 180))
-        native = {
-            "width": 100,
-            "height": 200,
-            "pixels": bytes(native_pixels),
-        }
-        widget = {
-            "width": 40,
-            "height": 20,
-            "pixels": bytes((12, 90, 180) * 40 * 20),
-        }
-        content_match = {
-            "score_mean_abs_rgb": 1.2,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 0,
-                    "y": 0,
-                    "w": 50,
-                    "h": 100,
-                }
-            },
-        }
-        with mock.patch.object(
-            bridge_ios,
-            "_flutter_inspector_snapshot",
-            return_value=(snapshot, None),
-        ), mock.patch.object(
-            bridge.shutil, "which", return_value="/usr/bin/xcrun"
-        ), mock.patch.object(
-            bridge_ios, "_ios_first_simulator_window",
-            return_value=({"bounds": {"width": 60, "height": 120}}, None),
-        ), mock.patch.object(
-            bridge_ios,
-            "_ios_host_window_content_match_probe",
-            return_value=content_match,
-        ), mock.patch.object(
-            bridge_ios, "_run_simctl_screenshot_image",
-            return_value=(native, None),
-        ), mock.patch.object(
-            bridge_ios, "_flutter_inspector_widget_screenshot",
-            return_value=(widget, None),
+            "_run_simctl_screenshot_image",
+            return_value=(
+                None,
+                {"error": "screenshot failed", "code": "BACKEND_ERROR"},
+            ),
         ), mock.patch.object(
             bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
-        ) as tap:
+        ):
             result = bridge._ios_tap_selector(
                 "text",
-                "Task title",
-                vm_service_url="http://127.0.0.1:123/abc=/",
-                device_id="8F0F",
+                "Add item",
+                vm_service_url=cache_key[0],
+                device_id=cache_key[1],
                 device_name="iPhone 17",
             )
-
-        tap.assert_called_once()
-        x, y = tap.call_args.args[:2]
-        self.assertGreaterEqual(x, 24)
-        self.assertLessEqual(x, 26)
-        self.assertGreaterEqual(y, 64)
-        self.assertLessEqual(y, 66)
-        self.assertEqual(
-            result["method"], "flutter-inspector-widget-screenshot-match"
-        )
-        self.assertEqual(
-            result["element_image_match"]["coordinate_space"],
-            "native-device-pixels",
-        )
-
-    def test_ios_tap_selector_uses_recent_cached_snapshot_after_timeout(self):
-        cache_key = ("http://127.0.0.1:123/abc=/", "8F0F")
-        snapshot = {
-            "coordinate_space": "flutter-logical-points",
-            "root_size": {"width": 402, "height": 874},
-            "elements": [
-                {
-                    "text": "Add item",
-                    "type": "button",
-                    "enabled": True,
-                    "rect": {"x": 310.8, "y": 138, "w": 75.2, "h": 48},
-                }
-            ],
-        }
-        content_match = {
-            "score_mean_abs_rgb": 3.68,
-            "best_match": {
-                "simulator_window_rect_estimate": {
-                    "x": 18,
-                    "y": 60,
-                    "w": 401,
-                    "h": 872,
-                }
-            },
-        }
-        bridge._ios_tap_snapshot_cache[cache_key] = {
-            "timestamp": time.time(),
-            "snapshot": snapshot,
-        }
-        try:
-            with mock.patch.object(
-                bridge_ios,
-                "_flutter_inspector_snapshot",
-                return_value=(
-                    None,
-                    {"error": "timed out", "code": "BACKEND_ERROR"},
-                ),
-            ), mock.patch.object(
-                bridge.shutil, "which", return_value="/usr/bin/xcrun"
-            ), mock.patch.object(
-                bridge_ios,
-                "_ios_first_simulator_window",
-                return_value=({"bounds": {"width": 456, "height": 972}}, None),
-            ), mock.patch.object(
-                bridge_ios,
-                "_ios_host_window_content_match_probe",
-                return_value=content_match,
-            ), mock.patch.object(
-                bridge_ios,
-                "_run_simctl_screenshot_image",
-                return_value=(
-                    None,
-                    {"error": "screenshot failed", "code": "BACKEND_ERROR"},
-                ),
-            ), mock.patch.object(
-                bridge_ios, "_ios_tap_coordinates", return_value={"action": "tap"}
-            ):
-                result = bridge._ios_tap_selector(
-                    "text",
-                    "Add item",
-                    vm_service_url=cache_key[0],
-                    device_id=cache_key[1],
-                    device_name="iPhone 17",
-                )
-        finally:
-            bridge._ios_tap_snapshot_cache.clear()
 
         self.assertEqual(result["action"], "tap")
         self.assertEqual(
@@ -2458,13 +2157,7 @@ SemanticsNode#0
         self.assertEqual(result["action"], "tap")
 
     def test_ios_tap_coordinates_use_simulator_window(self):
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
+        window = simulator_window(100, 200, 456, 972)
         with mock.patch.object(
             bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
         ), mock.patch.object(
@@ -2482,13 +2175,7 @@ SemanticsNode#0
         self.assertEqual(result["window"], window)
 
     def test_ios_tap_coordinates_reject_outside_simulator_window(self):
-        window = {
-            "window_id": 42,
-            "pid": 123,
-            "owner_name": "Simulator",
-            "name": "iPhone 17",
-            "bounds": {"x": 100, "y": 200, "width": 456, "height": 972},
-        }
+        window = simulator_window(100, 200, 456, 972)
         with mock.patch.object(
             bridge_ios, "_ios_first_simulator_window", return_value=(window, None)
         ):
@@ -2499,133 +2186,46 @@ SemanticsNode#0
 
 
 class UiAutomationValidationTests(unittest.TestCase):
-    def test_validates_coordinate_tap(self):
-        parsed, error = bridge.validate_ui_action("tap", {"x": 12, "y": 34})
+    def test_validates_actions(self):
+        cases = [
+            ("validates_coordinate_tap", "tap", {"x": 12, "y": 34}, {"x": 12, "y": 34}),
+            ("accepts_modifier_press_key", "press", {"key": "command+r"}, {"key": "command+r"}),
+            ("accepts_modifier_press_key_with_spaces", "press",
+             {"key": "command + r"}, {"key": "command+r"}),
+            ("accepts_single_alpha_press_key", "press", {"key": "a"}, {"key": "a"}),
+            ("validates_scroll_move", "scroll", {"move": "down"}, {"move": "down"}),
+            ("validates_scroll_move_top", "scroll", {"move": "top"}, {"move": "top"}),
+            ("validates_empty_inspect_body", "inspect", {}, {}),
+            ("validates_inspect_selector_body", "inspect", {"text": "Settings"}, {"text": "Settings"}),
+            ("validates_wait_timeout", "wait", {"text": "Welcome", "timeout_ms": 1000},
+             {"text": "Welcome", "timeout_ms": 1000}),
+        ]
+        for name, action, body, expected in cases:
+            with self.subTest(case=name):
+                parsed, error = bridge.validate_ui_action(action, body)
+                self.assertIsNone(error)
+                self.assertEqual(parsed, expected)
 
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {"x": 12, "y": 34})
-
-    def test_rejects_mixed_tap_selector_modes(self):
-        parsed, error = bridge.validate_ui_action(
-            "tap", {"x": 12, "y": 34, "text": "Sign in"}
-        )
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "INVALID_BODY")
-
-    def test_rejects_unknown_press_key(self):
-        parsed, error = bridge.validate_ui_action("press", {"key": "F13"})
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "UNKNOWN_KEY")
-
-    def test_accepts_modifier_press_key(self):
-        parsed, error = bridge.validate_ui_action(
-            "press", {"key": "command+r"}
-        )
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {"key": "command+r"})
-
-    def test_accepts_modifier_press_key_with_spaces(self):
-        parsed, error = bridge.validate_ui_action(
-            "press", {"key": "command + r"}
-        )
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {"key": "command+r"})
-
-    def test_accepts_single_alpha_press_key(self):
-        parsed, error = bridge.validate_ui_action("press", {"key": "a"})
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {"key": "a"})
-
-    def test_rejects_modifier_only_press_key(self):
-        parsed, error = bridge.validate_ui_action(
-            "press", {"key": "command+shift"}
-        )
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "UNKNOWN_KEY")
-
-    def test_rejects_empty_press_key_segment(self):
-        parsed, error = bridge.validate_ui_action(
-            "press", {"key": "command++r"}
-        )
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "UNKNOWN_KEY")
-
-    def test_rejects_null_bytes_in_text(self):
-        parsed, error = bridge.validate_ui_action(
-            "type", {"text": "bad\x00text"}
-        )
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "INVALID_BODY")
-
-    def test_validates_scroll_move(self):
-        parsed, error = bridge.validate_ui_action("scroll", {"move": "down"})
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {"move": "down"})
-
-    def test_validates_scroll_move_top(self):
-        parsed, error = bridge.validate_ui_action("scroll", {"move": "top"})
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {"move": "top"})
-
-    def test_rejects_scroll_legacy_delta(self):
-        parsed, error = bridge.validate_ui_action("scroll", {"dy": 100})
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "INVALID_BODY")
-
-    def test_rejects_scroll_move_with_extra_arguments(self):
-        parsed, error = bridge.validate_ui_action(
-            "scroll", {"move": "down", "dy": 100}
-        )
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "INVALID_BODY")
-
-    def test_rejects_unknown_scroll_move(self):
-        parsed, error = bridge.validate_ui_action("scroll", {"move": "left"})
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "INVALID_BODY")
-
-    def test_validates_empty_inspect_body(self):
-        parsed, error = bridge.validate_ui_action("inspect", {})
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {})
-
-    def test_validates_inspect_selector_body(self):
-        parsed, error = bridge.validate_ui_action(
-            "inspect", {"text": "Settings"}
-        )
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed, {"text": "Settings"})
-
-    def test_rejects_inspect_with_both_text_and_key(self):
-        parsed, error = bridge.validate_ui_action(
-            "inspect", {"text": "Settings", "key": "settingsButton"}
-        )
-
-        self.assertIsNone(parsed)
-        self.assertEqual(error["code"], "INVALID_BODY")
-
-    def test_validates_wait_timeout(self):
-        parsed, error = bridge.validate_ui_action(
-            "wait", {"text": "Welcome", "timeout_ms": 1000}
-        )
-
-        self.assertIsNone(error)
-        self.assertEqual(parsed["timeout_ms"], 1000)
+    def test_rejects_invalid_actions(self):
+        cases = [
+            ("rejects_mixed_tap_selector_modes", "tap",
+             {"x": 12, "y": 34, "text": "Sign in"}, "INVALID_BODY"),
+            ("rejects_unknown_press_key", "press", {"key": "F13"}, "UNKNOWN_KEY"),
+            ("rejects_modifier_only_press_key", "press", {"key": "command+shift"}, "UNKNOWN_KEY"),
+            ("rejects_empty_press_key_segment", "press", {"key": "command++r"}, "UNKNOWN_KEY"),
+            ("rejects_null_bytes_in_text", "type", {"text": "bad\x00text"}, "INVALID_BODY"),
+            ("rejects_scroll_legacy_delta", "scroll", {"dy": 100}, "INVALID_BODY"),
+            ("rejects_scroll_move_with_extra_arguments", "scroll",
+             {"move": "down", "dy": 100}, "INVALID_BODY"),
+            ("rejects_unknown_scroll_move", "scroll", {"move": "left"}, "INVALID_BODY"),
+            ("rejects_inspect_with_both_text_and_key", "inspect",
+             {"text": "Settings", "key": "settingsButton"}, "INVALID_BODY"),
+        ]
+        for name, action, body, code in cases:
+            with self.subTest(case=name):
+                parsed, error = bridge.validate_ui_action(action, body)
+                self.assertIsNone(parsed)
+                self.assertEqual(error["code"], code)
 
 
 class UiAutomationUnavailableTests(unittest.TestCase):
@@ -2734,14 +2334,28 @@ class RecordingFlutterCtl(flutterctl.FlutterCtl):
 
 
 class FlutterCtlUiCommandTests(unittest.TestCase):
-    def test_tap_serializes_coordinates(self):
-        ctl = RecordingFlutterCtl()
-
-        ctl.tap(x=1, y=2)
-
-        self.assertEqual(ctl.calls[-1][0], "POST")
-        self.assertEqual(ctl.calls[-1][1], "/tap")
-        self.assertEqual(ctl.calls[-1][2], {"x": 1, "y": 2})
+    def test_serializes_ui_commands(self):
+        cases = [
+            ("tap_serializes_coordinates", "tap", (), {"x": 1, "y": 2},
+             ("POST", "/tap", {"x": 1, "y": 2})),
+            ("wait_serializes_timeout_and_selector", "wait", (),
+             {"text": "Ready", "timeout_ms": 2500},
+             ("POST", "/wait", {"timeout_ms": 2500, "text": "Ready"})),
+            ("scroll_serializes_move", "scroll", ("down",), {},
+             ("POST", "/scroll", {"move": "down"})),
+            ("ios_probe_uses_fixed_probe_endpoint", "ios_probe", (), {},
+             ("GET", "/ios-simulator-probe", None)),
+            ("ios_map_uses_fixed_mapping_endpoint", "ios_map", (), {},
+             ("GET", "/ios-coordinate-map", None)),
+            ("restart_bridge_uses_fixed_restart_endpoint", "restart_bridge", (), {},
+             ("POST", "/restart", None)),
+        ]
+        for name, command, args, kwargs, expected in cases:
+            with self.subTest(case=name):
+                ctl = RecordingFlutterCtl()
+                getattr(ctl, command)(*args, **kwargs)
+                self.assertEqual(len(ctl.calls), 1)
+                self.assertEqual(ctl.calls[0][:3], expected)
 
     def test_tap_rejects_partial_coordinates_client_side(self):
         ctl = RecordingFlutterCtl()
@@ -2751,73 +2365,9 @@ class FlutterCtlUiCommandTests(unittest.TestCase):
 
         self.assertEqual(ctl.calls, [])
 
-    def test_wait_serializes_timeout_and_selector(self):
-        ctl = RecordingFlutterCtl()
-
-        ctl.wait(text="Ready", timeout_ms=2500)
-
-        self.assertEqual(ctl.calls[-1][1], "/wait")
-        self.assertEqual(
-            ctl.calls[-1][2], {"timeout_ms": 2500, "text": "Ready"}
-        )
-
-    def test_scroll_serializes_move(self):
-        ctl = RecordingFlutterCtl()
-
-        ctl.scroll("down")
-
-        self.assertEqual(ctl.calls[-1][0], "POST")
-        self.assertEqual(ctl.calls[-1][1], "/scroll")
-        self.assertEqual(ctl.calls[-1][2], {"move": "down"})
-
-    def test_ios_probe_uses_fixed_probe_endpoint(self):
-        ctl = RecordingFlutterCtl()
-
-        ctl.ios_probe()
-
-        self.assertEqual(ctl.calls[-1][0], "GET")
-        self.assertEqual(ctl.calls[-1][1], "/ios-simulator-probe")
-        self.assertEqual(ctl.calls[-1][2], None)
-
-    def test_ios_map_uses_fixed_mapping_endpoint(self):
-        ctl = RecordingFlutterCtl()
-
-        ctl.ios_map()
-
-        self.assertEqual(ctl.calls[-1][0], "GET")
-        self.assertEqual(ctl.calls[-1][1], "/ios-coordinate-map")
-        self.assertEqual(ctl.calls[-1][2], None)
-
-    def test_restart_bridge_uses_fixed_restart_endpoint(self):
-        ctl = RecordingFlutterCtl()
-
-        ctl.restart_bridge()
-
-        self.assertEqual(ctl.calls[-1][0], "POST")
-        self.assertEqual(ctl.calls[-1][1], "/restart")
-        self.assertEqual(ctl.calls[-1][2], None)
-
 
 class FlutterSubprocessStateTests(unittest.TestCase):
     def test_reader_reports_launch_failure_in_status_message(self):
-        class _Stdout:
-            def __init__(self, lines):
-                self.lines = [line + "\n" for line in lines]
-
-            def readline(self):
-                if self.lines:
-                    return self.lines.pop(0)
-                return ""
-
-        class _Process:
-            def __init__(self):
-                self.stdout = _Stdout([
-                    "No supported devices found with name or id matching 'ios'.",
-                ])
-
-            def wait(self):
-                return 1
-
         state = bridge.BridgeState(
             "token",
             tempfile.gettempdir(),
@@ -2826,7 +2376,13 @@ class FlutterSubprocessStateTests(unittest.TestCase):
             "flutter",
             [],
         )
-        proc = _Process()
+        state.update_devices_cache([ios_device(device_id="ios")])
+        proc = mock.Mock(
+            stdout=io.StringIO(
+                "No supported devices found with name or id matching 'ios'.\n"
+            ),
+            **{"wait.return_value": 1},
+        )
         state.process = proc
         state.status = "launching"
         state.subprocess_type = "run"
@@ -2845,6 +2401,7 @@ class FlutterSubprocessStateTests(unittest.TestCase):
 class BridgeHttpUiTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
         self.state = bridge.BridgeState(
             token="secret",
             project_dir=self.tmpdir.name,
@@ -2853,22 +2410,29 @@ class BridgeHttpUiTests(unittest.TestCase):
             flutter_path="flutter",
             run_args="",
         )
-        bridge.FlutterBridgeHandler.bridge_state = self.state
+        self.state.update_devices_cache([{
+            "id": "macos", "name": "macOS", "targetPlatform": "darwin",
+            "emulator": False,
+        }])
+        state_patch = mock.patch.object(
+            bridge.FlutterBridgeHandler, "bridge_state", self.state
+        )
+        state_patch.start()
+        self.addCleanup(state_patch.stop)
         self.server = bridge.ThreadingHTTPServer(
             ("127.0.0.1", 0), bridge.FlutterBridgeHandler
         )
+        self.addCleanup(self.server.server_close)
         self.thread = threading.Thread(
-            target=self.server.serve_forever, daemon=True
+            target=self.server.serve_forever,
+            kwargs={"poll_interval": 0.01},
+            daemon=True,
         )
         self.thread.start()
+        self.addCleanup(self.thread.join, timeout=2)
+        self.addCleanup(self.server.shutdown)
         host, port = self.server.server_address
         self.base_url = f"http://{host}:{port}"
-
-    def tearDown(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=2)
-        self.tmpdir.cleanup()
 
     def request(self, path, body=None, token="secret"):
         headers = {"Content-Type": "application/json"}
@@ -2892,21 +2456,17 @@ class BridgeHttpUiTests(unittest.TestCase):
             method="GET",
         )
 
-    def test_auth_required_for_ui_action(self):
-        req = self.request("/tap", {"x": 1, "y": 2}, token=None)
-
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
-            urllib.request.urlopen(req, timeout=5)
-
-        self.assertEqual(ctx.exception.code, 401)
-
-    def test_restart_bridge_requires_auth(self):
-        req = self.request("/restart", token=None)
-
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
-            urllib.request.urlopen(req, timeout=5)
-
-        self.assertEqual(ctx.exception.code, 401)
+    def test_ui_endpoints_require_auth(self):
+        for name, path, body in [
+            ("auth_required_for_ui_action", "/tap", {"x": 1, "y": 2}),
+            ("restart_bridge_requires_auth", "/restart", None),
+        ]:
+            with self.subTest(case=name):
+                req = self.request(path, body, token=None)
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(req, timeout=5)
+                with ctx.exception:
+                    self.assertEqual(ctx.exception.code, 401)
 
     def test_restart_bridge_starts_restart_thread(self):
         restarted = threading.Event()
@@ -2976,15 +2536,7 @@ class BridgeHttpUiTests(unittest.TestCase):
 
     def test_ios_coordinate_map_dispatches_for_ios_simulator(self):
         self.state.device_id = "8F0F"
-        self.state._devices_cache = [
-            {
-                "id": "8F0F",
-                "name": "iPhone 17",
-                "targetPlatform": "ios",
-                "emulator": True,
-            }
-        ]
-        self.state._devices_cache_time = time.time()
+        self.state.update_devices_cache([ios_device(name="iPhone 17")])
         req = self.get_request("/ios-coordinate-map")
 
         with mock.patch.object(
@@ -3008,14 +2560,7 @@ class BridgeHttpUiTests(unittest.TestCase):
             def poll(self):
                 return None
 
-        # Pre-populate caches so subprocess calls are skipped inside the
-        # test env where flutter/osascript are not installed.
-        self.state._devices_cache = [
-            {"id": "macos", "name": "macOS", "targetPlatform": "darwin",
-             "emulator": False},
-        ]
-        self.state._devices_cache_time = time.time()
-        self.state._devices_cache_error = None
+        # Test readiness rather than host tool availability.
         self.state._tools_cache = {"macos-desktop": {"osascript": True}}
 
         with self.state.subprocess_lock:
