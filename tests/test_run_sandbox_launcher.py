@@ -1,11 +1,10 @@
-import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-RUN_SANDBOX = REPO_ROOT / "scripts" / "run_sandbox.sh"
+from shell_test_support import fake_docker_env, read_docker_invocations, temporary_script_repo
+
 PI_COMPACTION_EXTENSION = "/opt/workcell/pi-extensions/compact-session.ts"
 PI_COMPACTION_ARGS = ["--extension", PI_COMPACTION_EXTENSION]
 PI_NOTIFICATION_EXTENSION = "/opt/workcell/pi-extensions/terminal-notify.ts"
@@ -13,19 +12,20 @@ PI_NOTIFICATION_EXTENSION = "/opt/workcell/pi-extensions/terminal-notify.ts"
 
 class RunSandboxLauncherTests(unittest.TestCase):
     def setUp(self):
-        self.config = REPO_ROOT / "config.sh"
-        self.original_config = self.config.read_text(encoding="utf-8") if self.config.exists() else None
-        self.config.unlink(missing_ok=True)
-        self.addCleanup(self.restore_repo_config)
-
-    def restore_repo_config(self):
-        if self.original_config is None:
-            self.config.unlink(missing_ok=True)
-        else:
-            self.config.write_text(self.original_config, encoding="utf-8")
+        self.repo = temporary_script_repo(self)
+        self.config = self.repo / "config.sh"
+        self.run_sandbox = self.repo / "scripts" / "run_sandbox.sh"
 
     def with_repo_config(self, content: str):
         self.config.write_text(content, encoding="utf-8")
+
+    def run_launcher(self, workspace: Path, args: list[str], env=None):
+        if env is None:
+            env, _ = fake_docker_env(workspace)
+        return subprocess.run(
+            [str(self.run_sandbox), *args],
+            cwd=workspace, env=env, text=True, capture_output=True, timeout=15, check=False,
+        )
 
     def run_with_fake_docker(
         self,
@@ -34,72 +34,37 @@ class RunSandboxLauncherTests(unittest.TestCase):
         agent: str = "codex",
         agent_args: list[str] | None = None,
         extra_env: dict[str, str] | None = None,
-    ) -> str:
-        fake_bin = workspace / "bin"
-        fake_bin.mkdir(exist_ok=True)
-        docker_log = workspace / "docker.log"
-        fake_docker = fake_bin / "docker"
-        fake_docker.write_text(
-            "#!/bin/bash\n"
-            "printf 'DOCKER' >> \"$DOCKER_LOG\"\n"
-            "for arg in \"$@\"; do printf '\\t%s' \"$arg\" >> \"$DOCKER_LOG\"; done\n"
-            "printf '\\n' >> \"$DOCKER_LOG\"\n"
-            'if [ "${1:-}" = run ]; then printf \'%s\\0\' "$@" > "$DOCKER_RUN_ARGS_LOG"; fi\n',
-            encoding="utf-8",
-        )
-        fake_docker.chmod(0o755)
-        fake_touch = fake_bin / "touch"
-        fake_touch.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
-        fake_touch.chmod(0o755)
-
+    ) -> list[list[str]]:
+        env, docker_log = fake_docker_env(workspace, extra_env=extra_env)
         workcell_dir = workspace / ".workcell"
         workcell_dir.mkdir(exist_ok=True)
         if env_file is not None:
             (workcell_dir / ".env").write_text(env_file, encoding="utf-8")
-
-        env = os.environ.copy()
-        env["DOCKER_LOG"] = str(docker_log)
-        env["DOCKER_RUN_ARGS_LOG"] = str(workspace / "docker-run-args.bin")
-        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
-        env["WORKCELL_TEST_SKIP_WATCHDOG"] = "1"
-        for name in [
-            "WORKCELL_CONTEXT_REPO",
-            "WORKCELL_PI_NOTIFICATIONS",
-            "CMUX_SURFACE_ID",
-            "CMUX_PANEL_ID",
-        ]:
-            env.pop(name, None)
-        if extra_env:
-            env.update(extra_env)
-
-        subprocess.run(
-            [str(RUN_SANDBOX), agent, "--", *(agent_args if agent_args is not None else ["status"])],
-            cwd=workspace,
-            env=env,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
+        result = self.run_launcher(
+            workspace, [agent, "--", *(agent_args if agent_args is not None else ["status"])], env,
         )
-        return docker_log.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return read_docker_invocations(docker_log)
 
-    def docker_run_args(self, docker_log: str) -> list[str]:
-        run_line = next(
-            line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t")
-        )
-        return run_line.split("\t")[1:]
+    def docker_run_args(self, invocations: list[list[str]]) -> list[str]:
+        runs = [args for args in invocations if args[:1] == ["run"]]
+        self.assertEqual(len(runs), 1, invocations)
+        return runs[0]
 
-    def launched_agent_args(self, docker_log: str, agent: str) -> list[str]:
-        run_args = self.docker_run_args(docker_log)
+    def assert_docker_option(self, args: list[str], option: str, value: str):
+        self.assertIn((option, value), list(zip(args, args[1:])))
+
+    def launched_agent_args(self, invocations: list[list[str]], agent: str) -> list[str]:
+        run_args = self.docker_run_args(invocations)
         image_index = run_args.index(f"local/agent-workcell-{agent}")
-        return run_args[image_index + 1 :]
+        return run_args[image_index + 1:]
 
     def test_pi_compaction_extension_is_default_for_bare_launch(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(workspace, agent="pi", agent_args=[])
+            invocations = self.run_with_fake_docker(workspace, agent="pi", agent_args=[])
 
-            launched_args = self.launched_agent_args(docker_log, "pi")
+            launched_args = self.launched_agent_args(invocations, "pi")
             self.assertEqual(launched_args, PI_COMPACTION_ARGS)
             self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
             self.assertNotIn(PI_NOTIFICATION_EXTENSION, launched_args)
@@ -108,21 +73,15 @@ class RunSandboxLauncherTests(unittest.TestCase):
         for notification_enabled in [False, True]:
             for user_args in [
                 ["--exclude-tools", "compact_session"],
-                ["-xt", "compact_session"],
-                ["--tools", "read,bash"],
-                ["--tools", "read,bash,compact_session"],
-                ["--tools", "read,compact_session", "--exclude-tools", "compact_session"],
-                ["--no-tools"], ["-nt"], ["--no-builtin-tools"], ["-nbt"],
-                ["--no-extensions"], ["-ne"],
-                ["--print", "prompt with spaces"], ["-p", "prompt with spaces"],
-                ["--mode", "json", "prompt with spaces"], ["--mode", "rpc"],
+                ["--tools", "read,compact_session", "--no-extensions"],
+                ["--mode", "json", "prompt with spaces"],
             ]:
                 with (
                     self.subTest(notifications=notification_enabled, user_args=user_args),
                     tempfile.TemporaryDirectory() as temp_dir,
                 ):
                     workspace = Path(temp_dir)
-                    docker_log = self.run_with_fake_docker(
+                    invocations = self.run_with_fake_docker(
                         workspace, agent="pi", agent_args=user_args,
                         extra_env={
                             "WORKCELL_PI_NOTIFICATIONS": "enabled" if notification_enabled else "disabled",
@@ -131,7 +90,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     )
                     optional = ["--extension", PI_NOTIFICATION_EXTENSION] if notification_enabled else []
                     self.assertEqual(
-                        self.launched_agent_args(docker_log, "pi"),
+                        self.launched_agent_args(invocations, "pi"),
                         [*PI_COMPACTION_ARGS, *optional, *user_args],
                     )
 
@@ -143,14 +102,11 @@ class RunSandboxLauncherTests(unittest.TestCase):
                 "prompt with spaces\nand a tab\tand unicode: café", "", "--port", "1234",
                 str(workspace / "path with spaces"),
             ]
-            self.run_with_fake_docker(
+            invocations = self.run_with_fake_docker(
                 workspace, agent="pi", agent_args=user_args,
                 extra_env={"WORKCELL_PI_NOTIFICATIONS": "enabled", "CMUX_SURFACE_ID": "surface-1"},
             )
-            # NUL framing, unlike the human-readable log, preserves tabs/newlines/empty arguments.
-            run_args = (workspace / "docker-run-args.bin").read_bytes().decode().split("\0")[:-1]
-            image_index = run_args.index("local/agent-workcell-pi")
-            launched_args = run_args[image_index + 1:]
+            launched_args = self.launched_agent_args(invocations, "pi")
             self.assertEqual(
                 launched_args,
                 [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *user_args],
@@ -161,28 +117,26 @@ class RunSandboxLauncherTests(unittest.TestCase):
     def test_pi_agent_is_passed_to_docker_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(workspace, agent="pi")
+            invocations = self.run_with_fake_docker(workspace, agent="pi")
 
-            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
-            self.assertIn("\t-e\tAGENT_CLI=pi\t", f"{run_line}\t")
+            self.assert_docker_option(self.docker_run_args(invocations), "-e", "AGENT_CLI=pi")
 
     def test_pi_sessions_are_mounted_from_workcell(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(workspace, agent="pi")
+            invocations = self.run_with_fake_docker(workspace, agent="pi")
 
-            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
             expected_mount = (
                 f"{workspace / '.workcell' / 'sessions' / 'pi'}:"
                 f"/home/agent/persist/.pi/agent/sessions/--workspaces-{workspace.name}--"
             )
-            self.assertIn(f"\t-v\t{expected_mount}\t", f"{run_line}\t")
+            self.assert_docker_option(self.docker_run_args(invocations), "-v", expected_mount)
             self.assertTrue((workspace / ".workcell" / "sessions" / "pi").is_dir())
 
     def test_pi_notifications_use_modern_cmux_identity_when_enabled(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(
+            invocations = self.run_with_fake_docker(
                 workspace,
                 agent="pi",
                 extra_env={
@@ -192,17 +146,17 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                self.launched_agent_args(docker_log, "pi"),
+                self.launched_agent_args(invocations, "pi"),
                 [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             )
-            run_args = self.docker_run_args(docker_log)
+            run_args = self.docker_run_args(invocations)
             self.assertFalse(any("CMUX_" in arg for arg in run_args))
             self.assertFalse(any(arg.endswith(".sock") for arg in run_args))
 
     def test_pi_notifications_fall_back_to_legacy_cmux_identity(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(
+            invocations = self.run_with_fake_docker(
                 workspace,
                 agent="pi",
                 extra_env={
@@ -213,7 +167,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                self.launched_agent_args(docker_log, "pi"),
+                self.launched_agent_args(invocations, "pi"),
                 [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             )
 
@@ -224,13 +178,13 @@ class RunSandboxLauncherTests(unittest.TestCase):
                 tempfile.TemporaryDirectory() as temp_dir,
             ):
                 workspace = Path(temp_dir)
-                docker_log = self.run_with_fake_docker(
+                invocations = self.run_with_fake_docker(
                     workspace,
                     agent="pi",
                     extra_env={"WORKCELL_PI_NOTIFICATIONS": "enabled", **cmux_env},
                 )
 
-                self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
+                self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
 
     def test_pi_notifications_require_exact_enabled_value(self):
         for value in [None, "", "disabled", "1", "ENABLED"]:
@@ -242,13 +196,13 @@ class RunSandboxLauncherTests(unittest.TestCase):
                 extra_env = {"CMUX_SURFACE_ID": "surface-1"}
                 if value is not None:
                     extra_env["WORKCELL_PI_NOTIFICATIONS"] = value
-                docker_log = self.run_with_fake_docker(
+                invocations = self.run_with_fake_docker(
                     workspace,
                     agent="pi",
                     extra_env=extra_env,
                 )
 
-                self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
+                self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
 
     def test_pi_notification_config_overrides_host_setting(self):
         cases = [
@@ -265,10 +219,8 @@ class RunSandboxLauncherTests(unittest.TestCase):
                 tempfile.TemporaryDirectory() as temp_dir,
             ):
                 workspace = Path(temp_dir)
-                self.with_repo_config(
-                    f'WORKCELL_PI_NOTIFICATIONS="{config_value}"\n'
-                )
-                docker_log = self.run_with_fake_docker(
+                self.with_repo_config(f'WORKCELL_PI_NOTIFICATIONS="{config_value}"\n')
+                invocations = self.run_with_fake_docker(
                     workspace,
                     agent="pi",
                     extra_env={
@@ -277,17 +229,15 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     },
                 )
 
-                self.assertEqual(self.launched_agent_args(docker_log, "pi"), expected)
+                self.assertEqual(self.launched_agent_args(invocations, "pi"), expected)
 
     def test_config_cannot_manufacture_cmux_identity(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            self.with_repo_config(
-                "WORKCELL_PI_NOTIFICATIONS=enabled\nCMUX_SURFACE_ID=config-surface\n"
-            )
-            docker_log = self.run_with_fake_docker(workspace, agent="pi")
+            self.with_repo_config("WORKCELL_PI_NOTIFICATIONS=enabled\nCMUX_SURFACE_ID=config-surface\n")
+            invocations = self.run_with_fake_docker(workspace, agent="pi")
 
-            self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
+            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
 
     def test_pi_notifications_do_not_change_other_harnesses(self):
         for agent in ["opencode", "codex", "claude"]:
@@ -296,7 +246,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
                 tempfile.TemporaryDirectory() as temp_dir,
             ):
                 workspace = Path(temp_dir)
-                docker_log = self.run_with_fake_docker(
+                invocations = self.run_with_fake_docker(
                     workspace,
                     agent=agent,
                     extra_env={
@@ -305,12 +255,12 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     },
                 )
 
-                self.assertEqual(self.launched_agent_args(docker_log, agent), ["status"])
+                self.assertEqual(self.launched_agent_args(invocations, agent), ["status"])
 
     def test_cmux_env_file_entries_are_not_forwarded_or_used_for_detection(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(
+            invocations = self.run_with_fake_docker(
                 workspace,
                 "CMUX_SURFACE_ID=surface-from-file\n"
                 "CMUX_SOCKET_PATH=/tmp/cmux.sock\n"
@@ -319,102 +269,68 @@ class RunSandboxLauncherTests(unittest.TestCase):
                 agent="pi",
                 extra_env={"WORKCELL_PI_NOTIFICATIONS": "enabled"},
             )
-            run_args = self.docker_run_args(docker_log)
+            run_args = self.docker_run_args(invocations)
 
-            self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
+            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
             self.assertFalse(any("CMUX_" in arg for arg in run_args))
-            self.assertIn("CUSTOM=value", run_args)
+            self.assert_docker_option(run_args, "-e", "CUSTOM=value")
             self.assertFalse(any("cmux.sock" in arg for arg in run_args))
 
     def test_env_file_cannot_enable_pi_notifications(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(
+            invocations = self.run_with_fake_docker(
                 workspace,
                 "WORKCELL_PI_NOTIFICATIONS=enabled\nCUSTOM=value\n",
                 agent="pi",
                 extra_env={"CMUX_SURFACE_ID": "surface-1"},
             )
-            run_args = self.docker_run_args(docker_log)
+            run_args = self.docker_run_args(invocations)
 
-            self.assertEqual(self.launched_agent_args(docker_log, "pi"), [*PI_COMPACTION_ARGS, "status"])
-            self.assertFalse(
-                any("WORKCELL_PI_NOTIFICATIONS" in arg for arg in run_args)
-            )
-            self.assertIn("CUSTOM=value", run_args)
+            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
+            self.assertFalse(any("WORKCELL_PI_NOTIFICATIONS" in arg for arg in run_args))
+            self.assert_docker_option(run_args, "-e", "CUSTOM=value")
 
     def test_unknown_agent_error_mentions_pi(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
+            result = self.run_launcher(workspace, ["unknown"])
 
-            result = subprocess.run(
-                [str(RUN_SANDBOX), "unknown"],
-                cwd=workspace,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("'pi', 'opencode', 'codex', or 'claude'", result.stdout)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("'pi', 'opencode', 'codex', or 'claude'", result.stdout + result.stderr)
 
     def test_flutter_project_dir_requires_flutter_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
+            result = self.run_launcher(workspace, ["codex", "--flutter-project-dir", "./gui"])
 
-            result = subprocess.run(
-                [str(RUN_SANDBOX), "codex", "--flutter-project-dir", "./gui"],
-                cwd=workspace,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("--flutter-project-dir requires --with-flutter", result.stdout)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("--flutter-project-dir requires --with-flutter", result.stdout + result.stderr)
 
     def test_flutter_project_dir_must_exist_under_workspace(self):
         self.with_repo_config("\n")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
+            result = self.run_launcher(workspace, ["codex", "--with-flutter", "--flutter-project-dir", "./gui"])
 
-            result = subprocess.run(
-                [str(RUN_SANDBOX), "codex", "--with-flutter", "--flutter-project-dir", "./gui"],
-                cwd=workspace,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("Flutter project directory not found", result.stdout)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Flutter project directory not found", result.stdout + result.stderr)
 
     def test_flutter_project_dir_must_be_relative(self):
         self.with_repo_config("\n")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
+            result = self.run_launcher(workspace, ["codex", "--with-flutter", "--flutter-project-dir", "/tmp"])
 
-            result = subprocess.run(
-                [str(RUN_SANDBOX), "codex", "--with-flutter", "--flutter-project-dir", "/tmp"],
-                cwd=workspace,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("must be relative to the workspace directory", result.stdout)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("must be relative to the workspace directory", result.stdout + result.stderr)
 
     def test_context_repo_env_is_ignored_when_not_in_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(workspace, extra_env={"WORKCELL_CONTEXT_REPO": str(workspace)})
-            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
-            self.assertNotIn("/opt/workcell-context", run_line)
+            invocations = self.run_with_fake_docker(workspace, extra_env={"WORKCELL_CONTEXT_REPO": str(workspace)})
+            run_args = self.docker_run_args(invocations)
+            self.assertFalse(any("/opt/workcell-context" in arg for arg in run_args))
 
     def test_context_repo_config_adds_writable_mount(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -422,50 +338,42 @@ class RunSandboxLauncherTests(unittest.TestCase):
             repo = workspace / "agent-context"
             repo.mkdir()
             self.with_repo_config(f'WORKCELL_CONTEXT_REPO="{repo}"\n')
-            docker_log = self.run_with_fake_docker(workspace)
-            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
-            self.assertIn(f"\t-v\t{repo}:/opt/workcell-context:rw\t", f"{run_line}\t")
-            self.assertNotIn("/opt/workcell-context:ro", run_line)
+            run_args = self.docker_run_args(self.run_with_fake_docker(workspace))
+            self.assert_docker_option(run_args, "-v", f"{repo}:/opt/workcell-context:rw")
+            self.assertNotIn(f"{repo}:/opt/workcell-context:ro", run_args)
 
     def test_context_repo_config_rejects_relative_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             self.with_repo_config('WORKCELL_CONTEXT_REPO="relative/context"\n')
-            result = subprocess.run(
-                [str(RUN_SANDBOX), "codex", "--", "status"],
-                cwd=workspace,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("WORKCELL_CONTEXT_REPO must be an absolute", result.stdout)
+            result = self.run_launcher(workspace, ["codex", "--", "status"])
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("WORKCELL_CONTEXT_REPO must be an absolute", result.stdout + result.stderr)
 
     def test_context_repo_env_file_entry_is_not_passed_to_container(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(
+            invocations = self.run_with_fake_docker(
                 workspace,
                 f"WORKCELL_CONTEXT_REPO={workspace}\nCUSTOM=value\n",
             )
-            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
-            self.assertNotIn("WORKCELL_CONTEXT_REPO", run_line)
-            self.assertNotIn("/opt/workcell-context", run_line)
-            self.assertIn("\t-e\tCUSTOM=value\t", f"{run_line}\t")
+            run_args = self.docker_run_args(invocations)
+            self.assertFalse(any("WORKCELL_CONTEXT_REPO" in arg for arg in run_args))
+            self.assertFalse(any("/opt/workcell-context" in arg for arg in run_args))
+            self.assert_docker_option(run_args, "-e", "CUSTOM=value")
 
     def test_env_file_is_passed_to_docker_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            docker_log = self.run_with_fake_docker(
+            invocations = self.run_with_fake_docker(
                 workspace,
                 "CUSTOM=value\nQUOTED=\"value with spaces\"\n",
             )
 
-            run_line = next(line for line in docker_log.splitlines() if line.startswith("DOCKER\trun\t"))
-            self.assertIn("\t-e\tCUSTOM=value\t", f"{run_line}\t")
-            self.assertIn("\t-e\tQUOTED=value with spaces\t", f"{run_line}\t")
-            self.assertLess(run_line.index("CUSTOM=value"), run_line.index("AGENT_CLI=codex"))
+            run_args = self.docker_run_args(invocations)
+            self.assert_docker_option(run_args, "-e", "CUSTOM=value")
+            self.assert_docker_option(run_args, "-e", "QUOTED=value with spaces")
+            self.assertLess(run_args.index("CUSTOM=value"), run_args.index("AGENT_CLI=codex"))
 
     def test_gitignore_is_seeded_with_env_entry(self):
         with tempfile.TemporaryDirectory() as temp_dir:

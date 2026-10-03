@@ -1,89 +1,55 @@
 import json
-import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+from shell_test_support import fake_docker_env, read_docker_invocations, temporary_script_repo
 from test_pi_compaction_lifecycle import RUNNER, pi_package_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CLI = REPO_ROOT / "cli.sh"
 
 
 class SandboxImageSplitTests(unittest.TestCase):
     def setUp(self):
-        self.config = REPO_ROOT / "config.sh"
-        self.original_config = (
-            self.config.read_text(encoding="utf-8") if self.config.exists() else None
-        )
-        self.config.unlink(missing_ok=True)
-        self.addCleanup(self.restore_repo_config)
-
-    def restore_repo_config(self):
-        if self.original_config is None:
-            self.config.unlink(missing_ok=True)
-        else:
-            self.config.write_text(self.original_config, encoding="utf-8")
+        self.repo = temporary_script_repo(self)
+        self.config = self.repo / "config.sh"
+        self.cli = self.repo / "cli.sh"
 
     def with_repo_config(self, content: str):
         self.config.write_text(content, encoding="utf-8")
 
-    def fake_docker_env(self, workspace: Path, image_inspect_missing: bool = False):
-        fake_bin = workspace / "bin"
-        fake_bin.mkdir()
-        docker_log = workspace / "docker.log"
-        fake_docker = fake_bin / "docker"
-        fake_docker.write_text(
-            "#!/bin/bash\n"
-            "printf 'DOCKER' >> \"$DOCKER_LOG\"\n"
-            'for arg in "$@"; do printf \'\\t%s\' "$arg" >> "$DOCKER_LOG"; done\n'
-            "printf '\\n' >> \"$DOCKER_LOG\"\n"
-            'if [ "${1:-}" = image ] && [ "${2:-}" = inspect ] && [ "${IMAGE_INSPECT_MISSING:-0}" = 1 ]; then exit 1; fi\n'
-            "exit 0\n",
-            encoding="utf-8",
+    def run_cli(self, workspace: Path, args: list[str], env=None, expect_success=True):
+        if env is None:
+            env, _ = fake_docker_env(workspace)
+        result = subprocess.run(
+            [str(self.cli), *args],
+            cwd=workspace, env=env, text=True, capture_output=True, timeout=15, check=False,
         )
-        fake_docker.chmod(0o755)
-        for name in ["touch", "sleep"]:
-            tool = fake_bin / name
-            tool.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
-            tool.chmod(0o755)
-        env = os.environ.copy()
-        env["DOCKER_LOG"] = str(docker_log)
-        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
-        env["WORKCELL_TEST_SKIP_WATCHDOG"] = "1"
-        for name in ["WORKCELL_PI_NOTIFICATIONS", "CMUX_SURFACE_ID", "CMUX_PANEL_ID"]:
-            env.pop(name, None)
-        if image_inspect_missing:
-            env["IMAGE_INSPECT_MISSING"] = "1"
-        return env, docker_log
+        if expect_success:
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result
+
+    def docker_run_args(self, docker_log: Path) -> list[str]:
+        invocations = read_docker_invocations(docker_log)
+        runs = [args for args in invocations if args[:1] == ["run"]]
+        self.assertEqual(len(runs), 1, invocations)
+        return runs[0]
+
+    def assert_docker_option(self, args: list[str], option: str, value: str):
+        self.assertIn((option, value), list(zip(args, args[1:])))
 
     def test_cli_run_uses_agent_image_volume_and_shared_gpg(self):
         for agent in ["pi", "opencode", "codex", "claude"]:
             with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
                 workspace = Path(temp_dir)
-                env, docker_log = self.fake_docker_env(workspace)
-                subprocess.run(
-                    [str(CLI), agent, "run", "--", "--version"],
-                    cwd=workspace,
-                    env=env,
-                    check=True,
-                )
-                run_line = next(
-                    line
-                    for line in docker_log.read_text().splitlines()
-                    if line.startswith("DOCKER\trun\t-d\t")
-                )
-                self.assertIn(
-                    f"\t-v\tagent-workcell-{agent}:/home/agent/persist\t",
-                    f"{run_line}\t",
-                )
-                self.assertIn(
-                    "\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t",
-                    f"{run_line}\t",
-                )
-                run_args = run_line.split("\t")[1:]
+                env, docker_log = fake_docker_env(workspace)
+                self.run_cli(workspace, [agent, "run", "--", "--version"], env)
+                run_args = self.docker_run_args(docker_log)
+                self.assertEqual(run_args[:2], ["run", "-d"])
+                self.assert_docker_option(run_args, "-v", f"agent-workcell-{agent}:/home/agent/persist")
+                self.assert_docker_option(run_args, "-v", "agent-workcell-gpg:/home/agent/persist/.gnupg")
                 image_index = run_args.index(f"local/agent-workcell-{agent}")
                 expected = ["--version"]
                 if agent == "pi":
@@ -100,67 +66,41 @@ class SandboxImageSplitTests(unittest.TestCase):
         for agent, native_args in expected_args.items():
             with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
                 workspace = Path(temp_dir)
-                env, docker_log = self.fake_docker_env(workspace)
-                subprocess.run(
-                    [str(CLI), agent, "update"],
-                    cwd=workspace,
-                    env=env,
-                    check=True,
+                env, docker_log = fake_docker_env(workspace)
+                self.run_cli(workspace, [agent, "update"], env)
+                invocations = read_docker_invocations(docker_log)
+                run_args = self.docker_run_args(docker_log)
+                self.assertEqual(run_args[:3], ["run", "--rm", "--init"])
+                self.assertFalse(any(args[:2] == ["compose", "build"] for args in invocations))
+                self.assert_docker_option(run_args, "-v", f"agent-workcell-{agent}:/home/agent/persist")
+                self.assert_docker_option(
+                    run_args, "--tmpfs",
+                    "/home/agent/persist/.gnupg:rw,noexec,nosuid,nodev,size=64k,mode=0700",
                 )
-                docker_output = docker_log.read_text()
-                run_line = next(
-                    line
-                    for line in docker_output.splitlines()
-                    if line.startswith("DOCKER\trun\t--rm\t--init\t")
-                )
-                self.assertNotIn("DOCKER\tcompose\tbuild", docker_output)
-                self.assertIn(
-                    f"\t-v\tagent-workcell-{agent}:/home/agent/persist\t",
-                    f"{run_line}\t",
-                )
-                self.assertIn(
-                    "\t--tmpfs\t/home/agent/persist/.gnupg:"
-                    "rw,noexec,nosuid,nodev,size=64k,mode=0700\t",
-                    f"{run_line}\t",
-                )
-                self.assertNotIn("agent-workcell-gpg", run_line)
-                self.assertIn(f"\t-e\tAGENT_CLI={agent}\t", f"{run_line}\t")
-                expected_suffix = "\t".join(
-                    [f"local/agent-workcell-{agent}", *native_args]
-                )
-                self.assertTrue(run_line.endswith(f"\t{expected_suffix}"))
+                self.assertFalse(any("agent-workcell-gpg" in arg for arg in run_args))
+                self.assert_docker_option(run_args, "-e", f"AGENT_CLI={agent}")
+                self.assertEqual(run_args[-(len(native_args) + 1):], [f"local/agent-workcell-{agent}", *native_args])
                 self.assertEqual(
-                    "\t-e\tWORKCELL_CLAUDE_UPDATE=1\t" in f"{run_line}\t",
+                    ("-e", "WORKCELL_CLAUDE_UPDATE=1") in list(zip(run_args, run_args[1:])),
                     agent == "claude",
                 )
-                self.assertNotIn(str(workspace), run_line)
-                self.assertNotIn("/workspaces/", run_line)
-                self.assertNotIn("WORKCELL_CONTEXT", run_line)
-                self.assertNotIn("ENABLE_FIREWALL", run_line)
+                for excluded in [str(workspace), "/workspaces/", "WORKCELL_CONTEXT", "ENABLE_FIREWALL"]:
+                    self.assertFalse(any(excluded in arg for arg in run_args), (excluded, run_args))
 
     def test_cli_update_builds_selected_image_when_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(
-                workspace, image_inspect_missing=True
+            env, docker_log = fake_docker_env(workspace, image_inspect_missing=True)
+            self.run_cli(workspace, ["claude", "update"], env)
+            invocations = read_docker_invocations(docker_log)
+            self.assertIn(["image", "inspect", "local/agent-workcell-claude"], invocations)
+            self.assertEqual(
+                [args for args in invocations if args[:2] == ["compose", "build"]],
+                [["compose", "build", "agent-workcell-base"], ["compose", "build", "agent-workcell-claude"]],
             )
-            subprocess.run(
-                [str(CLI), "claude", "update"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            lines = docker_log.read_text().splitlines()
-            self.assertIn("DOCKER\timage\tinspect\tlocal/agent-workcell-claude", lines)
-            self.assertIn("DOCKER\tcompose\tbuild\tagent-workcell-base", lines)
-            self.assertIn("DOCKER\tcompose\tbuild\tagent-workcell-claude", lines)
-            self.assertNotIn("agent-workcell-codex", "\n".join(lines))
-            self.assertTrue(
-                any(
-                    line.startswith("DOCKER\trun\t--rm\t--init\t")
-                    for line in lines
-                )
-            )
+            run_args = self.docker_run_args(docker_log)
+            self.assertEqual(run_args[:3], ["run", "--rm", "--init"])
+            self.assertEqual(run_args[-2:], ["local/agent-workcell-claude", "update"])
 
     def test_cli_update_help_lists_native_command_without_docker(self):
         expected = {
@@ -172,15 +112,8 @@ class SandboxImageSplitTests(unittest.TestCase):
         for agent, native_command in expected.items():
             with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
                 workspace = Path(temp_dir)
-                env, docker_log = self.fake_docker_env(workspace)
-                result = subprocess.run(
-                    [str(CLI), agent, "update", "--help"],
-                    cwd=workspace,
-                    env=env,
-                    text=True,
-                    capture_output=True,
-                    check=True,
-                )
+                env, docker_log = fake_docker_env(workspace)
+                result = self.run_cli(workspace, [agent, "update", "--help"], env)
                 self.assertIn(f"workcell {agent} update", result.stdout)
                 self.assertIn(native_command, result.stdout)
                 self.assertFalse(docker_log.exists())
@@ -188,87 +121,70 @@ class SandboxImageSplitTests(unittest.TestCase):
     def test_cli_run_builds_target_image_only_when_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(
-                workspace, image_inspect_missing=True
+            env, docker_log = fake_docker_env(workspace, image_inspect_missing=True)
+            self.run_cli(workspace, ["codex", "run", "--", "--version"], env)
+            invocations = read_docker_invocations(docker_log)
+            self.assertIn(["image", "inspect", "local/agent-workcell-codex"], invocations)
+            self.assertEqual(
+                [args for args in invocations if args[:2] == ["compose", "build"]],
+                [["compose", "build", "agent-workcell-base"], ["compose", "build", "agent-workcell-codex"]],
             )
-            subprocess.run(
-                [str(CLI), "codex", "run", "--", "--version"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            lines = docker_log.read_text().splitlines()
-            self.assertIn("DOCKER\timage\tinspect\tlocal/agent-workcell-codex", lines)
-            self.assertIn("DOCKER\tcompose\tbuild\tagent-workcell-base", lines)
-            self.assertIn("DOCKER\tcompose\tbuild\tagent-workcell-codex", lines)
-            self.assertNotIn("agent-workcell-claude", "\n".join(lines))
 
     def test_cli_run_skips_build_when_target_image_exists(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "opencode", "run", "--", "--version"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            log = docker_log.read_text()
-            self.assertIn("DOCKER\timage\tinspect\tlocal/agent-workcell-opencode", log)
-            self.assertNotIn("DOCKER\tcompose\tbuild", log)
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["opencode", "run", "--", "--version"], env)
+            invocations = read_docker_invocations(docker_log)
+            self.assertIn(["image", "inspect", "local/agent-workcell-opencode"], invocations)
+            self.assertFalse(any(args[:2] == ["compose", "build"] for args in invocations))
 
     def test_cli_build_targets_base_then_requested_agent(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "pi", "build", "--no-cache"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            self.assertIn(
-                "DOCKER\tps\nDOCKER\tcompose\tbuild\t--no-cache\tagent-workcell-base\nDOCKER\tcompose\tbuild\t--no-cache\tagent-workcell-pi",
-                docker_log.read_text(),
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["pi", "build", "--no-cache"], env)
+            self.assertEqual(
+                read_docker_invocations(docker_log),
+                [
+                    ["ps"],
+                    ["compose", "build", "--no-cache", "agent-workcell-base"],
+                    ["compose", "build", "--no-cache", "agent-workcell-pi"],
+                ],
             )
 
     def test_cli_build_all_targets_all_agent_images(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run([str(CLI), "build"], cwd=workspace, env=env, check=True)
-            self.assertIn(
-                "DOCKER\tps\nDOCKER\tcompose\tbuild\tagent-workcell-base\nDOCKER\tcompose\tbuild\tagent-workcell-pi\tagent-workcell-opencode\tagent-workcell-codex\tagent-workcell-claude",
-                docker_log.read_text(),
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["build"], env)
+            self.assertEqual(
+                read_docker_invocations(docker_log),
+                [
+                    ["ps"],
+                    ["compose", "build", "agent-workcell-base"],
+                    ["compose", "build", "agent-workcell-pi", "agent-workcell-opencode", "agent-workcell-codex", "agent-workcell-claude"],
+                ],
             )
 
     def test_cli_build_rejects_all_argument(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            result = subprocess.run(
-                [str(CLI), "build", "all"],
-                cwd=workspace,
-                env=env,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            self.assertNotEqual(result.returncode, 0)
+            env, docker_log = fake_docker_env(workspace)
+            result = self.run_cli(workspace, ["build", "all"], env, expect_success=False)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("Error: unexpected argument: all", result.stdout)
             self.assertFalse(docker_log.exists())
 
     def test_cli_settings_uses_selected_agent_image_and_volume(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "pi", "settings"], cwd=workspace, env=env, check=True
-            )
-            log = docker_log.read_text()
-            self.assertIn("\t-v\tagent-workcell-pi:/data\t", f"{log}\t")
-            self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
-            self.assertIn("\tlocal/agent-workcell-pi\t", f"{log}\t")
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["pi", "settings"], env)
+            run_args = self.docker_run_args(docker_log)
+            self.assert_docker_option(run_args, "-v", "agent-workcell-pi:/data")
+            self.assert_docker_option(run_args, "-v", "agent-workcell-gpg:/data/.gnupg")
+            self.assertIn("local/agent-workcell-pi", run_args)
 
     def test_cli_context_and_skill_mount_configured_context_repo(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -276,113 +192,83 @@ class SandboxImageSplitTests(unittest.TestCase):
             repo = workspace / "agent-context"
             repo.mkdir()
             self.with_repo_config(f'WORKCELL_CONTEXT_REPO="{repo}"\n')
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "codex", "context", "open"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            subprocess.run(
-                [str(CLI), "codex", "skill", "list"], cwd=workspace, env=env, check=True
-            )
-            log = docker_log.read_text()
-            self.assertIn(f"\t-v\t{repo}:/opt/workcell-context:rw\t", f"{log}\t")
-            self.assertNotIn("/opt/workcell-context:ro", log)
+            env, docker_log = fake_docker_env(workspace)
+            for command in [["codex", "context", "open"], ["codex", "skill", "list"]]:
+                self.run_cli(workspace, command, env)
+            runs = [args for args in read_docker_invocations(docker_log) if args[:1] == ["run"]]
+            self.assertEqual(len(runs), 2)
+            for args in runs:
+                self.assert_docker_option(args, "-v", f"{repo}:/opt/workcell-context:rw")
+                self.assertNotIn(f"{repo}:/opt/workcell-context:ro", args)
 
     def test_cli_context_uses_selected_agent_image_volume_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "codex", "context", "open"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            log = docker_log.read_text()
-            self.assertIn("\t-v\tagent-workcell-codex:/data\t", f"{log}\t")
-            self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
-            self.assertIn("\tlocal/agent-workcell-codex\t", f"{log}\t")
-            self.assertIn("/data/.codex/AGENTS.md", log)
-            self.assertIn("/data/.codex/workcell-context.md", log)
-            self.assertIn("WORKCELL_CONTEXT_ACTION=open", log)
-            self.assertIn("/opt/workcell-context-lib.sh", log)
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["codex", "context", "open"], env)
+            run_args = self.docker_run_args(docker_log)
+            self.assert_docker_option(run_args, "-v", "agent-workcell-codex:/data")
+            self.assert_docker_option(run_args, "-v", "agent-workcell-gpg:/data/.gnupg")
+            self.assertIn("local/agent-workcell-codex", run_args)
+            self.assert_docker_option(run_args, "-e", "WORKCELL_CONTEXT_NATIVE=/data/.codex/AGENTS.md")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_CONTEXT_SOURCE=/data/.codex/workcell-context.md")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_CONTEXT_ACTION=open")
+            self.assertIn("/opt/workcell-context-lib.sh", run_args[-1])
 
     def test_cli_context_restore_uses_selected_agent_image_volume_and_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "claude", "context", "restore"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            log = docker_log.read_text()
-            self.assertIn("\t-v\tagent-workcell-claude:/data\t", f"{log}\t")
-            self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
-            self.assertIn("\tlocal/agent-workcell-claude\t", f"{log}\t")
-            self.assertIn("WORKCELL_CONTEXT_ACTION=restore", log)
-            self.assertIn("/data/.claude/CLAUDE.md", log)
-            self.assertIn("/data/.claude/workcell-context.md", log)
-            self.assertIn("/opt/workcell-context-lib.sh", log)
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["claude", "context", "restore"], env)
+            run_args = self.docker_run_args(docker_log)
+            self.assert_docker_option(run_args, "-v", "agent-workcell-claude:/data")
+            self.assert_docker_option(run_args, "-v", "agent-workcell-gpg:/data/.gnupg")
+            self.assertIn("local/agent-workcell-claude", run_args)
+            self.assert_docker_option(run_args, "-e", "WORKCELL_CONTEXT_ACTION=restore")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_CONTEXT_NATIVE=/data/.claude/CLAUDE.md")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_CONTEXT_SOURCE=/data/.claude/workcell-context.md")
+            self.assertIn("/opt/workcell-context-lib.sh", run_args[-1])
 
     def test_harness_skill_list_uses_selected_agent_image_and_volume(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "opencode", "skill", "list"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            log = docker_log.read_text()
-            self.assertIn("\t-v\tagent-workcell-opencode:/data\t", f"{log}\t")
-            self.assertIn("\tlocal/agent-workcell-opencode\t", f"{log}\t")
-            self.assertIn("/data/.config/opencode/skills", log)
-            self.assertIn("/data/.config/opencode/workcell-skills", log)
-            self.assertIn("wc_skill_list", log)
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["opencode", "skill", "list"], env)
+            run_args = self.docker_run_args(docker_log)
+            self.assert_docker_option(run_args, "-v", "agent-workcell-opencode:/data")
+            self.assertIn("local/agent-workcell-opencode", run_args)
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILLS_NATIVE=/data/.config/opencode/skills")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILLS_SOURCE=/data/.config/opencode/workcell-skills")
+            self.assertIn("wc_skill_list", run_args[-1])
 
     def test_harness_skill_edit_uses_selected_agent_image_volume_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "pi", "skill", "open", "chrome-integration"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            log = docker_log.read_text()
-            self.assertIn("\t-v\tagent-workcell-pi:/data\t", f"{log}\t")
-            self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
-            self.assertIn("\tlocal/agent-workcell-pi\t", f"{log}\t")
-            self.assertIn("WORKCELL_SKILLS_NATIVE=/data/.pi/agent/skills", log)
-            self.assertIn("WORKCELL_SKILLS_SOURCE=/data/.pi/agent/workcell-skills", log)
-            self.assertIn("WORKCELL_SKILL_NAME=chrome-integration", log)
-            self.assertIn("wc_skill_open", log)
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["pi", "skill", "open", "chrome-integration"], env)
+            run_args = self.docker_run_args(docker_log)
+            self.assert_docker_option(run_args, "-v", "agent-workcell-pi:/data")
+            self.assert_docker_option(run_args, "-v", "agent-workcell-gpg:/data/.gnupg")
+            self.assertIn("local/agent-workcell-pi", run_args)
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILLS_NATIVE=/data/.pi/agent/skills")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILLS_SOURCE=/data/.pi/agent/workcell-skills")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILL_NAME=chrome-integration")
+            self.assertIn("wc_skill_open", run_args[-1])
 
     def test_harness_skill_restore_uses_selected_agent_image_volume_and_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "claude", "skill", "restore", "chrome-integration"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            log = docker_log.read_text()
-            self.assertIn("\t-v\tagent-workcell-claude:/data\t", f"{log}\t")
-            self.assertIn("\t-v\tagent-workcell-gpg:/data/.gnupg\t", f"{log}\t")
-            self.assertIn("\tlocal/agent-workcell-claude\t", f"{log}\t")
-            self.assertIn("WORKCELL_SKILL_ACTION=restore", log)
-            self.assertIn("WORKCELL_SKILLS_NATIVE=/data/.claude/skills", log)
-            self.assertIn("WORKCELL_SKILLS_SOURCE=/data/.claude/workcell-skills", log)
-            self.assertIn("WORKCELL_SKILL_NAME=chrome-integration", log)
-            self.assertIn("wc_skill_restore", log)
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["claude", "skill", "restore", "chrome-integration"], env)
+            run_args = self.docker_run_args(docker_log)
+            self.assert_docker_option(run_args, "-v", "agent-workcell-claude:/data")
+            self.assert_docker_option(run_args, "-v", "agent-workcell-gpg:/data/.gnupg")
+            self.assertIn("local/agent-workcell-claude", run_args)
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILL_ACTION=restore")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILLS_NATIVE=/data/.claude/skills")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILLS_SOURCE=/data/.claude/workcell-skills")
+            self.assert_docker_option(run_args, "-e", "WORKCELL_SKILL_NAME=chrome-integration")
+            self.assertIn("wc_skill_restore", run_args[-1])
 
     def test_migrate_moves_legacy_session_dirs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -455,14 +341,7 @@ class SandboxImageSplitTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = subprocess.run(
-                [str(CLI), "migrate"],
-                cwd=workspace,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True,
-            )
+            result = self.run_cli(workspace, ["migrate"])
 
             self.assertIn("Migration complete.", result.stdout)
             for harness in ["claude", "opencode", "codex", "pi"]:
@@ -505,76 +384,59 @@ class SandboxImageSplitTests(unittest.TestCase):
     def test_opencode_session_helpers_use_opencode_volume_image_and_gpg(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
-            env, docker_log = self.fake_docker_env(workspace)
-            subprocess.run(
-                [str(CLI), "opencode", "sessions", "export"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
+            env, docker_log = fake_docker_env(workspace)
+            self.run_cli(workspace, ["opencode", "sessions", "export"], env)
             (workspace / ".workcell" / "sessions" / "opencode").mkdir(
                 parents=True, exist_ok=True
             )
             (
                 workspace / ".workcell" / "sessions" / "opencode" / "session.json"
             ).write_text("{}\n", encoding="utf-8")
-            subprocess.run(
-                [str(CLI), "opencode", "sessions", "import"],
-                cwd=workspace,
-                env=env,
-                check=True,
-            )
-            log = docker_log.read_text()
-            self.assertIn(
-                "\t-v\tagent-workcell-opencode:/home/agent/persist\t", f"{log}\t"
-            )
-            self.assertIn(
-                "\t-v\tagent-workcell-gpg:/home/agent/persist/.gnupg\t", f"{log}\t"
-            )
-            self.assertIn("\tlocal/agent-workcell-opencode\t", f"{log}\t")
+            self.run_cli(workspace, ["opencode", "sessions", "import"], env)
+            runs = [args for args in read_docker_invocations(docker_log) if args[:1] == ["run"]]
+            self.assertEqual(len(runs), 2)
+            for action, run_args in zip(["export", "import"], runs):
+                with self.subTest(action=action):
+                    self.assert_docker_option(run_args, "-v", "agent-workcell-opencode:/home/agent/persist")
+                    self.assert_docker_option(run_args, "-v", "agent-workcell-gpg:/home/agent/persist/.gnupg")
+                    self.assertIn("local/agent-workcell-opencode", run_args)
+                    self.assertIn(f"opencode {action}", run_args[-1])
 
     def test_top_level_agent_scoped_commands_show_helpful_error(self):
-        for command, example in [
-            ("run", "workcell pi run"),
-            ("update", "workcell pi update"),
-            ("settings", "workcell pi settings"),
-            ("context", "workcell pi context open"),
-            ("skill", "workcell pi skill list"),
-        ]:
-            with self.subTest(command=command):
-                result = subprocess.run(
-                    [str(CLI), command, "list"],
-                    cwd=REPO_ROOT,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                )
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(
-                    f"Error: '{command}' must be scoped to an agent", result.stdout
-                )
-                self.assertIn(example, result.stdout)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            env, docker_log = fake_docker_env(workspace)
+            for command, example in [
+                ("run", "workcell pi run"),
+                ("update", "workcell pi update"),
+                ("settings", "workcell pi settings"),
+                ("context", "workcell pi context open"),
+                ("skill", "workcell pi skill list"),
+            ]:
+                with self.subTest(command=command):
+                    result = self.run_cli(workspace, [command, "list"], env, expect_success=False)
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(f"Error: '{command}' must be scoped to an agent", result.stdout)
+                    self.assertIn(example, result.stdout)
+                    self.assertFalse(docker_log.exists())
 
     def test_command_groups_without_subcommand_show_help(self):
-        for command, expected in [
-            (["pi"], "workcell pi run"),
-            (["pi", "context"], "workcell pi context open"),
-            (["pi", "skill"], "workcell pi skill list"),
-            (["opencode", "sessions"], "workcell opencode sessions <export|import>"),
-            (["gpg"], "workcell gpg new"),
-            (["volume"], "workcell volume shell"),
-        ]:
-            with self.subTest(command=command):
-                result = subprocess.run(
-                    [str(CLI), *command],
-                    cwd=REPO_ROOT,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                )
-                self.assertEqual(result.returncode, 0)
-                self.assertIn(expected, result.stdout)
-                self.assertIn("Subcommands:", result.stdout)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            env, docker_log = fake_docker_env(workspace)
+            for command, expected in [
+                (["pi"], "workcell pi run"),
+                (["pi", "context"], "workcell pi context open"),
+                (["pi", "skill"], "workcell pi skill list"),
+                (["opencode", "sessions"], "workcell opencode sessions <export|import>"),
+                (["gpg"], "workcell gpg new"),
+                (["volume"], "workcell volume shell"),
+            ]:
+                with self.subTest(command=command):
+                    result = self.run_cli(workspace, command, env)
+                    self.assertIn(expected, result.stdout)
+                    self.assertIn("Subcommands:", result.stdout)
+                    self.assertFalse(docker_log.exists())
 
     def test_cli_argless_commands_reject_unexpected_args(self):
         commands = [
@@ -599,16 +461,9 @@ class SandboxImageSplitTests(unittest.TestCase):
                 tempfile.TemporaryDirectory() as temp_dir,
             ):
                 workspace = Path(temp_dir)
-                env, docker_log = self.fake_docker_env(workspace)
-                result = subprocess.run(
-                    [str(CLI), *command],
-                    cwd=workspace,
-                    env=env,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertNotEqual(result.returncode, 0)
+                env, docker_log = fake_docker_env(workspace)
+                result = self.run_cli(workspace, command, env, expect_success=False)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("Error: unexpected argument: extra", result.stdout)
                 self.assertFalse(docker_log.exists())
 
