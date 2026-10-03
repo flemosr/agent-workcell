@@ -18,7 +18,9 @@
 #   workcell start-chrome [options]   Start Chrome with remote debugging
 #   workcell start-flutter-bridge     Start Flutter host bridge
 #   workcell gpg new                  Generate a new sandbox GPG key
-#   workcell gpg export --file <f>    Export sandbox GPG key to a file
+#   workcell gpg export --file <f>     Export sandbox public GPG key to a file
+#   workcell gpg export --private --file <f>
+#                                      Export sandbox private GPG key for backup
 #   workcell gpg import --file <f>    Import a GPG key into the sandbox
 #   workcell gpg revoke --file <f>    Generate a revocation certificate
 #   workcell gpg erase                Erase the sandbox GPG key
@@ -109,7 +111,7 @@ Global commands:
   start-chrome      Start Chrome with remote debugging (run on host)
   start-flutter-bridge  Start Flutter host bridge (run on host)
   gpg new           Generate a new sandbox GPG key
-  gpg export        Export the sandbox GPG key to a file
+  gpg export        Export the public GPG key (--private for backup)
   gpg import        Import a GPG key into the sandbox
   gpg revoke        Generate a revocation certificate
   gpg erase         Erase the sandbox GPG key
@@ -135,8 +137,9 @@ Examples:
   workcell start-chrome --restart
   workcell start-flutter-bridge
   workcell gpg new
-  workcell gpg export --file my-key.asc
-  workcell gpg import --file my-key.asc
+  workcell gpg export --file my-public-key.asc
+  workcell gpg export --private --file my-key-backup.asc
+  workcell gpg import --file my-key-backup.asc
   workcell gpg revoke --file revoke.asc
   workcell gpg erase
   workcell volume shell codex
@@ -218,15 +221,16 @@ Usage:
 
 Subcommands:
   new       Generate a new sandbox GPG key
-  export    Export the sandbox GPG key to a file
+  export    Export the public GPG key (--private for backup)
   import    Import a GPG key into the sandbox
   revoke    Generate a revocation certificate
   erase     Erase the sandbox GPG key
 
 Examples:
   workcell gpg new
-  workcell gpg export --file my-key.asc
-  workcell gpg import --file my-key.asc
+  workcell gpg export --file my-public-key.asc
+  workcell gpg export --private --file my-key-backup.asc
+  workcell gpg import --file my-key-backup.asc
   workcell gpg revoke --file revoke.asc
   workcell gpg erase
 EOF
@@ -1370,17 +1374,26 @@ GPGEOF
 
             export)
                 outfile=""
+                export_type="public"
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
-                        --file) outfile="$2"; shift 2 ;;
+                        --file)
+                            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                                echo "Error: --file requires a path"
+                                exit 1
+                            fi
+                            outfile="$2"; shift 2
+                            ;;
+                        --private) export_type="private"; shift ;;
                         --help|-h)
-                            echo "Export the sandbox GPG key to a file"
+                            echo "Export the sandbox public GPG key to a file"
                             echo ""
                             echo "Usage:"
-                            echo "  workcell gpg export --file <path>"
+                            echo "  workcell gpg export [--private] --file <path>"
                             echo ""
                             echo "Options:"
                             echo "  --file <path>   Output file (required)"
+                            echo "  --private       Export the private key instead (for backup)"
                             exit 0
                             ;;
                         *) echo "Unknown option: $1"; exit 1 ;;
@@ -1389,13 +1402,18 @@ GPGEOF
 
                 if [ -z "$outfile" ]; then
                     echo "Error: --file is required"
-                    echo "Usage: workcell gpg export --file <path>"
+                    echo "Usage: workcell gpg export [--private] --file <path>"
                     exit 1
+                fi
+
+                export_option="--export"
+                if [[ "$export_type" == "private" ]]; then
+                    export_option="--export-secret-keys"
                 fi
 
                 ensure_docker_running
                 docker run --rm --entrypoint bash -v "${WORKCELL_SHARED_GPG_VOLUME_NAME}:/data/.gnupg" "$WORKCELL_BASE_IMAGE_NAME" \
-                    -c 'gpg --homedir /data/.gnupg --no-permission-warning --export-secret-keys --armor 2>/dev/null' > "$outfile"
+                    -c "gpg --homedir /data/.gnupg --no-permission-warning $export_option --armor 2>/dev/null" > "$outfile"
 
                 if [ ! -s "$outfile" ]; then
                     rm -f "$outfile"
@@ -1403,8 +1421,10 @@ GPGEOF
                     exit 1
                 fi
 
-                echo "Exported GPG key to: $outfile"
-                echo "WARNING: This file contains your PRIVATE key. Do not commit or share it."
+                echo "Exported $export_type GPG key to: $outfile"
+                if [[ "$export_type" == "private" ]]; then
+                    echo "WARNING: This file contains your PRIVATE key. Do not commit or share it."
+                fi
                 ;;
 
             import)

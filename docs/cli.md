@@ -242,11 +242,16 @@ for default seeding, persistence, shared context repo mounting, and skill preced
 
 ```bash
 workcell gpg new
-workcell gpg export --file my-key-backup.asc
+workcell gpg export --file my-public-key.asc
+workcell gpg export --private --file my-key-backup.asc
 workcell gpg import --file my-key-backup.asc
 workcell gpg revoke --file revoke.asc
 workcell gpg erase
 ```
+
+`gpg export` exports only the public key by default, suitable for sharing or adding to GitHub.
+Use `--private` to export the private key for a signing-key backup. Private exports contain secret
+key material; do not commit or share them.
 
 See [GPG setup](gpg-setup.md) for key setup, backup, and rotation guidance.
 

@@ -39,8 +39,11 @@ This reads `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` from `config.sh`.
 ## Manage Keys
 
 ```bash
-# Export the workcell GPG key
-workcell gpg export --file my-key-backup.asc
+# Export the public key for sharing or adding to GitHub
+workcell gpg export --file my-public-key.asc
+
+# Export the private key for a signing-key backup
+workcell gpg export --private --file my-key-backup.asc
 
 # Import a previously exported key
 workcell gpg import --file my-key-backup.asc
@@ -52,6 +55,9 @@ workcell gpg revoke --file revoke.asc
 workcell gpg erase
 ```
 
+`gpg export` exports only the public key by default. Public exports contain no private-key material
+and can be shared, but cannot restore signing capability. Use `--private` for a signing-key backup.
+
 `gpg erase` permanently deletes all GPG keys from the sandbox volume. If `GPG_SIGNING=true` remains
 enabled, a new key is generated on the next launch.
 
@@ -61,11 +67,11 @@ Back up the key if you want verified commits to continue using the same GPG iden
 to a new machine or recreating the Docker volume:
 
 ```bash
-workcell gpg export --file workcell-gpg-backup.asc
+workcell gpg export --private --file workcell-gpg-backup.asc
 ```
 
-Treat exported keys and volume backups as sensitive. The key is passphrase-less so agents can sign
-commits non-interactively.
+Treat private-key exports and volume backups as sensitive; do not commit or share them. The private
+key is passphrase-less so agents can sign commits non-interactively.
 
 ## Troubleshooting
 
