@@ -124,9 +124,12 @@ The entrypoint and sibling helper are image-owned files, not user-installed exte
 updating this checkout, rebuild the Pi image; updating the persisted Pi executable is a separate
 operation. See [Persistence](persistence.md#image-baked-tools-and-volume-backed-harness-installs).
 
-This integration is tested with **Pi 0.99.2**. Older persisted installs may lack required APIs;
-rebuilding an image does not replace them. Use `workcell pi update` when needed, then run the
-acceptance checks for the installed version. Compatibility with other versions is not assumed.
+This integration is tested with **Pi 1.0.3**, including its real managed-install SDK. Older persisted
+installs may lack required APIs; rebuilding an image preserves a valid managed release and does not
+replace it with the image seed. Use `workcell pi update` when needed, then run the acceptance checks
+for the installed version. Compatibility with other versions is not assumed. For legacy executable
+cleanup or managed corruption, use [install-only recovery](persistence.md#pi-install-only-reset-and-recovery),
+not a whole-volume reset.
 
 ## Acceptance checks
 
@@ -135,9 +138,20 @@ forbidden. They cover native compaction/history/accounting, exact continuation, 
 slices, queues/interrupts, selection/mode guards, lifecycle cleanup, notification behavior, and
 loading relocated copies of the image's extension files.
 
+The Pi 1.0.3 verification ran all **59 SDK lifecycle cases plus packaged-extension acceptance**
+under both ordinary and managed layouts without an explicit SDK override or skips. The full suite
+passed **302 tests under each layout**, including 17 managed initializer/build fixtures and 17 SDK
+discovery fixtures. Those build fixtures use a local installer substitute, not a Docker build.
+Separately, real disposable installer/native-update probes passed a 1.0.2 → 1.0.3 release transition,
+old-release retention, and user-state preservation. The implemented build commands and initializer
+also passed real 1.0.3 installation, restart/selector preservation, launcher restoration, and native
+managed detection in relocated disposable paths, running as UID 1000.
+
 From the repository root, with Python, Node supporting type stripping, and Pi installed:
 
 ```bash
+python -m unittest discover -s tests -p 'test_pi_init.py'
+python -m unittest discover -s tests -p 'test_pi_package_discovery.py'
 python -m unittest discover -s tests -p 'test_pi_compaction*.py'
 python -m unittest discover -s tests -p 'test_pi_notifications.py'
 python -m unittest discover -s tests -p 'test_run_sandbox_launcher.py'
@@ -145,15 +159,48 @@ python -m unittest discover -s tests -p 'test_sandbox_image_split.py'
 python -m unittest discover -s tests
 ```
 
-Set `PI_TEST_PACKAGE_ROOT=/path/to/installed/pi-package` if Pi is not discoverable through `PATH`.
-A skipped SDK suite does not establish acceptance. Copied-layout and simulated-terminal tests are
-**not a real Docker build or physical TUI acceptance**; that path still requires a host check.
+SDK discovery resolves the Pi executable on `PATH`, including symlinked entrypoints. For a managed
+`agent/bin/pi` launcher it validates sibling `install/` metadata and follows `current-version` to
+`releases/<version>/node_modules/@earendil-works/pi-coding-agent`, not the highest retained release.
+Ordinary package-ancestor discovery also works. An inherited `PI_MANAGED_INSTALL_ROOT` is ignored.
+Identifiable corrupt managed state fails the checks rather than silently skipping them.
+
+Set `PI_TEST_PACKAGE_ROOT=/path/to/installed/pi-package` if Pi is not discoverable through `PATH`
+or to select a specific SDK. It is authoritative even when Pi is on `PATH`, and must point to the
+installed `@earendil-works/pi-coding-agent` package directory, not its agent/install/release root.
+An invalid override fails; genuine SDK absence skips the SDK-dependent cases. A skipped SDK suite
+does not establish acceptance.
+
+Copied-layout, source-command, and simulated-terminal results are **not a real Docker build,
+root-entrypoint/drop-to-agent ownership check, or physical TUI acceptance**. Those host checks
+remain pending for the managed layout; do not reset a personal install based only on these probes.
+
+### Host managed-install check
+
+On a Docker-capable host, build with `workcell pi build` and use a disposable Pi volume, not the
+personal volume, for installation acceptance. This phase needs no live model request:
+
+1. Start the built image with installation network access disabled and verify the seeded release,
+   marker/entrypoint, and managed launcher. Confirm it uses Workcell's Node, with no installer Node
+   fallback, and that install files and update staging are writable by the agent user after root
+   initialization.
+2. Restart in a second container and confirm the same selector/launcher. Verify that an older or
+   newer image seed does not override the persisted selection.
+3. With update network access enabled, invoke native `pi update --self` against that disposable
+   volume. Confirm managed detection and selection/state persistence across restart. An
+   already-current result is valid; use a disposable older managed release to exercise installation
+   of a new release, not `--force` (which managed Pi rejects).
+4. Confirm the image-owned compaction and notification extensions load. Record the image/Pi/Node
+   versions and ownership/restart/update results before declaring installation acceptance.
+
+Keep [personal install-only recovery](persistence.md#pi-install-only-reset-and-recovery) gated on
+successful image acceptance and stopping all Pi sessions/containers using the personal volume.
 
 ### Host image/TUI check
 
-Run this on a host with Docker and a physical terminal. Use a disposable workspace and fresh
-ephemeral session, not a production conversation. Live model checks can incur provider charges;
-run them only with permission to use the configured provider.
+After image acceptance, run this on a host with Docker and a physical terminal. Use a disposable
+workspace and fresh ephemeral session, not a production conversation. Live model checks can incur
+provider charges; run them only with permission to use the configured provider.
 
 1. Rebuild with `workcell pi build` and check the installed version with
    `workcell pi run -- --version`; update an older executable separately if needed. Start
