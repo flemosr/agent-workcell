@@ -1,6 +1,7 @@
 """Offline tests against an installed Pi SDK; no user credentials or model HTTP calls."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import unittest
@@ -33,20 +34,55 @@ CASES = [
 ]
 
 
+def _managed_pi_package_root(install):
+    """Resolve the launcher's selected release; corrupt managed state must not skip tests."""
+    try:
+        root = install.resolve(strict=True)
+        marker = json.loads((root / "managed-install.json").read_text())
+        if (not isinstance(marker, dict) or marker.get("kind") != "pi-managed-install"
+                or type(marker.get("schemaVersion")) is not int or marker["schemaVersion"] != 1
+                or marker.get("layout") != "releases-v1"):
+            raise ValueError("managed-install.json must identify schema 1, releases-v1")
+        selector = (root / "current-version").read_bytes().decode("utf-8")
+        version = selector.removesuffix("\n")
+        if (not selector.endswith("\n") or version in {".", ".."}
+                or not re.fullmatch(r"[0-9A-Za-z._+-]+", version)):
+            raise ValueError("current-version must contain one safe release name followed by a newline")
+        releases = root / "releases"
+        release = (releases / version).resolve(strict=True)
+        if not release.is_relative_to(releases):
+            raise ValueError("selected release resolves outside the managed releases directory")
+        package = (release / "node_modules" / "@earendil-works" / "pi-coding-agent").resolve(strict=True)
+        if not package.is_relative_to(release):
+            raise ValueError("selected package resolves outside its managed release")
+        manifest = json.loads((package / "package.json").read_text())
+        if not isinstance(manifest, dict) or manifest.get("name") != "@earendil-works/pi-coding-agent":
+            raise ValueError("selected package.json must identify @earendil-works/pi-coding-agent")
+        return package
+    except (OSError, ValueError, RuntimeError) as error:
+        raise AssertionError(f"Invalid managed Pi installation at {install}: {error}") from error
+
+
 def pi_package_root():
-    """Accept an explicit SDK root, or find the package containing the installed Pi executable."""
+    """Discover an explicit SDK, the selected managed release, or an ordinary executable package."""
     explicit = os.environ.get("PI_TEST_PACKAGE_ROOT")
     candidates = [Path(explicit).expanduser().resolve()] if explicit else []
-    executable = shutil.which("pi")
-    if executable and not explicit:
-        candidates = list(Path(executable).resolve().parents)
+    if not explicit:
+        executable = shutil.which("pi")
+        if executable:
+            launcher = Path(executable).resolve()
+            install = launcher.parent.parent / "install"
+            if launcher.parent.name == "bin" and (install.exists() or install.is_symlink()):
+                return _managed_pi_package_root(install)
+            candidates = list(launcher.parents)
     for path in candidates:
         manifest = path / "package.json"
         if manifest.is_file():
             try:
-                if json.loads(manifest.read_text())["name"] == "@earendil-works/pi-coding-agent":
+                data = json.loads(manifest.read_text())
+                if isinstance(data, dict) and data.get("name") == "@earendil-works/pi-coding-agent":
                     return path
-            except (ValueError, KeyError):
+            except (OSError, ValueError):
                 continue
     if explicit:
         raise AssertionError("PI_TEST_PACKAGE_ROOT must point to an installed @earendil-works/pi-coding-agent package")
