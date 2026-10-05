@@ -7,6 +7,8 @@ from pathlib import Path
 
 from shell_test_support import fake_docker_env, read_docker_invocations, temporary_script_repo
 from test_pi_compaction_lifecycle import RUNNER, pi_package_root
+from test_pi_reasoning_effort import CASES as EFFORT_CASES
+from test_pi_reasoning_effort import RUNNER as EFFORT_RUNNER
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,7 +55,10 @@ class SandboxImageSplitTests(unittest.TestCase):
                 image_index = run_args.index(f"local/agent-workcell-{agent}")
                 expected = ["--version"]
                 if agent == "pi":
-                    expected = ["--extension", "/opt/workcell/pi-extensions/compact-session.ts", *expected]
+                    expected = [
+                        "--extension", "/opt/workcell/pi-extensions/compact-session.ts",
+                        "--extension", "/opt/workcell/pi-extensions/reasoning-effort.ts", *expected,
+                    ]
                 self.assertEqual(run_args[image_index + 1:], expected)
 
     def test_cli_update_uses_native_command_and_isolated_persistent_volume(self):
@@ -482,18 +487,22 @@ class SandboxImageSplitTests(unittest.TestCase):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(REPO_ROOT / "sandbox" / source, target)
             extensions = image_root / "opt" / "workcell" / "pi-extensions"
-            result = subprocess.run(
-                ["node", "--experimental-import-meta-resolve", str(RUNNER), str(package),
-                 str(extensions / "compact-session.ts"), str(extensions / "terminal-notify.ts"), "native-success"],
-                cwd=REPO_ROOT, text=True, capture_output=True, timeout=120, check=False,
-            )
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            payload = json.loads(result.stdout)
-            self.assertTrue(payload["passed"], payload)
-            self.assertEqual([report["name"] for report in payload["reports"]], ["native-success"])
-            for report in payload["reports"]:
-                with self.subTest(case=report["name"], pi_version=payload["packageVersion"]):
-                    self.assertTrue(report["passed"], report)
+            for runner, extension_args, expected_cases in [
+                (RUNNER, [extensions / "compact-session.ts", extensions / "terminal-notify.ts", "native-success"], ["native-success"]),
+                (EFFORT_RUNNER, [extensions / "reasoning-effort.ts"], EFFORT_CASES),
+            ]:
+                with self.subTest(runner=runner.name):
+                    result = subprocess.run(
+                        ["node", "--experimental-import-meta-resolve", str(runner), str(package), *map(str, extension_args)],
+                        cwd=REPO_ROOT, text=True, capture_output=True, timeout=120, check=False,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    payload = json.loads(result.stdout)
+                    self.assertTrue(payload["passed"], payload)
+                    self.assertEqual({report["name"] for report in payload["reports"]}, set(expected_cases))
+                    for report in payload["reports"]:
+                        with self.subTest(case=report["name"], pi_version=payload["packageVersion"]):
+                            self.assertTrue(report["passed"], report)
 
 
 if __name__ == "__main__":

@@ -250,10 +250,13 @@ if [ -f "$REPO_ROOT/config.sh" ]; then
   source "$REPO_ROOT/config.sh"
 fi
 
-# Bundle self-compaction independently of notifications; Pi owns mode/tool selection.
+# Bundle session tools independently of notifications; Pi owns mode/tool selection.
 pi_extension_args=()
 if [ "$agent_cli" = "pi" ]; then
-  pi_extension_args=(--extension /opt/workcell/pi-extensions/compact-session.ts)
+  pi_extension_args=(
+    --extension /opt/workcell/pi-extensions/compact-session.ts
+    --extension /opt/workcell/pi-extensions/reasoning-effort.ts
+  )
 fi
 if [ "$agent_cli" = "pi" ] \
   && [ "${WORKCELL_PI_NOTIFICATIONS:-}" = "enabled" ] \

@@ -6,7 +6,8 @@ from pathlib import Path
 from shell_test_support import fake_docker_env, read_docker_invocations, temporary_script_repo
 
 PI_COMPACTION_EXTENSION = "/opt/workcell/pi-extensions/compact-session.ts"
-PI_COMPACTION_ARGS = ["--extension", PI_COMPACTION_EXTENSION]
+PI_REASONING_EXTENSION = "/opt/workcell/pi-extensions/reasoning-effort.ts"
+PI_DEFAULT_EXTENSION_ARGS = ["--extension", PI_COMPACTION_EXTENSION, "--extension", PI_REASONING_EXTENSION]
 PI_NOTIFICATION_EXTENSION = "/opt/workcell/pi-extensions/terminal-notify.ts"
 
 
@@ -59,22 +60,29 @@ class RunSandboxLauncherTests(unittest.TestCase):
         image_index = run_args.index(f"local/agent-workcell-{agent}")
         return run_args[image_index + 1:]
 
-    def test_pi_compaction_extension_is_default_for_bare_launch(self):
+    def test_pi_bundled_extensions_are_default_for_bare_launch(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             invocations = self.run_with_fake_docker(workspace, agent="pi", agent_args=[])
 
             launched_args = self.launched_agent_args(invocations, "pi")
-            self.assertEqual(launched_args, PI_COMPACTION_ARGS)
+            self.assertEqual(launched_args, PI_DEFAULT_EXTENSION_ARGS)
             self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
+            self.assertEqual(launched_args.count(PI_REASONING_EXTENSION), 1)
             self.assertNotIn(PI_NOTIFICATION_EXTENSION, launched_args)
 
-    def test_pi_compaction_preserves_native_selection_and_mode_options(self):
+    def test_pi_bundled_extensions_preserve_native_selection_and_mode_options(self):
         for notification_enabled in [False, True]:
             for user_args in [
                 ["--exclude-tools", "compact_session"],
+                ["--exclude-tools", "get_model_info,set_reasoning_effort"],
                 ["--tools", "read,compact_session", "--no-extensions"],
+                ["--tools", "read,get_model_info,set_reasoning_effort", "--no-extensions"],
+                ["--no-tools"],
+                ["--no-builtin-tools"],
+                ["--print", "prompt with spaces"],
                 ["--mode", "json", "prompt with spaces"],
+                ["--mode", "rpc"],
             ]:
                 with (
                     self.subTest(notifications=notification_enabled, user_args=user_args),
@@ -91,7 +99,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     optional = ["--extension", PI_NOTIFICATION_EXTENSION] if notification_enabled else []
                     self.assertEqual(
                         self.launched_agent_args(invocations, "pi"),
-                        [*PI_COMPACTION_ARGS, *optional, *user_args],
+                        [*PI_DEFAULT_EXTENSION_ARGS, *optional, *user_args],
                     )
 
     def test_pi_extensions_preserve_exact_user_argument_vector(self):
@@ -109,9 +117,10 @@ class RunSandboxLauncherTests(unittest.TestCase):
             launched_args = self.launched_agent_args(invocations, "pi")
             self.assertEqual(
                 launched_args,
-                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *user_args],
+                [*PI_DEFAULT_EXTENSION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, *user_args],
             )
             self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
+            self.assertEqual(launched_args.count(PI_REASONING_EXTENSION), 1)
             self.assertEqual(launched_args.count(PI_NOTIFICATION_EXTENSION), 1)
 
     def test_pi_agent_is_passed_to_docker_run(self):
@@ -147,7 +156,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
             self.assertEqual(
                 self.launched_agent_args(invocations, "pi"),
-                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
+                [*PI_DEFAULT_EXTENSION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             )
             run_args = self.docker_run_args(invocations)
             self.assertFalse(any("CMUX_" in arg for arg in run_args))
@@ -168,7 +177,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
 
             self.assertEqual(
                 self.launched_agent_args(invocations, "pi"),
-                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
+                [*PI_DEFAULT_EXTENSION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             )
 
     def test_pi_notifications_require_cmux_identity(self):
@@ -184,7 +193,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     extra_env={"WORKCELL_PI_NOTIFICATIONS": "enabled", **cmux_env},
                 )
 
-                self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
+                self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_DEFAULT_EXTENSION_ARGS, "status"])
 
     def test_pi_notifications_require_exact_enabled_value(self):
         for value in [None, "", "disabled", "1", "ENABLED"]:
@@ -202,15 +211,15 @@ class RunSandboxLauncherTests(unittest.TestCase):
                     extra_env=extra_env,
                 )
 
-                self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
+                self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_DEFAULT_EXTENSION_ARGS, "status"])
 
     def test_pi_notification_config_overrides_host_setting(self):
         cases = [
-            ("enabled", "disabled", [*PI_COMPACTION_ARGS, "status"]),
+            ("enabled", "disabled", [*PI_DEFAULT_EXTENSION_ARGS, "status"]),
             (
                 "disabled",
                 "enabled",
-                [*PI_COMPACTION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
+                [*PI_DEFAULT_EXTENSION_ARGS, "--extension", PI_NOTIFICATION_EXTENSION, "status"],
             ),
         ]
         for host_value, config_value, expected in cases:
@@ -237,7 +246,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             self.with_repo_config("WORKCELL_PI_NOTIFICATIONS=enabled\nCMUX_SURFACE_ID=config-surface\n")
             invocations = self.run_with_fake_docker(workspace, agent="pi")
 
-            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
+            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_DEFAULT_EXTENSION_ARGS, "status"])
 
     def test_pi_notifications_do_not_change_other_harnesses(self):
         for agent in ["opencode", "codex", "claude"]:
@@ -271,7 +280,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
             run_args = self.docker_run_args(invocations)
 
-            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
+            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_DEFAULT_EXTENSION_ARGS, "status"])
             self.assertFalse(any("CMUX_" in arg for arg in run_args))
             self.assert_docker_option(run_args, "-e", "CUSTOM=value")
             self.assertFalse(any("cmux.sock" in arg for arg in run_args))
@@ -287,7 +296,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
             run_args = self.docker_run_args(invocations)
 
-            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_COMPACTION_ARGS, "status"])
+            self.assertEqual(self.launched_agent_args(invocations, "pi"), [*PI_DEFAULT_EXTENSION_ARGS, "status"])
             self.assertFalse(any("WORKCELL_PI_NOTIFICATIONS" in arg for arg in run_args))
             self.assert_docker_option(run_args, "-e", "CUSTOM=value")
 
