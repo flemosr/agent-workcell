@@ -7,7 +7,12 @@ from shell_test_support import fake_docker_env, read_docker_invocations, tempora
 
 PI_COMPACTION_EXTENSION = "/opt/workcell/pi-extensions/compact-session.ts"
 PI_REASONING_EXTENSION = "/opt/workcell/pi-extensions/reasoning-effort.ts"
-PI_DEFAULT_EXTENSION_ARGS = ["--extension", PI_COMPACTION_EXTENSION, "--extension", PI_REASONING_EXTENSION]
+PI_CONTEXT_USAGE_EXTENSION = "/opt/workcell/pi-extensions/context-usage.ts"
+PI_DEFAULT_EXTENSION_ARGS = [
+    "--extension", PI_COMPACTION_EXTENSION,
+    "--extension", PI_REASONING_EXTENSION,
+    "--extension", PI_CONTEXT_USAGE_EXTENSION,
+]
 PI_NOTIFICATION_EXTENSION = "/opt/workcell/pi-extensions/terminal-notify.ts"
 
 
@@ -69,6 +74,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             self.assertEqual(launched_args, PI_DEFAULT_EXTENSION_ARGS)
             self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
             self.assertEqual(launched_args.count(PI_REASONING_EXTENSION), 1)
+            self.assertEqual(launched_args.count(PI_CONTEXT_USAGE_EXTENSION), 1)
             self.assertNotIn(PI_NOTIFICATION_EXTENSION, launched_args)
 
     def test_pi_bundled_extensions_preserve_native_selection_and_mode_options(self):
@@ -76,6 +82,9 @@ class RunSandboxLauncherTests(unittest.TestCase):
             for user_args in [
                 ["--exclude-tools", "compact_session"],
                 ["--exclude-tools", "get_model_info,set_reasoning_effort"],
+                ["--exclude-tools", "get_context_usage"],
+                ["--tools", "get_context_usage", "--no-extensions"],
+                ["--tools", "read,get_context_usage", "--no-extensions"],
                 ["--tools", "read,compact_session", "--no-extensions"],
                 ["--tools", "read,get_model_info,set_reasoning_effort", "--no-extensions"],
                 ["--no-tools"],
@@ -121,6 +130,7 @@ class RunSandboxLauncherTests(unittest.TestCase):
             )
             self.assertEqual(launched_args.count(PI_COMPACTION_EXTENSION), 1)
             self.assertEqual(launched_args.count(PI_REASONING_EXTENSION), 1)
+            self.assertEqual(launched_args.count(PI_CONTEXT_USAGE_EXTENSION), 1)
             self.assertEqual(launched_args.count(PI_NOTIFICATION_EXTENSION), 1)
 
     def test_pi_agent_is_passed_to_docker_run(self):

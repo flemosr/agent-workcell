@@ -7,6 +7,8 @@ from pathlib import Path
 
 from shell_test_support import fake_docker_env, read_docker_invocations, temporary_script_repo
 from test_pi_compaction_lifecycle import RUNNER, pi_package_root
+from test_pi_context_usage import CASES as CONTEXT_USAGE_CASES
+from test_pi_context_usage import RUNNER as CONTEXT_USAGE_RUNNER
 from test_pi_reasoning_effort import CASES as EFFORT_CASES
 from test_pi_reasoning_effort import RUNNER as EFFORT_RUNNER
 
@@ -57,7 +59,8 @@ class SandboxImageSplitTests(unittest.TestCase):
                 if agent == "pi":
                     expected = [
                         "--extension", "/opt/workcell/pi-extensions/compact-session.ts",
-                        "--extension", "/opt/workcell/pi-extensions/reasoning-effort.ts", *expected,
+                        "--extension", "/opt/workcell/pi-extensions/reasoning-effort.ts",
+                        "--extension", "/opt/workcell/pi-extensions/context-usage.ts", *expected,
                     ]
                 self.assertEqual(run_args[image_index + 1:], expected)
 
@@ -490,6 +493,7 @@ class SandboxImageSplitTests(unittest.TestCase):
             for runner, extension_args, expected_cases in [
                 (RUNNER, [extensions / "compact-session.ts", extensions / "terminal-notify.ts", "native-success"], ["native-success"]),
                 (EFFORT_RUNNER, [extensions / "reasoning-effort.ts"], EFFORT_CASES),
+                (CONTEXT_USAGE_RUNNER, [extensions / "context-usage.ts"], CONTEXT_USAGE_CASES),
             ]:
                 with self.subTest(runner=runner.name):
                     result = subprocess.run(

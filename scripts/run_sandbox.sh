@@ -256,6 +256,7 @@ if [ "$agent_cli" = "pi" ]; then
   pi_extension_args=(
     --extension /opt/workcell/pi-extensions/compact-session.ts
     --extension /opt/workcell/pi-extensions/reasoning-effort.ts
+    --extension /opt/workcell/pi-extensions/context-usage.ts
   )
 fi
 if [ "$agent_cli" = "pi" ] \
