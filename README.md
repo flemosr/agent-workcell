@@ -65,6 +65,8 @@ See the documentation links below for optional Chrome, Flutter, and GPG setup.
   continuation in the same TUI session.
 - [Pi reasoning effort](docs/pi-reasoning-effort.md) - model information and agent-selected effort
   for subsequent requests, without changing the selected model or startup defaults.
+- [Pi context usage](docs/pi-context-usage.md) - read-only active-context snapshots, including
+  unknown values and native model limits.
 - [Pi notifications in cmux](docs/cli.md#pi-completion-notifications-in-cmux) - optional
   ready-for-input notifications over the existing terminal connection.
 - [Context management](docs/context-management.md) - default context seeding, shared context repos,

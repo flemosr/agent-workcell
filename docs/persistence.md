@@ -88,18 +88,19 @@ Workcell's bundled Pi extensions are different from the Pi CLI install. The Pi i
 
 - `/opt/workcell/pi-extensions/compact-session.ts` — the default self-compaction entrypoint;
 - `/opt/workcell/pi-extensions/compact-session-runtime.ts` — its sibling runtime helper;
-- `/opt/workcell/pi-extensions/reasoning-effort.ts` — model information and effort-selection tools; and
+- `/opt/workcell/pi-extensions/reasoning-effort.ts` — model information and effort-selection tools;
+- `/opt/workcell/pi-extensions/context-usage.ts` — the read-only active-context usage getter; and
 - `/opt/workcell/pi-extensions/terminal-notify.ts` — the optional cmux notification adapter.
 
-The launcher explicitly loads the compaction and reasoning-effort entrypoints on Pi runs, and the
-notification adapter only when enabled. These files are not copied into `~/.pi/agent/extensions/`
-and do not modify Pi settings.
+The launcher explicitly loads the compaction, reasoning-effort, and context-usage entrypoints on
+Pi runs, and the notification adapter only when enabled. These files are not copied into
+`~/.pi/agent/extensions/` and do not modify Pi settings.
 Pulling changes to them requires `workcell pi build` and a new container. Rebuilding does not replace
 the volume-backed Pi executable, so run `workcell pi update` separately if the persisted Pi version
 lacks the required extension APIs. Volume backups include the persisted Pi install and user
-extensions, but not these image-owned files. See [Pi self-compaction](pi-self-compaction.md) and
-[Pi reasoning effort](pi-reasoning-effort.md) for tool behavior, tested versions, disabling, and
-acceptance checks.
+extensions, but not these image-owned files. See [Pi self-compaction](pi-self-compaction.md),
+[Pi reasoning effort](pi-reasoning-effort.md), and [Pi context usage](pi-context-usage.md) for tool
+behavior, tested versions, disabling, and acceptance checks.
 
 Harness startup seeds image-provided installs into the selected volume. After initialization, the
 persisted install is authoritative: container restarts and image rebuilds restore the launcher from
