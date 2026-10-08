@@ -69,13 +69,12 @@ If `$EXPOSED_PORTS` is set, dev servers on those ports are reachable from the ho
 
 ## Network Restrictions
 
-Check firewall status with:
+Check the `ENABLE_FIREWALL` environment variable for Workcell's configured firewall mode. A value
+of `1` means enabled; unset or any other value means disabled. This reflects startup configuration,
+not a live inspection of firewall rules.
 
-```bash
-iptables -L OUTPUT -n 2>/dev/null | grep -q "DROP" && echo "Firewall ACTIVE" || echo "Firewall INACTIVE"
-```
-
-When the firewall is active, external network access is limited to essential agent and tooling domains:
+When Workcell's firewall mode is enabled, external network access is limited to essential agent and
+tooling domains:
 
 - Anthropic: `api.anthropic.com`, `claude.ai`, `statsig.anthropic.com`, `sentry.io`
 - OpenAI / Codex: `api.openai.com`, `chatgpt.com`, `auth.openai.com`
